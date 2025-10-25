@@ -1,0 +1,122 @@
+package models
+
+import (
+	"time"
+)
+
+// Movie represents the aggregated metadata for a JAV movie
+type Movie struct {
+	ID               string     `json:"id" gorm:"primaryKey"`
+	ContentID        string     `json:"content_id" gorm:"index"`
+	DisplayName      string     `json:"display_name"`
+	Title            string     `json:"title"`
+	AlternateTitle   string     `json:"alternate_title"`
+	Description      string     `json:"description" gorm:"type:text"`
+	ReleaseDate      *time.Time `json:"release_date"`
+	ReleaseYear      int        `json:"release_year"`
+	Runtime          int        `json:"runtime"` // in minutes
+	Director         string     `json:"director"`
+	Maker            string     `json:"maker"`  // Studio/maker
+	Label            string     `json:"label"`  // Sub-label
+	Series           string     `json:"series"` // Series name
+	Rating           *Rating    `json:"rating" gorm:"embedded;embeddedPrefix:rating_"`
+	CoverURL         string     `json:"cover_url"`
+	TrailerURL       string     `json:"trailer_url"`
+	OriginalFileName string     `json:"original_filename"`
+
+	// Relationships
+	Actresses     []Actress  `json:"actresses" gorm:"many2many:movie_actresses;"`
+	Genres        []Genre    `json:"genres" gorm:"many2many:movie_genres;"`
+	Screenshots   []string   `json:"screenshot_urls" gorm:"serializer:json"`
+
+	// Translations
+	Translations []MovieTranslation `json:"translations" gorm:"foreignKey:MovieID;references:ID"`
+
+	// Metadata
+	SourceName    string     `json:"source_name"` // Primary source
+	SourceURL     string     `json:"source_url"`
+	CreatedAt     time.Time  `json:"created_at"`
+	UpdatedAt     time.Time  `json:"updated_at"`
+}
+
+// MovieTranslation represents a movie's metadata in a specific language
+type MovieTranslation struct {
+	ID             uint       `json:"id" gorm:"primaryKey"`
+	MovieID        string     `json:"movie_id" gorm:"index:idx_movie_language,unique"`
+	Language       string     `json:"language" gorm:"index:idx_movie_language,unique;size:5"` // ISO 639-1: en, ja, zh, etc.
+	Title          string     `json:"title"`
+	AlternateTitle string     `json:"alternate_title"`
+	Description    string     `json:"description" gorm:"type:text"`
+	Director       string     `json:"director"`
+	Maker          string     `json:"maker"`
+	Label          string     `json:"label"`
+	Series         string     `json:"series"`
+	SourceName     string     `json:"source_name"` // Which scraper provided this translation
+	CreatedAt      time.Time  `json:"created_at"`
+	UpdatedAt      time.Time  `json:"updated_at"`
+}
+
+// Rating represents user rating information
+type Rating struct {
+	Score float64 `json:"score"`
+	Votes int     `json:"votes"`
+}
+
+// Actress represents a JAV actress
+type Actress struct {
+	ID           uint   `json:"id" gorm:"primaryKey"`
+	FirstName    string `json:"first_name"`
+	LastName     string `json:"last_name"`
+	JapaneseName string `json:"japanese_name" gorm:"index"`
+	ThumbURL     string `json:"thumb_url"`
+	Aliases      string `json:"aliases"` // Pipe-separated
+
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// FullName returns the actress's full English name
+func (a *Actress) FullName() string {
+	if a.LastName != "" && a.FirstName != "" {
+		return a.LastName + " " + a.FirstName
+	}
+	if a.FirstName != "" {
+		return a.FirstName
+	}
+	return a.JapaneseName
+}
+
+// Genre represents a category/tag
+type Genre struct {
+	ID   uint   `json:"id" gorm:"primaryKey"`
+	Name string `json:"name" gorm:"uniqueIndex"`
+}
+
+// GenreReplacement represents a user-defined genre name mapping
+type GenreReplacement struct {
+	ID          uint      `json:"id" gorm:"primaryKey"`
+	Original    string    `json:"original" gorm:"uniqueIndex;not null"`
+	Replacement string    `json:"replacement" gorm:"not null"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
+}
+
+// TableName specifies the table name for Movie
+func (Movie) TableName() string {
+	return "movies"
+}
+
+// TableName specifies the table name for MovieTranslation
+func (MovieTranslation) TableName() string {
+	return "movie_translations"
+}
+
+// TableName specifies the table name for Actress
+func (Actress) TableName() string {
+	return "actresses"
+}
+
+// TableName specifies the table name for Genre
+func (Genre) TableName() string {
+	return "genres"
+}

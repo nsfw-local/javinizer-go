@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<movie>
+  <title>Beautiful Day with Sakura Momo</title>
+  <originaltitle>桜空ももと過ごす美しい一日</originaltitle>
+  <sorttitle>IPX-535</sorttitle>
+  <id>IPX-535</id>
+  <uniqueid type="contentid" default="true">ipx00535</uniqueid>
+  <plot>A wonderful story about a beautiful day spent together. The cinematography is exceptional and the performances are outstanding.</plot>
+  <runtime>120</runtime>
+  <year>2020</year>
+  <releasedate>2020-09-13</releasedate>
+  <premiered>2020-09-13</premiered>
+  <ratings>
+    <rating name="themoviedb" max="10" default="true">
+      <value>8.7</value>
+      <votes>250</votes>
+    </rating>
+  </ratings>
+  <director>Yamada Taro</director>
+  <actor>
+    <name>Momo Sakura</name>
+    <thumb>https://example.com/actresses/sakura-momo.jpg</thumb>
+  </actor>
+  <studio>IdeaPocket</studio>
+  <maker>IdeaPocket</maker>
+  <label>IP Premium</label>
+  <set>Beautiful Days Series</set>
+  <genre>Beautiful Girl</genre>
+  <genre>Featured Actress</genre>
+  <genre>Digital Mosaic</genre>
+  <genre>POV</genre>
+  <thumb aspect="poster">https://example.com/covers/ipx535.jpg</thumb>
+  <fanart>
+    <thumb>https://example.com/screenshots/ipx535-1.jpg</thumb>
+    <thumb>https://example.com/screenshots/ipx535-2.jpg</thumb>
+    <thumb>https://example.com/screenshots/ipx535-3.jpg</thumb>
+  </fanart>
+  <trailer>https://example.com/trailers/ipx535.mp4</trailer>
+</movie>

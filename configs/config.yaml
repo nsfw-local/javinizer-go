@@ -1,0 +1,121 @@
+server:
+    host: localhost
+    port: 8080
+scrapers:
+    user_agent: Javinizer (+https://github.com/javinizer/Javinizer)
+    priority:
+        - r18dev
+        - dmm
+    r18dev:
+        enabled: true
+    dmm:
+        enabled: true
+        scrape_actress: false
+metadata:
+    priority:
+        actress:
+            - r18dev
+            - dmm
+        alternate_title:
+            - r18dev
+            - dmm
+        cover_url:
+            - r18dev
+            - dmm
+        description:
+            - dmm
+            - r18dev
+        director:
+            - r18dev
+            - dmm
+        genre:
+            - r18dev
+            - dmm
+        id:
+            - r18dev
+            - dmm
+        content_id:
+            - r18dev
+            - dmm
+        label:
+            - r18dev
+            - dmm
+        maker:
+            - r18dev
+            - dmm
+        rating:
+            - dmm
+            - r18dev
+        release_date:
+            - r18dev
+            - dmm
+        runtime:
+            - r18dev
+            - dmm
+        series:
+            - r18dev
+            - dmm
+        screenshot_url:
+            - r18dev
+            - dmm
+        title:
+            - r18dev
+            - dmm
+        trailer_url:
+            - r18dev
+            - dmm
+    thumb_csv:
+        enabled: true
+        path: data/actress.csv
+        auto_add: true
+    genre_csv:
+        enabled: true
+        path: data/genres.csv
+        auto_add: true
+    ignore_genres: []
+    required_fields: []
+    nfo:
+        enabled: true
+        display_name: <TITLE>
+        filename_template: <ID>.nfo
+        first_name_order: true
+        actress_language_ja: false
+        unknown_actress_text: Unknown
+        actress_as_tag: false
+        include_stream_details: false
+        include_fanart: true
+        include_trailer: true
+        rating_source: themoviedb
+        tag: []
+        tagline: ""
+        credits: []
+file_matching:
+    extensions:
+        - .mp4
+        - .mkv
+        - .avi
+        - .wmv
+        - .flv
+    min_size_mb: 0
+    exclude_patterns:
+        - '*-trailer*'
+        - '*-sample*'
+    regex_enabled: false
+    regex_pattern: ([a-zA-Z|tT28]+-\d+[zZ]?[eE]?)(?:-pt)?(\d{1,2})?
+output:
+    folder_format: <ID> [<STUDIO>] - <TITLE> (<YEAR>)
+    file_format: <ID>
+    subfolder_format: []
+    delimiter: ', '
+    download_cover: true
+    download_poster: true
+    download_screenshots: false
+    download_trailer: false
+    download_actress: false
+database:
+    type: sqlite
+    dsn: data/javinizer.db
+logging:
+    level: info
+    format: text
+    output: stdout

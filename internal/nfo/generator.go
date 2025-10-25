@@ -1,0 +1,415 @@
+package nfo
+
+import (
+	"encoding/xml"
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+
+	"github.com/javinizer/javinizer-go/internal/models"
+	"github.com/javinizer/javinizer-go/internal/template"
+)
+
+// Generator creates NFO files from movie metadata
+type Generator struct {
+	templateEngine *template.Engine
+	config         *Config
+}
+
+// Config holds NFO generation settings
+type Config struct {
+	// Actress name formatting
+	ActorFirstNameOrder bool   // true = FirstName LastName, false = LastName FirstName
+	ActorJapaneseNames  bool   // Use Japanese names if available
+	UnknownActress      string // Placeholder for unknown actresses (default: "Unknown")
+
+	// File naming
+	NFOFilenameTemplate string // Template for NFO filename (default: "<ID>.nfo")
+
+	// Optional fields
+	IncludeStreamDetails bool // Include video/audio stream information
+	IncludeFanart        bool // Include fanart section
+	IncludeTrailer       bool // Include trailer URLs
+
+	// Rating source
+	DefaultRatingSource string // Which rating to mark as default (default: "themoviedb")
+}
+
+// NewGenerator creates a new NFO generator
+func NewGenerator(cfg *Config) *Generator {
+	if cfg == nil {
+		cfg = DefaultConfig()
+	}
+
+	// Ensure defaults
+	if cfg.UnknownActress == "" {
+		cfg.UnknownActress = "Unknown"
+	}
+	if cfg.NFOFilenameTemplate == "" {
+		cfg.NFOFilenameTemplate = "<ID>.nfo"
+	}
+
+	return &Generator{
+		templateEngine: template.NewEngine(),
+		config:         cfg,
+	}
+}
+
+// DefaultConfig returns default NFO generation settings
+func DefaultConfig() *Config {
+	return &Config{
+		ActorFirstNameOrder:  true,
+		ActorJapaneseNames:   false,
+		UnknownActress:       "Unknown",
+		NFOFilenameTemplate:  "<ID>.nfo",
+		IncludeStreamDetails: false,
+		IncludeFanart:        true,
+		IncludeTrailer:       true,
+		DefaultRatingSource:  "themoviedb",
+	}
+}
+
+// Generate creates an NFO file from a Movie model
+func (g *Generator) Generate(movie *models.Movie, outputPath string) error {
+	nfo := g.MovieToNFO(movie)
+
+	// Generate filename using template
+	ctx := template.NewContextFromMovie(movie)
+	filename, err := g.templateEngine.Execute(g.config.NFOFilenameTemplate, ctx)
+	if err != nil {
+		return fmt.Errorf("failed to generate NFO filename: %w", err)
+	}
+
+	// Sanitize filename
+	filename = template.SanitizeFilename(filename)
+
+	// Ensure .nfo extension
+	if !strings.HasSuffix(filename, ".nfo") {
+		filename += ".nfo"
+	}
+
+	fullPath := filepath.Join(outputPath, filename)
+
+	return g.WriteNFO(nfo, fullPath)
+}
+
+// MovieToNFO converts a Movie model to NFO format
+func (g *Generator) MovieToNFO(movie *models.Movie) *Movie {
+	nfo := &Movie{
+		ID:            movie.ID,
+		Title:         movie.Title,
+		OriginalTitle: movie.AlternateTitle,
+		SortTitle:     movie.ID, // Use ID for sorting
+		Plot:          movie.Description,
+		Director:      movie.Director,
+		Studio:        movie.Maker,
+		Maker:         movie.Maker, // Custom JAV field
+		Label:         movie.Label, // Custom JAV field
+		Set:           movie.Series,
+	}
+
+	// Add unique IDs
+	if movie.ContentID != "" {
+		nfo.UniqueID = append(nfo.UniqueID, UniqueID{
+			Type:    "contentid",
+			Default: true,
+			Value:   movie.ContentID,
+		})
+	}
+
+	// Add release date
+	if movie.ReleaseDate != nil {
+		nfo.ReleaseDate = movie.ReleaseDate.Format("2006-01-02")
+		nfo.Premiered = movie.ReleaseDate.Format("2006-01-02")
+		nfo.Year = movie.ReleaseDate.Year()
+	}
+
+	// Add runtime
+	if movie.Runtime > 0 {
+		nfo.Runtime = movie.Runtime
+	}
+
+	// Add rating
+	if movie.Rating != nil {
+		nfo.Ratings = Ratings{
+			Rating: []Rating{
+				{
+					Name:    g.config.DefaultRatingSource,
+					Max:     10,
+					Default: true,
+					Value:   movie.Rating.Score,
+					Votes:   movie.Rating.Votes,
+				},
+			},
+		}
+	}
+
+	// Add actresses
+	if len(movie.Actresses) > 0 {
+		nfo.Actors = make([]Actor, 0, len(movie.Actresses))
+		for i, actress := range movie.Actresses {
+			actorName := g.formatActressName(actress)
+			actor := Actor{
+				Name:  actorName,
+				Order: i,
+			}
+
+			// Add actress image if available
+			if actress.ThumbURL != "" {
+				actor.Thumb = actress.ThumbURL
+			}
+
+			nfo.Actors = append(nfo.Actors, actor)
+		}
+	}
+
+	// Add genres
+	if len(movie.Genres) > 0 {
+		nfo.Genres = make([]string, 0, len(movie.Genres))
+		for _, genre := range movie.Genres {
+			nfo.Genres = append(nfo.Genres, genre.Name)
+		}
+	}
+
+	// Add cover image
+	if movie.CoverURL != "" {
+		nfo.Thumb = []Thumb{
+			{
+				Aspect: "poster",
+				Value:  movie.CoverURL,
+			},
+		}
+	}
+
+	// Add fanart (background images)
+	if g.config.IncludeFanart && len(movie.Screenshots) > 0 {
+		fanart := &Fanart{
+			Thumbs: make([]Thumb, 0, len(movie.Screenshots)),
+		}
+		for _, url := range movie.Screenshots {
+			fanart.Thumbs = append(fanart.Thumbs, Thumb{
+				Value: url,
+			})
+		}
+		nfo.Fanart = fanart
+	}
+
+	// Add trailer
+	if g.config.IncludeTrailer && movie.TrailerURL != "" {
+		nfo.Trailer = movie.TrailerURL
+	}
+
+	return nfo
+}
+
+// formatActressName formats an actress name according to config
+func (g *Generator) formatActressName(actress models.Actress) string {
+	return g.formatActressNameFromInfo(actress.FirstName, actress.LastName, actress.JapaneseName)
+}
+
+// formatActressNameFromActressInfo formats an actress name from ActressInfo
+func (g *Generator) formatActressNameFromActressInfo(actress models.ActressInfo) string {
+	return g.formatActressNameFromInfo(actress.FirstName, actress.LastName, actress.JapaneseName)
+}
+
+// formatActressNameFromInfo is the common implementation for formatting actress names
+func (g *Generator) formatActressNameFromInfo(firstName, lastName, japaneseName string) string {
+	// Use Japanese name if configured and available
+	if g.config.ActorJapaneseNames && japaneseName != "" {
+		return japaneseName
+	}
+
+	// Handle unknown actress
+	if firstName == "" && lastName == "" {
+		return g.config.UnknownActress
+	}
+
+	// Format based on name order preference
+	if g.config.ActorFirstNameOrder {
+		// FirstName LastName
+		if firstName != "" && lastName != "" {
+			return firstName + " " + lastName
+		}
+		if firstName != "" {
+			return firstName
+		}
+		return lastName
+	}
+
+	// LastName FirstName
+	if firstName != "" && lastName != "" {
+		return lastName + " " + firstName
+	}
+	if lastName != "" {
+		return lastName
+	}
+	return firstName
+}
+
+// WriteNFO writes an NFO structure to a file
+func (g *Generator) WriteNFO(nfo *Movie, path string) error {
+	// Ensure output directory exists
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return fmt.Errorf("failed to create output directory: %w", err)
+	}
+
+	// Create file
+	file, err := os.Create(path)
+	if err != nil {
+		return fmt.Errorf("failed to create NFO file: %w", err)
+	}
+	defer file.Close()
+
+	// Write XML header
+	if _, err := file.WriteString(xml.Header); err != nil {
+		return fmt.Errorf("failed to write XML header: %w", err)
+	}
+
+	// Create encoder with indentation
+	encoder := xml.NewEncoder(file)
+	encoder.Indent("", "  ")
+
+	// Encode NFO
+	if err := encoder.Encode(nfo); err != nil {
+		return fmt.Errorf("failed to encode NFO: %w", err)
+	}
+
+	// Write final newline
+	if _, err := file.WriteString("\n"); err != nil {
+		return fmt.Errorf("failed to write final newline: %w", err)
+	}
+
+	return nil
+}
+
+// GenerateFromScraperResult creates an NFO from a ScraperResult
+func (g *Generator) GenerateFromScraperResult(result *models.ScraperResult, outputPath string) error {
+	// Convert ScraperResult to NFO
+	nfo := g.ScraperResultToNFO(result)
+
+	// Generate filename using template
+	ctx := template.NewContextFromScraperResult(result)
+	filename, err := g.templateEngine.Execute(g.config.NFOFilenameTemplate, ctx)
+	if err != nil {
+		return fmt.Errorf("failed to generate NFO filename: %w", err)
+	}
+
+	// Sanitize filename
+	filename = template.SanitizeFilename(filename)
+
+	// Ensure .nfo extension
+	if !strings.HasSuffix(filename, ".nfo") {
+		filename += ".nfo"
+	}
+
+	fullPath := filepath.Join(outputPath, filename)
+
+	return g.WriteNFO(nfo, fullPath)
+}
+
+// ScraperResultToNFO converts a ScraperResult to NFO format
+func (g *Generator) ScraperResultToNFO(result *models.ScraperResult) *Movie {
+	nfo := &Movie{
+		ID:            result.ID,
+		Title:         result.Title,
+		OriginalTitle: result.Title,
+		SortTitle:     result.ID,
+		Plot:          result.Description,
+		Director:      result.Director,
+		Studio:        result.Maker,
+		Maker:         result.Maker,
+		Label:         result.Label,
+		Set:           result.Series,
+	}
+
+	// Add unique IDs
+	if result.ContentID != "" {
+		nfo.UniqueID = append(nfo.UniqueID, UniqueID{
+			Type:    "contentid",
+			Default: true,
+			Value:   result.ContentID,
+		})
+	}
+
+	// Add release date
+	if result.ReleaseDate != nil {
+		nfo.ReleaseDate = result.ReleaseDate.Format("2006-01-02")
+		nfo.Premiered = result.ReleaseDate.Format("2006-01-02")
+		nfo.Year = result.ReleaseDate.Year()
+	}
+
+	// Add runtime
+	if result.Runtime > 0 {
+		nfo.Runtime = result.Runtime
+	}
+
+	// Add rating
+	if result.Rating != nil {
+		nfo.Ratings = Ratings{
+			Rating: []Rating{
+				{
+					Name:    g.config.DefaultRatingSource,
+					Max:     10,
+					Default: true,
+					Value:   result.Rating.Score,
+					Votes:   result.Rating.Votes,
+				},
+			},
+		}
+	}
+
+	// Add actresses
+	if len(result.Actresses) > 0 {
+		nfo.Actors = make([]Actor, 0, len(result.Actresses))
+		for i, actress := range result.Actresses {
+			actorName := g.formatActressNameFromActressInfo(actress)
+			actor := Actor{
+				Name:  actorName,
+				Order: i,
+			}
+
+			if actress.ThumbURL != "" {
+				actor.Thumb = actress.ThumbURL
+			}
+
+			nfo.Actors = append(nfo.Actors, actor)
+		}
+	}
+
+	// Add genres
+	if len(result.Genres) > 0 {
+		nfo.Genres = result.Genres
+	}
+
+	// Add cover image
+	if result.CoverURL != "" {
+		nfo.Thumb = []Thumb{
+			{
+				Aspect: "poster",
+				Value:  result.CoverURL,
+			},
+		}
+	}
+
+	// Add fanart
+	if g.config.IncludeFanart && len(result.ScreenshotURL) > 0 {
+		fanart := &Fanart{
+			Thumbs: make([]Thumb, 0, len(result.ScreenshotURL)),
+		}
+		for _, url := range result.ScreenshotURL {
+			fanart.Thumbs = append(fanart.Thumbs, Thumb{
+				Value: url,
+			})
+		}
+		nfo.Fanart = fanart
+	}
+
+	// Add trailer
+	if g.config.IncludeTrailer && result.TrailerURL != "" {
+		nfo.Trailer = result.TrailerURL
+	}
+
+	return nfo
+}
