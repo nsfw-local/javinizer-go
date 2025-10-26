@@ -37,6 +37,12 @@ A modern, high-performance Go implementation of Javinizer - a metadata scraper a
 - Cross-platform single binary
 - No dependencies required
 
+✅ **Interactive TUI**
+- Browse and select files visually
+- Real-time progress tracking
+- Concurrent processing with worker pool
+- Live operation logs and statistics
+
 ## Quick Start
 
 ### Installation
@@ -56,6 +62,15 @@ javinizer init
 ```
 
 ### Basic Usage
+
+**Interactive TUI** (Recommended):
+```bash
+# Launch interactive file browser
+javinizer tui ~/Videos
+
+# Use keyboard to select files, press Enter to process
+# See docs/TUI.md for complete guide
+```
 
 **Scrape metadata**:
 ```bash
@@ -84,13 +99,14 @@ Comprehensive documentation available in the `/docs` folder:
 1. **[Getting Started](./docs/01-getting-started.md)** - Installation and first steps
 2. **[Configuration](./docs/02-configuration.md)** - Complete configuration reference
 3. **[CLI Reference](./docs/03-cli-reference.md)** - All commands and options
-4. **[Template System](./docs/04-template-system.md)** - Customize naming formats
-5. **[Genre Management](./docs/05-genre-management.md)** - Genre replacement guide
-6. **[Database Schema](./docs/06-database-schema.md)** - Database structure and queries
-7. **[API Reference](./docs/07-api-reference.md)** - REST API (planned)
-8. **[Migration Guide](./docs/08-migration-guide.md)** - From PowerShell version
-9. **[Development](./docs/09-development.md)** - Contributing guide
-10. **[Troubleshooting](./docs/10-troubleshooting.md)** - Common issues and solutions
+4. **[TUI Guide](./docs/TUI.md)** - Interactive Terminal User Interface
+5. **[Template System](./docs/04-template-system.md)** - Customize naming formats
+6. **[Genre Management](./docs/05-genre-management.md)** - Genre replacement guide
+7. **[Database Schema](./docs/06-database-schema.md)** - Database structure and queries
+8. **[API Reference](./docs/07-api-reference.md)** - REST API (planned)
+9. **[Migration Guide](./docs/08-migration-guide.md)** - From PowerShell version
+10. **[Development](./docs/09-development.md)** - Contributing guide
+11. **[Troubleshooting](./docs/10-troubleshooting.md)** - Common issues and solutions
 
 ## Project Structure
 
@@ -112,7 +128,9 @@ javinizer-go/
 │   ├── organizer/        # File organization
 │   ├── scanner/          # File scanning
 │   ├── scraper/          # Scrapers (R18.dev, DMM)
-│   └── template/         # Template engine
+│   ├── template/         # Template engine
+│   ├── tui/              # Terminal User Interface (Bubble Tea)
+│   └── worker/           # Worker pool and task execution
 ├── configs/              # Default configuration
 ├── data/                 # Runtime data (database)
 ├── docs/                 # Documentation
@@ -145,6 +163,12 @@ output:
 file_matching:
   extensions: [.mp4, .mkv, .avi, .wmv, .flv]
   exclude_patterns: ["*-trailer*", "*-sample*"]
+
+performance:
+  max_workers: 5          # Concurrent tasks for TUI
+  worker_timeout: 300     # Task timeout (seconds)
+  enable_tui: true        # Enable TUI features
+  buffer_size: 100        # Progress update buffer
 ```
 
 See [Configuration Guide](./docs/02-configuration.md) for all options.
@@ -223,8 +247,11 @@ Javinizer Go is significantly faster than the PowerShell version:
 - History tracking with CLI commands
 - File logging (logrus, configurable output)
 - CLI interface with verbose mode
-- Comprehensive documentation (10 guides)
-- Integration testing
+- **Interactive TUI with concurrent processing**
+- **Worker pool for parallel task execution**
+- **Real-time progress tracking and statistics**
+- Comprehensive documentation (11 guides + TUI guide)
+- Integration and unit testing
 
 ### Planned 📋
 
