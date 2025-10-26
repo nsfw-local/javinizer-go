@@ -10,13 +10,14 @@ import (
 
 // Config represents the application configuration
 type Config struct {
-	Server    ServerConfig    `yaml:"server"`
-	Scrapers  ScrapersConfig  `yaml:"scrapers"`
-	Metadata  MetadataConfig  `yaml:"metadata"`
-	Matching  MatchingConfig  `yaml:"file_matching"`
-	Output    OutputConfig    `yaml:"output"`
-	Database  DatabaseConfig  `yaml:"database"`
-	Logging   LoggingConfig   `yaml:"logging"`
+	Server      ServerConfig      `yaml:"server"`
+	Scrapers    ScrapersConfig    `yaml:"scrapers"`
+	Metadata    MetadataConfig    `yaml:"metadata"`
+	Matching    MatchingConfig    `yaml:"file_matching"`
+	Output      OutputConfig      `yaml:"output"`
+	Database    DatabaseConfig    `yaml:"database"`
+	Logging     LoggingConfig     `yaml:"logging"`
+	Performance PerformanceConfig `yaml:"performance"`
 }
 
 // ServerConfig holds API server configuration
@@ -135,6 +136,15 @@ type LoggingConfig struct {
 	Output string `yaml:"output"` // stdout, file path
 }
 
+// PerformanceConfig holds performance and concurrency settings
+type PerformanceConfig struct {
+	MaxWorkers     int  `yaml:"max_workers"`      // Maximum concurrent workers (default: 5)
+	WorkerTimeout  int  `yaml:"worker_timeout"`   // Timeout per task in seconds (default: 300)
+	EnableTUI      bool `yaml:"enable_tui"`       // Enable TUI mode by default (default: true)
+	BufferSize     int  `yaml:"buffer_size"`      // Channel buffer size (default: 100)
+	UpdateInterval int  `yaml:"update_interval"`  // UI update interval in milliseconds (default: 100)
+}
+
 // DefaultConfig returns the default configuration
 func DefaultConfig() *Config {
 	return &Config{
@@ -223,6 +233,13 @@ func DefaultConfig() *Config {
 			Level:  "info",
 			Format: "text",
 			Output: "stdout",
+		},
+		Performance: PerformanceConfig{
+			MaxWorkers:     5,
+			WorkerTimeout:  300,
+			EnableTUI:      true,
+			BufferSize:     100,
+			UpdateInterval: 100,
 		},
 	}
 }
