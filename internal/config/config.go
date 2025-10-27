@@ -112,15 +112,15 @@ type MatchingConfig struct {
 
 // OutputConfig holds output/organization settings
 type OutputConfig struct {
-	FolderFormat       string   `yaml:"folder_format"`
-	FileFormat         string   `yaml:"file_format"`
-	SubfolderFormat    []string `yaml:"subfolder_format"`
-	Delimiter          string   `yaml:"delimiter"`
-	DownloadCover      bool     `yaml:"download_cover"`
-	DownloadPoster     bool     `yaml:"download_poster"`
-	DownloadScreenshots bool    `yaml:"download_screenshots"`
-	DownloadTrailer    bool     `yaml:"download_trailer"`
-	DownloadActress    bool     `yaml:"download_actress"`
+	FolderFormat        string   `yaml:"folder_format"`
+	FileFormat          string   `yaml:"file_format"`
+	SubfolderFormat     []string `yaml:"subfolder_format"`
+	Delimiter           string   `yaml:"delimiter"`
+	DownloadCover       bool     `yaml:"download_cover"`
+	DownloadPoster      bool     `yaml:"download_poster"`
+	DownloadExtrafanart bool     `yaml:"download_extrafanart"`
+	DownloadTrailer     bool     `yaml:"download_trailer"`
+	DownloadActress     bool     `yaml:"download_actress"`
 }
 
 // DatabaseConfig holds database configuration
@@ -215,15 +215,15 @@ func DefaultConfig() *Config {
 			RegexPattern:    `([a-zA-Z|tT28]+-\d+[zZ]?[eE]?)(?:-pt)?(\d{1,2})?`,
 		},
 		Output: OutputConfig{
-			FolderFormat:       "<ID> [<STUDIO>] - <TITLE> (<YEAR>)",
-			FileFormat:         "<ID>",
-			SubfolderFormat:    []string{},
-			Delimiter:          ", ",
-			DownloadCover:      true,
-			DownloadPoster:     true,
-			DownloadScreenshots: false,
-			DownloadTrailer:    false,
-			DownloadActress:    false,
+			FolderFormat:        "<ID> [<STUDIO>] - <TITLE> (<YEAR>)",
+			FileFormat:          "<ID>",
+			SubfolderFormat:     []string{},
+			Delimiter:           ", ",
+			DownloadCover:       true,
+			DownloadPoster:      true,
+			DownloadExtrafanart: false,
+			DownloadTrailer:     false,
+			DownloadActress:     false,
 		},
 		Database: DatabaseConfig{
 			Type: "sqlite",

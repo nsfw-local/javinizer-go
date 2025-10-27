@@ -16,8 +16,10 @@ A modern, high-performance Go implementation of Javinizer - a metadata scraper a
 ✅ **File Organization**
 - Automatic JAV ID detection from filenames
 - Flexible template-based folder/file naming
+- Nested subfolder hierarchies (organize by year, studio, etc.)
 - Move or copy files with conflict detection
 - Dry-run mode for safe preview
+- Force update to overwrite existing files
 
 ✅ **Metadata Management**
 - Kodi/Plex-compatible NFO generation
@@ -27,9 +29,10 @@ A modern, high-performance Go implementation of Javinizer - a metadata scraper a
 
 ✅ **Media Downloads**
 - Cover and poster images
-- Screenshot galleries
+- Extrafanart/screenshot galleries
 - Trailer videos
 - Actress thumbnails
+- Command-line override options
 
 ✅ **Modern Architecture**
 - SQLite database for caching
@@ -157,8 +160,10 @@ metadata:
 output:
   folder_format: "<ID> [<STUDIO>] - <TITLE> (<YEAR>)"
   file_format: "<ID>"
+  subfolder_format: []  # e.g., ["<YEAR>", "<STUDIO>"] for nested organization
   download_cover: true
   download_poster: true
+  download_extrafanart: false
 
 file_matching:
   extensions: [.mp4, .mkv, .avi, .wmv, .flv]

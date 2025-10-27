@@ -6,6 +6,8 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"sort"
+	"strings"
 	"syscall"
 	"time"
 
@@ -36,23 +38,34 @@ func createTUICommand() *cobra.Command {
 		Run:   runTUI,
 	}
 
-	tuiCmd.Flags().BoolP("recursive", "r", true, "Scan directories recursively")
+	tuiCmd.Flags().StringP("source", "s", "", "Source directory to scan (can also use positional argument)")
 	tuiCmd.Flags().StringP("dest", "d", "", "Destination directory (default: same as source)")
+	tuiCmd.Flags().BoolP("recursive", "r", true, "Scan directories recursively")
 	tuiCmd.Flags().BoolP("move", "m", false, "Move files instead of copying")
+	tuiCmd.Flags().BoolP("dry-run", "n", false, "Preview operations without making changes")
+	tuiCmd.Flags().Bool("extrafanart", false, "Download extrafanart (screenshots)")
+	tuiCmd.Flags().StringSliceP("scrapers", "p", nil, "Scraper priority (comma-separated, e.g., 'r18dev,dmm')")
 
 	return tuiCmd
 }
 
 func runTUI(cmd *cobra.Command, args []string) {
-	// Get source path
+	// Get source path - prioritize flag over positional argument
 	sourcePath := "."
-	if len(args) > 0 {
+	sourceFlag, _ := cmd.Flags().GetString("source")
+
+	if sourceFlag != "" {
+		sourcePath = sourceFlag
+	} else if len(args) > 0 {
 		sourcePath = args[0]
 	}
 
 	recursive, _ := cmd.Flags().GetBool("recursive")
 	destPath, _ := cmd.Flags().GetString("dest")
 	moveFiles, _ := cmd.Flags().GetBool("move")
+	dryRun, _ := cmd.Flags().GetBool("dry-run")
+	downloadExtrafanart, _ := cmd.Flags().GetBool("extrafanart")
+	scraperPriority, _ := cmd.Flags().GetStringSlice("scrapers")
 
 	// Default destination is same as source
 	if destPath == "" {
@@ -63,6 +76,16 @@ func runTUI(cmd *cobra.Command, args []string) {
 	if err := loadConfig(); err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to load config: %v\n", err)
 		os.Exit(1)
+	}
+
+	// Override config with flag if extrafanart is explicitly enabled
+	if downloadExtrafanart {
+		cfg.Output.DownloadExtrafanart = true
+	}
+
+	// Override config with flag if scraper priority is provided
+	if len(scraperPriority) > 0 {
+		cfg.Scrapers.Priority = scraperPriority
 	}
 
 	// For TUI mode, log to file only (not stdout)
@@ -133,56 +156,21 @@ func runTUI(cmd *cobra.Command, args []string) {
 	matches := fileMatcher.Match(scanResult.Files)
 	logging.Infof("Matched %d files", len(matches))
 
-	// Convert to TUI file items
-	fileItems := make([]tui.FileItem, 0, len(scanResult.Files))
+	// Convert to TUI file items with tree structure
 	matchMap := make(map[string]matcher.MatchResult)
-
 	for _, match := range matches {
 		matchMap[match.File.Path] = match
 	}
 
-	// Add directories first
-	if recursive {
-		dirSet := make(map[string]bool)
-		for _, file := range scanResult.Files {
-			dir := filepath.Dir(file.Path)
-			if dir != sourcePath && !dirSet[dir] {
-				dirSet[dir] = true
-				fileItems = append(fileItems, tui.FileItem{
-					Path:     dir,
-					Name:     filepath.Base(dir),
-					Size:     0,
-					IsDir:    true,
-					Selected: false,
-					Matched:  false,
-				})
-			}
-		}
-	}
+	// Build tree structure
+	fileItems := buildFileTree(sourcePath, scanResult.Files, matchMap)
 
-	// Add files
-	for _, file := range scanResult.Files {
-		item := tui.FileItem{
-			Path:     file.Path,
-			Name:     file.Name,
-			Size:     file.Size,
-			IsDir:    false,
-			Selected: false,
-			Matched:  false,
-		}
-
-		if match, found := matchMap[file.Path]; found {
-			item.Matched = true
-			item.ID = match.ID
-		}
-
-		fileItems = append(fileItems, item)
-	}
-
-	// Set files, match results, and source path in model
+	// Set files, match results, source path, and destination in model
 	model.SetFiles(fileItems)
 	model.SetMatchResults(matchMap)
 	model.SetSourcePath(sourcePath)
+	model.SetScanner(fileScanner, fileMatcher, recursive)
+	// Note: destPath will be set after processor is initialized
 
 	// Initialize database
 	db, err := database.New(cfg)
@@ -239,8 +227,17 @@ func runTUI(cmd *cobra.Command, args []string) {
 		moveFiles,
 	)
 
+	// Set worker pool and progress channel in model
+	model.SetWorkerPool(workerPool, progressChan)
+
 	// Set processor in model
 	model.SetProcessor(processor)
+
+	// Set destination path AFTER processor is set
+	model.SetDestPath(destPath)
+
+	// Set dry-run mode AFTER processor is set so it propagates correctly
+	model.SetDryRun(dryRun)
 
 	// Log initial state
 	model.AddLog("info", fmt.Sprintf("Scanned %d files", len(scanResult.Files)))
@@ -279,4 +276,127 @@ func runTUI(cmd *cobra.Command, args []string) {
 	}
 
 	logging.Info("TUI exited successfully")
+}
+
+// buildFileTree constructs a tree structure of files and directories
+func buildFileTree(basePath string, files []scanner.FileInfo, matchMap map[string]matcher.MatchResult) []tui.FileItem {
+	// Normalize base path
+	absBasePath, err := filepath.Abs(basePath)
+	if err != nil {
+		absBasePath = basePath
+	}
+
+	// Group files by their immediate parent directory
+	dirFiles := make(map[string][]scanner.FileInfo)
+	allDirs := make(map[string]bool)
+
+	for _, file := range files {
+		dir := filepath.Dir(file.Path)
+		dirFiles[dir] = append(dirFiles[dir], file)
+
+		// Track all directories between file and base path
+		current := dir
+		for current != absBasePath && current != "." && current != "/" && strings.HasPrefix(current, absBasePath) {
+			allDirs[current] = true
+			parent := filepath.Dir(current)
+			if parent == current {
+				break
+			}
+			current = parent
+		}
+	}
+
+	// Build sorted list of directories
+	dirs := make([]string, 0, len(allDirs))
+	for dir := range allDirs {
+		dirs = append(dirs, dir)
+	}
+	sort.Strings(dirs)
+
+	// Calculate relative depth
+	getDepth := func(path string) int {
+		rel, err := filepath.Rel(absBasePath, path)
+		if err != nil || rel == "." {
+			return 0
+		}
+		return strings.Count(rel, string(filepath.Separator)) + 1
+	}
+
+	result := []tui.FileItem{}
+
+	// Process each directory
+	for _, dir := range dirs {
+		depth := getDepth(dir) - 1
+		if depth < 0 {
+			depth = 0
+		}
+
+		// Add directory item
+		result = append(result, tui.FileItem{
+			Path:     dir,
+			Name:     filepath.Base(dir),
+			Size:     0,
+			IsDir:    true,
+			Selected: false,
+			Matched:  false,
+			Depth:    depth,
+			Parent:   filepath.Dir(dir),
+		})
+
+		// Add files in this directory
+		if fileList, ok := dirFiles[dir]; ok {
+			sort.Slice(fileList, func(i, j int) bool {
+				return fileList[i].Name < fileList[j].Name
+			})
+
+			for _, file := range fileList {
+				item := tui.FileItem{
+					Path:     file.Path,
+					Name:     file.Name,
+					Size:     file.Size,
+					IsDir:    false,
+					Selected: false,
+					Matched:  false,
+					Depth:    depth + 1,
+					Parent:   dir,
+				}
+
+				if match, found := matchMap[file.Path]; found {
+					item.Matched = true
+					item.ID = match.ID
+				}
+
+				result = append(result, item)
+			}
+		}
+	}
+
+	// Add files in the base directory itself
+	if baseFiles, ok := dirFiles[absBasePath]; ok {
+		sort.Slice(baseFiles, func(i, j int) bool {
+			return baseFiles[i].Name < baseFiles[j].Name
+		})
+
+		for _, file := range baseFiles {
+			item := tui.FileItem{
+				Path:     file.Path,
+				Name:     file.Name,
+				Size:     file.Size,
+				IsDir:    false,
+				Selected: false,
+				Matched:  false,
+				Depth:    0,
+				Parent:   absBasePath,
+			}
+
+			if match, found := matchMap[file.Path]; found {
+				item.Matched = true
+				item.ID = match.ID
+			}
+
+			result = append(result, item)
+		}
+	}
+
+	return result
 }

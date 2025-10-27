@@ -390,11 +390,11 @@ Control how files and folders are organized and named.
 output:
   folder_format: "<ID> [<STUDIO>] - <TITLE> (<YEAR>)"
   file_format: "<ID>"
-  subfolder_format: []
+  subfolder_format: []  # Optional nested folder hierarchy
   delimiter: ", "
   download_cover: true
   download_poster: true
-  download_screenshots: false
+  download_extrafanart: false  # Screenshots in extrafanart/ subfolder
   download_trailer: false
   download_actress: false
 ```
@@ -411,7 +411,53 @@ IPX-535 [Idea Pocket] - Beautiful Day (2020)/
 IPX-535.mp4
 ```
 
-**subfolder_format**: Array of templates for nested subfolders (not yet implemented).
+**subfolder_format**: Array of templates for creating nested folder hierarchies. This allows you to organize files into multiple subfolder levels before the main movie folder.
+
+Example with empty array (default):
+```yaml
+subfolder_format: []
+```
+Results in:
+```
+dest/
+  IPX-535 [Idea Pocket] - Title (2020)/
+    IPX-535.mp4
+```
+
+Example with year organization:
+```yaml
+subfolder_format: ["<YEAR>"]
+```
+Results in:
+```
+dest/
+  2020/
+    IPX-535 [Idea Pocket] - Title (2020)/
+      IPX-535.mp4
+```
+
+Example with year and studio organization:
+```yaml
+subfolder_format: ["<YEAR>", "<STUDIO>"]
+```
+Results in:
+```
+dest/
+  2020/
+    Idea Pocket/
+      IPX-535 [Idea Pocket] - Title (2020)/
+        IPX-535.mp4
+  2021/
+    S1 NO.1 STYLE/
+      SSIS-123 [S1 NO.1 STYLE] - Title (2021)/
+        SSIS-123.mkv
+```
+
+**Notes:**
+- Empty subfolder values are skipped
+- All template tags are supported (see [Template System](./04-template-system.md))
+- Folder names are automatically sanitized for filesystem compatibility
+- Can be overridden per-command with CLI flags
 
 See [Template System](./04-template-system.md) for available tags and modifiers.
 
@@ -421,7 +467,9 @@ See [Template System](./04-template-system.md) for available tags and modifiers.
 
 **download_poster**: Download poster image (`<ID>-fanart.jpg`).
 
-**download_screenshots**: Download screenshot images (`<ID>-screenshot01.jpg`, etc.).
+**download_extrafanart**: Download screenshot images to `extrafanart/` subfolder (`fanart1.jpg`, `fanart2.jpg`, etc.).
+
+**Note**: In the original Javinizer, screenshots and extrafanart refer to the same thing. The screenshots are saved in the `extrafanart/` subfolder as `fanart<number>.jpg` files for Kodi/Plex compatibility.
 
 **download_trailer**: Download trailer video (`<ID>-trailer.mp4`).
 

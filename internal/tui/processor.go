@@ -3,11 +3,11 @@ package tui
 import (
 	"context"
 	"fmt"
-	"path/filepath"
 
 	"github.com/javinizer/javinizer-go/internal/aggregator"
 	"github.com/javinizer/javinizer-go/internal/database"
 	"github.com/javinizer/javinizer-go/internal/downloader"
+	"github.com/javinizer/javinizer-go/internal/logging"
 	"github.com/javinizer/javinizer-go/internal/matcher"
 	"github.com/javinizer/javinizer-go/internal/models"
 	"github.com/javinizer/javinizer-go/internal/nfo"
@@ -27,6 +27,9 @@ type ProcessingCoordinator struct {
 	nfoGenerator    *nfo.Generator
 	destPath        string
 	moveFiles       bool
+	forceUpdate     bool
+	forceRefresh    bool
+	dryRun          bool
 	scrapeEnabled   bool
 	downloadEnabled bool
 	organizeEnabled bool
@@ -72,84 +75,116 @@ func (pc *ProcessingCoordinator) SetOptions(scrape, download, organize, nfo bool
 	pc.nfoEnabled = nfo
 }
 
+// SetDryRun sets whether to run in dry-run mode (preview only)
+func (pc *ProcessingCoordinator) SetDryRun(dryRun bool) {
+	pc.dryRun = dryRun
+}
+
+// SetDestPath sets the destination path for organized files
+func (pc *ProcessingCoordinator) SetDestPath(destPath string) {
+	pc.destPath = destPath
+}
+
+// SetMoveFiles sets whether to move files instead of copying
+func (pc *ProcessingCoordinator) SetMoveFiles(moveFiles bool) {
+	pc.moveFiles = moveFiles
+}
+
+// SetScrapeEnabled sets whether metadata scraping is enabled
+func (pc *ProcessingCoordinator) SetScrapeEnabled(enabled bool) {
+	pc.scrapeEnabled = enabled
+}
+
+// SetDownloadEnabled sets whether media downloads are enabled
+func (pc *ProcessingCoordinator) SetDownloadEnabled(enabled bool) {
+	pc.downloadEnabled = enabled
+}
+
+// SetDownloadExtrafanart sets whether extrafanart downloads are enabled
+func (pc *ProcessingCoordinator) SetDownloadExtrafanart(enabled bool) {
+	if pc.downloader != nil {
+		pc.downloader.SetDownloadExtrafanart(enabled)
+	}
+}
+
+// SetOrganizeEnabled sets whether file organization is enabled
+func (pc *ProcessingCoordinator) SetOrganizeEnabled(enabled bool) {
+	pc.organizeEnabled = enabled
+}
+
+// SetNFOEnabled sets whether NFO generation is enabled
+func (pc *ProcessingCoordinator) SetNFOEnabled(enabled bool) {
+	pc.nfoEnabled = enabled
+}
+
+// SetForceUpdate sets whether to force update existing files
+func (pc *ProcessingCoordinator) SetForceUpdate(forceUpdate bool) {
+	pc.forceUpdate = forceUpdate
+}
+
+// SetForceRefresh sets whether to force refresh from scrapers (clear cache)
+func (pc *ProcessingCoordinator) SetForceRefresh(forceRefresh bool) {
+	pc.forceRefresh = forceRefresh
+}
+
 // ProcessFiles processes the selected files with matched JAV IDs
 func (pc *ProcessingCoordinator) ProcessFiles(
 	ctx context.Context,
 	files []FileItem,
 	matches map[string]matcher.MatchResult,
 ) error {
+	logging.Debugf("ProcessFiles called with %d files", len(files))
+
 	for _, file := range files {
-		if !file.Selected || !file.Matched {
+		logging.Debugf("Processing file: %s, IsDir: %v, Matched: %v", file.Path, file.IsDir, file.Matched)
+
+		// Skip directories
+		if file.IsDir {
+			logging.Debugf("Skipping directory: %s", file.Path)
+			continue
+		}
+
+		// Skip files without matched JAV IDs
+		if !file.Matched {
+			logging.Debugf("Skipping unmatched file: %s", file.Path)
 			continue
 		}
 
 		match, found := matches[file.Path]
 		if !found {
+			logging.Debugf("No match found for %s in matches map", file.Path)
 			continue
 		}
 
-		// Submit scrape task
-		var movie *models.Movie
-		if pc.scrapeEnabled {
-			scrapeTask := worker.NewScrapeTask(
-				match.ID,
-				pc.registry,
-				pc.aggregator,
-				pc.movieRepo,
-				pc.progressTracker,
-			)
-			if err := pc.pool.Submit(scrapeTask); err != nil {
-				return fmt.Errorf("failed to submit scrape task for %s: %w", match.ID, err)
-			}
+		logging.Debugf("Submitting task for file: %s (ID: %s)", file.Path, match.ID)
 
-			// Try to get movie from repo for subsequent tasks
-			movie, _ = pc.movieRepo.FindByID(match.ID)
-		}
+		// Submit a composite task that handles all operations sequentially
+		processTask := worker.NewProcessFileTask(
+			match,
+			pc.registry,
+			pc.aggregator,
+			pc.movieRepo,
+			pc.downloader,
+			pc.organizer,
+			pc.nfoGenerator,
+			pc.destPath,
+			pc.moveFiles,
+			pc.forceUpdate,
+			pc.forceRefresh,
+			pc.progressTracker,
+			pc.dryRun,
+			pc.scrapeEnabled,
+			pc.downloadEnabled,
+			pc.organizeEnabled,
+			pc.nfoEnabled,
+		)
 
-		// Submit download task (if we have movie metadata)
-		if pc.downloadEnabled && movie != nil {
-			downloadDir := filepath.Join(pc.destPath, match.ID)
-			downloadTask := worker.NewDownloadTask(
-				movie,
-				downloadDir,
-				pc.downloader,
-				pc.progressTracker,
-			)
-			if err := pc.pool.Submit(downloadTask); err != nil {
-				return fmt.Errorf("failed to submit download task for %s: %w", match.ID, err)
-			}
-		}
-
-		// Submit organize task
-		if pc.organizeEnabled {
-			organizeTask := worker.NewOrganizeTask(
-				match,
-				movie,
-				pc.destPath,
-				pc.moveFiles,
-				pc.organizer,
-				pc.progressTracker,
-			)
-			if err := pc.pool.Submit(organizeTask); err != nil {
-				return fmt.Errorf("failed to submit organize task for %s: %w", match.ID, err)
-			}
-		}
-
-		// Submit NFO task (if we have movie metadata)
-		if pc.nfoEnabled && movie != nil {
-			nfoDir := filepath.Join(pc.destPath, match.ID)
-			nfoTask := worker.NewNFOTask(
-				movie,
-				nfoDir,
-				pc.nfoGenerator,
-				pc.progressTracker,
-			)
-			if err := pc.pool.Submit(nfoTask); err != nil {
-				return fmt.Errorf("failed to submit NFO task for %s: %w", match.ID, err)
-			}
+		if err := pc.pool.Submit(processTask); err != nil {
+			return fmt.Errorf("failed to submit process task for %s: %w", match.ID, err)
 		}
 	}
 
+	logging.Debugf("ProcessFiles completed, submitted tasks")
 	return nil
 }
 

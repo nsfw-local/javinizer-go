@@ -343,7 +343,7 @@ func TestOrganizer_Revert(t *testing.T) {
 	}
 
 	destDir := filepath.Join(tmpDir, "dest")
-	result, err := org.Organize(match, movie, destDir, false)
+	result, err := org.Organize(match, movie, destDir, false, false)
 	if err != nil {
 		t.Fatalf("Organize failed: %v", err)
 	}
@@ -493,7 +493,7 @@ func TestOrganizer_OrganizeBatch(t *testing.T) {
 	destDir := filepath.Join(tmpDir, "dest")
 
 	// Organize batch
-	results, err := org.OrganizeBatch(matches, movies, destDir, false)
+	results, err := org.OrganizeBatch(matches, movies, destDir, false, false)
 	if err != nil {
 		t.Fatalf("OrganizeBatch failed: %v", err)
 	}

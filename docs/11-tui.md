@@ -44,14 +44,44 @@ javinizer tui /path/to/files --recursive=false
 ### Advanced Options
 
 ```bash
-# Specify destination directory
+# Specify source and destination
+javinizer tui --source /source/path --dest /destination/path
+
+# Or use positional argument
 javinizer tui /source/path -d /destination/path
 
 # Move files instead of copying
 javinizer tui /source/path -d /dest/path -m
 
+# Dry-run mode (preview only)
+javinizer tui /source/path --dry-run
+
+# Download extrafanart (screenshots)
+javinizer tui /source/path --extrafanart
+
+# Custom scraper priority
+javinizer tui /source/path --scrapers r18dev,dmm
+
 # Combine options
-javinizer tui /source -d /dest --move --recursive
+javinizer tui /source \
+  -d /dest \
+  --move \
+  --recursive \
+  --extrafanart \
+  --scrapers dmm,r18dev
+```
+
+### Available Flags
+
+```bash
+-s, --source string      # Source directory to scan (alternative to positional arg)
+-d, --dest string        # Destination directory (default: same as source)
+-r, --recursive          # Scan subdirectories recursively (default true)
+-m, --move               # Move files instead of copying
+-n, --dry-run            # Preview operations without making changes
+    --extrafanart        # Download extrafanart (screenshots)
+-p, --scrapers strings   # Scraper priority (comma-separated)
+-v, --verbose            # Enable debug logging
 ```
 
 ## Interface

@@ -2,15 +2,19 @@
 
 # Build the application
 build:
-	go build -o bin/javinizer cmd/api/main.go
-	go build -o bin/javinizer-cli ./cmd/cli
+	go build -o bin/javinizer-api cmd/api/main.go
+	go build -o bin/javinizer ./cmd/cli
 
 # Run the API server
-run:
+run-api:
 	go run cmd/api/main.go
 
-# Run the CLI
+# Run the CLI (for backwards compatibility)
 cli:
+	go run ./cmd/cli
+
+# Run the CLI (primary target)
+run:
 	go run ./cmd/cli
 
 # Run tests
@@ -32,10 +36,10 @@ deps:
 	go mod download
 	go mod tidy
 
-# Install the binary
+# Install the binaries
 install:
-	go install cmd/api/main.go
-	go install cmd/cli/main.go
+	go build -o $(GOPATH)/bin/javinizer-api cmd/api/main.go
+	go build -o $(GOPATH)/bin/javinizer ./cmd/cli
 
 # Format code
 fmt:

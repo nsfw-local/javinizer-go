@@ -28,6 +28,8 @@ func (m *Model) View() string {
 		content = m.renderDashboardView()
 	case ViewLogs:
 		content = m.renderLogsView()
+	case ViewSettings:
+		content = m.renderSettingsView()
 	case ViewHelp:
 		content = m.renderHelpView()
 	}
@@ -36,18 +38,36 @@ func (m *Model) View() string {
 	header := m.renderHeader()
 	footer := m.renderFooter()
 
-	return lipgloss.JoinVertical(
+	mainView := lipgloss.JoinVertical(
 		lipgloss.Left,
 		header,
 		content,
 		footer,
 	)
+
+	// Show folder picker overlay if active
+	if m.showingFolderPicker {
+		return m.renderFolderPickerOverlay(mainView)
+	}
+
+	return mainView
 }
 
 // renderHeader renders the header bar
 func (m *Model) renderHeader() string {
-	// Title bar
-	title := HeaderStyle.Render("Javinizer TUI")
+	// Title bar with dry-run indicator and processing status
+	titleText := "Javinizer TUI"
+	if m.dryRun {
+		titleText += " " + Warning("[DRY RUN]")
+	}
+	if m.isProcessing {
+		// Add spinning indicator - calculate elapsed time directly for smooth animation
+		spinners := []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
+		elapsed := time.Since(m.startTime)
+		spinner := spinners[int(elapsed.Milliseconds()/100)%len(spinners)]
+		titleText += " " + RunningBadge.Render(spinner+" Processing")
+	}
+	title := HeaderStyle.Render(titleText)
 
 	workers := fmt.Sprintf("Workers: %d/%d",
 		m.stats.Running,
@@ -96,6 +116,7 @@ func (m *Model) renderTabs() string {
 		{ViewBrowser, "Browser", "1"},
 		{ViewDashboard, "Dashboard", "2"},
 		{ViewLogs, "Logs", "3"},
+		{ViewSettings, "Settings", "4"},
 	}
 
 	for _, v := range views {
@@ -117,7 +138,9 @@ func (m *Model) renderFooter() string {
 	switch m.currentView {
 	case ViewBrowser:
 		keys = []string{
-			helpKey("f", "change folder"),
+			helpKey("f", "source"),
+			helpKey("o", "output"),
+			helpKey("r", "refresh"),
 			helpKey("↑↓/jk", "navigate"),
 			helpKey("space", "select"),
 			helpKey("a/A", "sel all/none"),
@@ -141,6 +164,14 @@ func (m *Model) renderFooter() string {
 			helpKey("?", "help"),
 			helpKey("q", "quit"),
 		}
+	case ViewSettings:
+		keys = []string{
+			helpKey("↑↓/jk", "navigate"),
+			helpKey("space", "toggle"),
+			helpKey("tab", "switch view"),
+			helpKey("?", "help"),
+			helpKey("q", "quit"),
+		}
 	case ViewHelp:
 		keys = []string{
 			helpKey("?", "close help"),
@@ -151,59 +182,45 @@ func (m *Model) renderFooter() string {
 	return HelpSeparatorStyle.Render(strings.Join(keys, " │ "))
 }
 
-// renderFolderSelector renders the folder selection panel
-func (m *Model) renderFolderSelector() string {
-	label := Dimmed("Scan Folder: ")
-
-	var pathWidget string
-	if m.editingPath {
-		// Show text input when editing
-		pathWidget = m.pathInput.View()
-	} else {
-		// Show current path with edit hint
-		pathDisplay := m.sourcePath
-		if pathDisplay == "" {
-			pathDisplay = "."
-		}
-		if len(pathDisplay) > 60 {
-			pathDisplay = "..." + pathDisplay[len(pathDisplay)-57:]
-		}
-		pathWidget = Highlight(pathDisplay) + " " + Dimmed("(press 'f' to change)")
-	}
-
-	content := label + pathWidget
-	return PanelStyle.Width(m.width - 4).Render(content)
-}
-
 // renderBrowserView renders the file browser view
 func (m *Model) renderBrowserView() string {
-	// Render folder selection panel at top
-	folderPanel := m.renderFolderSelector()
+	if m.browser != nil && m.taskList != nil && m.console != nil {
+		// Calculate available content height (total height - header - tabs - footer)
+		contentHeight := m.height - 6 // Approximate space for header, tabs, footer
 
-	if m.browser != nil && m.taskList != nil {
-		// Split screen: browser on left, tasks on right
+		// Split vertically: 60% for tasks, 40% for console
+		taskHeight := contentHeight * 6 / 10
+		consoleHeight := contentHeight * 4 / 10
+
+		// Ensure minimum heights
+		if taskHeight < 10 {
+			taskHeight = 10
+		}
+		if consoleHeight < 8 {
+			consoleHeight = 8
+		}
+
+		// Split screen: browser on left, tasks + console on right
 		browserView := m.browser.View()
 		taskView := m.taskList.View()
+		consoleView := m.console.View()
 
-		content := lipgloss.JoinHorizontal(
-			lipgloss.Top,
-			BorderStyle.Width(m.width/2-2).Render(browserView),
-			BorderStyle.Width(m.width/2-2).Render(taskView),
+		// Stack tasks and console vertically on the right with fixed heights
+		rightPanel := lipgloss.JoinVertical(
+			lipgloss.Left,
+			BorderStyle.Width(m.width/2-2).Height(taskHeight).Render(taskView),
+			BorderStyle.Width(m.width/2-2).Height(consoleHeight).Render(consoleView),
 		)
 
-		return lipgloss.JoinVertical(
-			lipgloss.Left,
-			folderPanel,
-			content,
+		return lipgloss.JoinHorizontal(
+			lipgloss.Top,
+			BorderStyle.Width(m.width/2-2).Render(browserView),
+			rightPanel,
 		)
 	}
 
 	// Fallback simple view
-	return lipgloss.JoinVertical(
-		lipgloss.Left,
-		folderPanel,
-		m.renderSimpleBrowser(),
-	)
+	return m.renderSimpleBrowser()
 }
 
 // renderDashboardView renders the dashboard view
@@ -224,6 +241,29 @@ func (m *Model) renderLogsView() string {
 
 	// Fallback simple logs
 	return m.renderSimpleLogs()
+}
+
+// renderSettingsView renders the settings view
+func (m *Model) renderSettingsView() string {
+	if m.settingsView != nil {
+		// Update settings state before rendering
+		m.settingsView.UpdateSettings(
+			m.settingsCursor,
+			m.dryRun,
+			m.forceUpdate,
+			m.forceRefresh,
+			m.moveFiles,
+			m.scrapeEnabled,
+			m.downloadEnabled,
+			m.downloadExtrafanart,
+			m.organizeEnabled,
+			m.nfoEnabled,
+		)
+		return m.settingsView.View()
+	}
+
+	// Fallback simple settings
+	return m.renderSimpleSettings()
 }
 
 // renderHelpView renders the help view
@@ -362,6 +402,7 @@ func (m *Model) renderSimpleHelp() string {
 
 	b.WriteString("\n" + Subtitle("File Browser") + "\n")
 	b.WriteString(helpLine("f", "Change scan folder"))
+	b.WriteString(helpLine("r", "Refresh/rescan current folder"))
 	b.WriteString(helpLine("↑↓, j/k", "Navigate files"))
 	b.WriteString(helpLine("space", "Toggle selection"))
 	b.WriteString(helpLine("a", "Select all"))
@@ -378,6 +419,46 @@ func (m *Model) renderSimpleHelp() string {
 	return b.String()
 }
 
+func (m *Model) renderSimpleSettings() string {
+	var b strings.Builder
+
+	b.WriteString(Title("Settings") + "\n\n")
+
+	settings := []struct {
+		name    string
+		desc    string
+		enabled bool
+	}{
+		{"Dry Run", "Preview mode - don't make actual changes", m.dryRun},
+		{"Force Update", "Replace existing files (images, NFO)", m.forceUpdate},
+		{"Force Refresh", "Clear DB cache and rescrape metadata", m.forceRefresh},
+		{"Move Files", "Move instead of copy (default: copy)", m.moveFiles},
+		{"Scrape Metadata", "Fetch metadata from JAV sources", m.scrapeEnabled},
+		{"Download Media", "Download covers, screenshots, trailers", m.downloadEnabled},
+		{"Download Extrafanart", "Download extrafanart/screenshots to subfolder", m.downloadExtrafanart},
+		{"Organize Files", "Move/copy files to organized structure", m.organizeEnabled},
+		{"Generate NFO", "Create NFO files for media centers", m.nfoEnabled},
+	}
+
+	for i, setting := range settings {
+		cursorStr := "  "
+		if i == m.settingsCursor {
+			cursorStr = "> "
+		}
+
+		checkbox := "☐"
+		if setting.enabled {
+			checkbox = Success("☑")
+		}
+
+		b.WriteString(fmt.Sprintf("%s%s %s\n", cursorStr, checkbox, setting.name))
+		b.WriteString(fmt.Sprintf("   %s\n\n", Dimmed(setting.desc)))
+	}
+
+	b.WriteString("\n" + Dimmed("Changes take effect on next processing run"))
+	return b.String()
+}
+
 // Helper functions
 
 func helpKey(key, desc string) string {
@@ -388,4 +469,101 @@ func helpLine(key, desc string) string {
 	return fmt.Sprintf("  %s  %s\n",
 		HelpKeyStyle.Width(15).Render(key),
 		HelpDescStyle.Render(desc))
+}
+
+// renderFolderPickerOverlay renders the folder picker as a modal overlay
+func (m *Model) renderFolderPickerOverlay(background string) string {
+	// Calculate modal dimensions
+	modalWidth := m.width - 20
+	if modalWidth > 80 {
+		modalWidth = 80
+	}
+	modalHeight := m.height - 10
+	if modalHeight > 25 {
+		modalHeight = 25
+	}
+
+	var b strings.Builder
+
+	// Title based on mode
+	title := "Select Source Folder"
+	if m.folderPickerMode == "dest" {
+		title = "Select Output Folder"
+	}
+	b.WriteString(Title(title) + "\n\n")
+
+	// Current path
+	displayPath := m.folderPickerPath
+	if len(displayPath) > modalWidth-10 {
+		displayPath = "..." + displayPath[len(displayPath)-(modalWidth-13):]
+	}
+	b.WriteString(Dimmed("Current: ") + Highlight(displayPath) + "\n\n")
+
+	// Folder list
+	if len(m.folderPickerItems) == 0 {
+		b.WriteString(Dimmed("No folders found\n"))
+	} else {
+		// Calculate visible range
+		visibleHeight := modalHeight - 8
+		start := m.folderPickerCursor - visibleHeight/2
+		if start < 0 {
+			start = 0
+		}
+		end := start + visibleHeight
+		if end > len(m.folderPickerItems) {
+			end = len(m.folderPickerItems)
+			start = end - visibleHeight
+			if start < 0 {
+				start = 0
+			}
+		}
+
+		for i := start; i < end; i++ {
+			item := m.folderPickerItems[i]
+			cursor := "  "
+			if i == m.folderPickerCursor {
+				cursor = "> "
+			}
+
+			icon := "📁 "
+			if item.Name == ".." {
+				icon = "⬆️  "
+			}
+
+			name := item.Name
+			if len(name) > modalWidth-10 {
+				name = name[:modalWidth-13] + "..."
+			}
+
+			line := cursor + icon + name
+			if i == m.folderPickerCursor {
+				line = SelectedItemStyle.Render(line)
+			} else {
+				line = UnselectedItemStyle.Render(line)
+			}
+
+			b.WriteString(line + "\n")
+		}
+	}
+
+	// Instructions
+	b.WriteString("\n" + Dimmed("↑↓/jk: navigate  Enter: select folder  Space: choose current  Esc: cancel"))
+
+	// Create modal panel
+	modal := PanelStyle.
+		Width(modalWidth).
+		Height(modalHeight).
+		Render(b.String())
+
+	// Center the modal
+	modalWithPadding := lipgloss.Place(
+		m.width,
+		m.height,
+		lipgloss.Center,
+		lipgloss.Center,
+		modal,
+	)
+
+	// Layer modal over background (simple approach - just return modal for now)
+	return modalWithPadding
 }

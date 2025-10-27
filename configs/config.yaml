@@ -14,56 +14,56 @@ scrapers:
 metadata:
     priority:
         actress:
-            - r18dev
             - dmm
+            - r18dev
         alternate_title:
-            - r18dev
             - dmm
+            - r18dev
         cover_url:
-            - r18dev
             - dmm
+            - r18dev
         description:
             - dmm
             - r18dev
         director:
-            - r18dev
             - dmm
+            - r18dev
         genre:
-            - r18dev
             - dmm
+            - r18dev
         id:
-            - r18dev
             - dmm
+            - r18dev
         content_id:
-            - r18dev
             - dmm
+            - r18dev
         label:
-            - r18dev
             - dmm
+            - r18dev
         maker:
-            - r18dev
             - dmm
+            - r18dev
         rating:
             - dmm
             - r18dev
         release_date:
-            - r18dev
             - dmm
+            - r18dev
         runtime:
-            - r18dev
             - dmm
+            - r18dev
         series:
-            - r18dev
             - dmm
+            - r18dev
         screenshot_url:
-            - r18dev
             - dmm
+            - r18dev
         title:
-            - r18dev
             - dmm
+            - r18dev
         trailer_url:
-            - r18dev
             - dmm
+            - r18dev
     thumb_csv:
         enabled: true
         path: data/actress.csv
@@ -109,7 +109,7 @@ output:
     delimiter: ', '
     download_cover: true
     download_poster: true
-    download_screenshots: false
+    download_extrafanart: true
     download_trailer: false
     download_actress: false
 database:

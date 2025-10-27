@@ -69,9 +69,9 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tea.Quit
 
 	case RescanMsg:
-		// Update source path
+		// Update source path and rescan
 		m.SetSourcePath(msg.Path)
-		m.AddLog("warn", "Path updated. Please restart TUI to rescan new folder.")
+		m.Rescan(msg.Path)
 		return m, nil
 	}
 
@@ -85,6 +85,11 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 // handleKeyPress handles keyboard input
 func (m *Model) handleKeyPress(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	var cmds []tea.Cmd
+
+	// If folder picker is open, handle its keys first
+	if m.showingFolderPicker {
+		return m.handleFolderPickerKeys(msg)
+	}
 
 	// Global keybindings
 	switch msg.String() {
@@ -116,9 +121,13 @@ func (m *Model) handleKeyPress(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.currentView = ViewLogs
 		return m, nil
 
+	case "4":
+		m.currentView = ViewSettings
+		return m, nil
+
 	case "tab":
-		// Cycle through views
-		m.currentView = (m.currentView + 1) % 4
+		// Cycle through views (Browser -> Dashboard -> Logs -> Settings -> Browser)
+		m.currentView = (m.currentView + 1) % 5
 		if m.currentView == ViewHelp {
 			m.currentView = ViewBrowser
 		}
@@ -135,6 +144,9 @@ func (m *Model) handleKeyPress(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case ViewLogs:
 		return m.handleLogsKeys(msg)
+
+	case ViewSettings:
+		return m.handleSettingsKeys(msg)
 	}
 
 	return m, tea.Batch(cmds...)
@@ -176,9 +188,17 @@ func (m *Model) handleBrowserKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	// Normal browser navigation
 	switch msg.String() {
 	case "f":
-		// Toggle folder editing mode
-		m.editingPath = true
-		m.pathInput.Focus()
+		// Open folder picker for source
+		m.OpenFolderPicker(m.sourcePath, "source")
+		return m, nil
+
+	case "o":
+		// Open folder picker for output destination
+		destPath := m.destPath
+		if destPath == "" {
+			destPath = m.sourcePath
+		}
+		m.OpenFolderPicker(destPath, "dest")
 		return m, nil
 
 	case "up", "k":
@@ -225,10 +245,15 @@ func (m *Model) handleBrowserKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case "enter":
 		// Start processing
-		if len(m.selectedFiles) > 0 && !m.isProcessing {
+		if len(m.selectedFiles) == 0 {
+			m.AddLog("warn", "No files selected. Use space to select files first.")
+		} else if m.isProcessing {
+			m.AddLog("warn", "Processing already in progress")
+		} else {
+			m.AddLog("info", "Enter key pressed, starting processing...")
 			ctx := context.Background()
 			if err := m.StartProcessing(ctx); err != nil {
-				m.AddLog("error", err.Error())
+				m.AddLog("error", "Failed to start processing: "+err.Error())
 			}
 		}
 
@@ -240,6 +265,15 @@ func (m *Model) handleBrowserKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.AddLog("info", "Processing paused")
 			} else {
 				m.AddLog("info", "Processing resumed")
+			}
+		}
+
+	case "r":
+		// Refresh/rescan the current source path
+		if m.sourcePath != "" {
+			m.AddLog("info", "Refreshing file list...")
+			return m, func() tea.Msg {
+				return RescanMsg{Path: m.sourcePath}
 			}
 		}
 	}
@@ -304,6 +338,180 @@ func (m *Model) handleLogsKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.autoScroll = !m.autoScroll
 		if m.logViewer != nil {
 			m.logViewer.ToggleAutoScroll()
+		}
+	}
+
+	return m, nil
+}
+
+// handleFolderPickerKeys handles folder picker keybindings
+func (m *Model) handleFolderPickerKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "esc", "q":
+		// Close folder picker without selecting
+		m.CloseFolderPicker()
+		return m, nil
+
+	case "up", "k":
+		// Move cursor up
+		if m.folderPickerCursor > 0 {
+			m.folderPickerCursor--
+		}
+		return m, nil
+
+	case "down", "j":
+		// Move cursor down
+		if m.folderPickerCursor < len(m.folderPickerItems)-1 {
+			m.folderPickerCursor++
+		}
+		return m, nil
+
+	case "enter":
+		// Navigate into selected folder or go to parent
+		if m.folderPickerCursor < len(m.folderPickerItems) {
+			selectedItem := m.folderPickerItems[m.folderPickerCursor]
+			m.NavigateToFolder(selectedItem.Path)
+		}
+		return m, nil
+
+	case " ", "space":
+		// Select current folder and close picker
+		mode := m.folderPickerMode
+		m.SelectCurrentFolder()
+		// Only trigger rescan if changing source folder
+		if mode == "source" {
+			return m, func() tea.Msg {
+				return RescanMsg{Path: m.folderPickerPath}
+			}
+		}
+		return m, nil
+	}
+
+	return m, nil
+}
+
+// handleSettingsKeys handles settings view keybindings
+func (m *Model) handleSettingsKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	maxSettings := 8 // 0-8: 9 total settings
+
+	switch msg.String() {
+	case "up", "k":
+		if m.settingsCursor > 0 {
+			m.settingsCursor--
+		}
+		if m.settingsView != nil {
+			// Settings view doesn't need explicit cursor update
+		}
+
+	case "down", "j":
+		if m.settingsCursor < maxSettings {
+			m.settingsCursor++
+		}
+		if m.settingsView != nil {
+			// Settings view doesn't need explicit cursor update
+		}
+
+	case " ", "space":
+		// Toggle the selected setting
+		switch m.settingsCursor {
+		case 0:
+			m.dryRun = !m.dryRun
+			if m.processor != nil {
+				m.processor.SetDryRun(m.dryRun)
+			}
+			if m.dryRun {
+				m.AddLog("info", "Dry run mode enabled")
+			} else {
+				m.AddLog("info", "Dry run mode disabled")
+			}
+
+		case 1:
+			m.forceUpdate = !m.forceUpdate
+			if m.processor != nil {
+				m.processor.SetForceUpdate(m.forceUpdate)
+			}
+			if m.forceUpdate {
+				m.AddLog("info", "Force update enabled - will replace existing files")
+			} else {
+				m.AddLog("info", "Force update disabled")
+			}
+
+		case 2:
+			m.forceRefresh = !m.forceRefresh
+			if m.processor != nil {
+				m.processor.SetForceRefresh(m.forceRefresh)
+			}
+			if m.forceRefresh {
+				m.AddLog("info", "Force refresh enabled - will clear DB and rescrape")
+			} else {
+				m.AddLog("info", "Force refresh disabled")
+			}
+
+		case 3:
+			m.moveFiles = !m.moveFiles
+			if m.processor != nil {
+				m.processor.SetMoveFiles(m.moveFiles)
+			}
+			if m.moveFiles {
+				m.AddLog("info", "Move mode enabled - files will be moved instead of copied")
+			} else {
+				m.AddLog("info", "Copy mode enabled - files will be copied")
+			}
+
+		case 4:
+			m.scrapeEnabled = !m.scrapeEnabled
+			if m.processor != nil {
+				m.processor.SetScrapeEnabled(m.scrapeEnabled)
+			}
+			if m.scrapeEnabled {
+				m.AddLog("info", "Metadata scraping enabled")
+			} else {
+				m.AddLog("info", "Metadata scraping disabled")
+			}
+
+		case 5:
+			m.downloadEnabled = !m.downloadEnabled
+			if m.processor != nil {
+				m.processor.SetDownloadEnabled(m.downloadEnabled)
+			}
+			if m.downloadEnabled {
+				m.AddLog("info", "Media downloads enabled")
+			} else {
+				m.AddLog("info", "Media downloads disabled")
+			}
+
+		case 6:
+			m.downloadExtrafanart = !m.downloadExtrafanart
+			if m.processor != nil {
+				m.processor.SetDownloadExtrafanart(m.downloadExtrafanart)
+			}
+			if m.downloadExtrafanart {
+				m.AddLog("info", "Extrafanart downloads enabled")
+			} else {
+				m.AddLog("info", "Extrafanart downloads disabled")
+			}
+
+		case 7:
+			m.organizeEnabled = !m.organizeEnabled
+			if m.processor != nil {
+				m.processor.SetOrganizeEnabled(m.organizeEnabled)
+			}
+			if m.organizeEnabled {
+				m.AddLog("info", "File organization enabled")
+			} else {
+				m.AddLog("info", "File organization disabled")
+			}
+
+		case 8:
+			m.nfoEnabled = !m.nfoEnabled
+			if m.processor != nil {
+				m.processor.SetNFOEnabled(m.nfoEnabled)
+			}
+			if m.nfoEnabled {
+				m.AddLog("info", "NFO generation enabled")
+			} else {
+				m.AddLog("info", "NFO generation disabled")
+			}
 		}
 	}
 

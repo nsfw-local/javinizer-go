@@ -146,13 +146,17 @@ javinizer sort <path> [flags]
 
 **Flags:**
 ```bash
--d, --dest string    # Destination directory (default: same as source)
-    --download       # Download media files (default true)
--n, --dry-run        # Preview without making changes
--h, --help           # Help for sort command
--m, --move           # Move files instead of copying
-    --nfo            # Generate NFO files (default true)
--r, --recursive      # Scan subdirectories recursively (default true)
+-d, --dest string        # Destination directory (default: same as source)
+    --download           # Download media files (default true)
+-n, --dry-run            # Preview without making changes
+    --extrafanart        # Download extrafanart (screenshots)
+    --force-refresh      # Force refresh metadata from scrapers (clear cache)
+-f, --force-update       # Force update existing files
+-h, --help               # Help for sort command
+-m, --move               # Move files instead of copying
+    --nfo                # Generate NFO files (default true)
+-r, --recursive          # Scan subdirectories recursively (default true)
+-p, --scrapers strings   # Scraper priority (comma-separated, e.g., 'r18dev,dmm')
 ```
 
 **Examples:**
@@ -182,6 +186,30 @@ javinizer sort ~/Videos --recursive=false
 javinizer sort ~/Videos --nfo=false --download=false
 ```
 
+**Download extrafanart (screenshots):**
+```bash
+javinizer sort ~/Videos --extrafanart
+```
+
+**Force refresh from scrapers (clear cache):**
+```bash
+javinizer sort ~/Videos --force-refresh
+```
+
+**Force update existing files (overwrite conflicts):**
+```bash
+javinizer sort ~/Videos --force-update
+```
+
+**Use custom scraper priority:**
+```bash
+# Use DMM as primary scraper
+javinizer sort ~/Videos --scrapers dmm,r18dev
+
+# Use only r18dev
+javinizer sort ~/Videos --scrapers r18dev
+```
+
 **Complete example:**
 ```bash
 javinizer sort ~/unsorted \
@@ -189,7 +217,9 @@ javinizer sort ~/unsorted \
   --move \
   --recursive \
   --download \
-  --nfo
+  --nfo \
+  --extrafanart \
+  --scrapers r18dev,dmm
 ```
 
 **Output:**

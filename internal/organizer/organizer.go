@@ -49,8 +49,22 @@ type OrganizePlan struct {
 }
 
 // Plan creates an organization plan without executing it
-func (o *Organizer) Plan(match matcher.MatchResult, movie *models.Movie, destDir string) (*OrganizePlan, error) {
+func (o *Organizer) Plan(match matcher.MatchResult, movie *models.Movie, destDir string, forceUpdate bool) (*OrganizePlan, error) {
 	ctx := template.NewContextFromMovie(movie)
+
+	// Generate subfolder hierarchy (if configured)
+	subfolderParts := make([]string, 0, len(o.config.SubfolderFormat))
+	for _, subfolderTemplate := range o.config.SubfolderFormat {
+		subfolderName, err := o.templateEngine.Execute(subfolderTemplate, ctx)
+		if err != nil {
+			return nil, fmt.Errorf("failed to generate subfolder from template '%s': %w", subfolderTemplate, err)
+		}
+		// Sanitize and add to parts if not empty
+		subfolderName = template.SanitizeFolderPath(subfolderName)
+		if subfolderName != "" {
+			subfolderParts = append(subfolderParts, subfolderName)
+		}
+	}
 
 	// Generate folder name
 	folderName, err := o.templateEngine.Execute(o.config.FolderFormat, ctx)
@@ -69,17 +83,23 @@ func (o *Organizer) Plan(match matcher.MatchResult, movie *models.Movie, destDir
 	// Add extension
 	fileName = fileName + match.File.Extension
 
-	// Build target paths
-	targetDir := filepath.Join(destDir, folderName)
+	// Build target paths with subfolder hierarchy
+	// Start with destDir, add subfolder parts, then final folder name
+	pathParts := []string{destDir}
+	pathParts = append(pathParts, subfolderParts...)
+	pathParts = append(pathParts, folderName)
+	targetDir := filepath.Join(pathParts...)
 	targetPath := filepath.Join(targetDir, fileName)
 
 	// Check if move is needed
 	willMove := match.File.Path != targetPath
 
-	// Check for conflicts
+	// Check for conflicts (skip if forceUpdate is enabled)
 	conflicts := make([]string, 0)
-	if _, err := os.Stat(targetPath); err == nil {
-		conflicts = append(conflicts, fmt.Sprintf("target file exists: %s", targetPath))
+	if !forceUpdate {
+		if _, err := os.Stat(targetPath); err == nil {
+			conflicts = append(conflicts, fmt.Sprintf("target file exists: %s", targetPath))
+		}
 	}
 
 	return &OrganizePlan{
@@ -137,8 +157,8 @@ func (o *Organizer) Execute(plan *OrganizePlan, dryRun bool) (*OrganizeResult, e
 }
 
 // Organize plans and executes file organization in one step
-func (o *Organizer) Organize(match matcher.MatchResult, movie *models.Movie, destDir string, dryRun bool) (*OrganizeResult, error) {
-	plan, err := o.Plan(match, movie, destDir)
+func (o *Organizer) Organize(match matcher.MatchResult, movie *models.Movie, destDir string, dryRun bool, forceUpdate bool) (*OrganizeResult, error) {
+	plan, err := o.Plan(match, movie, destDir, forceUpdate)
 	if err != nil {
 		return nil, err
 	}
@@ -147,7 +167,7 @@ func (o *Organizer) Organize(match matcher.MatchResult, movie *models.Movie, des
 }
 
 // OrganizeBatch organizes multiple files
-func (o *Organizer) OrganizeBatch(matches []matcher.MatchResult, movies map[string]*models.Movie, destDir string, dryRun bool) ([]OrganizeResult, error) {
+func (o *Organizer) OrganizeBatch(matches []matcher.MatchResult, movies map[string]*models.Movie, destDir string, dryRun bool, forceUpdate bool) ([]OrganizeResult, error) {
 	results := make([]OrganizeResult, 0, len(matches))
 
 	for _, match := range matches {
@@ -160,7 +180,7 @@ func (o *Organizer) OrganizeBatch(matches []matcher.MatchResult, movies map[stri
 			continue
 		}
 
-		result, err := o.Organize(match, movie, destDir, dryRun)
+		result, err := o.Organize(match, movie, destDir, dryRun, forceUpdate)
 		if err != nil {
 			result = &OrganizeResult{
 				OriginalPath: match.File.Path,

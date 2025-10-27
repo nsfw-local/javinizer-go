@@ -77,6 +77,10 @@ func main() {
 	sortCmd.Flags().BoolP("move", "m", false, "Move files instead of copying")
 	sortCmd.Flags().BoolP("nfo", "", true, "Generate NFO files")
 	sortCmd.Flags().BoolP("download", "", true, "Download media (covers, screenshots, etc.)")
+	sortCmd.Flags().Bool("extrafanart", false, "Download extrafanart (screenshots)")
+	sortCmd.Flags().StringSliceP("scrapers", "p", nil, "Scraper priority (comma-separated, e.g., 'r18dev,dmm')")
+	sortCmd.Flags().BoolP("force-update", "f", false, "Force update existing files")
+	sortCmd.Flags().Bool("force-refresh", false, "Force refresh metadata from scrapers (clear cache)")
 
 	// Genre command with subcommands
 	genreCmd := &cobra.Command{
@@ -289,7 +293,7 @@ func runInfo(cmd *cobra.Command, args []string) {
 	fmt.Printf("  - Folder format: %s\n", cfg.Output.FolderFormat)
 	fmt.Printf("  - File format: %s\n", cfg.Output.FileFormat)
 	fmt.Printf("  - Download cover: %v\n", cfg.Output.DownloadCover)
-	fmt.Printf("  - Download screenshots: %v\n", cfg.Output.DownloadScreenshots)
+	fmt.Printf("  - Download extrafanart: %v\n", cfg.Output.DownloadExtrafanart)
 }
 
 func runInit(cmd *cobra.Command, args []string) {
@@ -404,6 +408,10 @@ func runSort(cmd *cobra.Command, args []string) {
 	moveFiles, _ := cmd.Flags().GetBool("move")
 	generateNFO, _ := cmd.Flags().GetBool("nfo")
 	downloadMedia, _ := cmd.Flags().GetBool("download")
+	downloadExtrafanart, _ := cmd.Flags().GetBool("extrafanart")
+	scraperPriority, _ := cmd.Flags().GetStringSlice("scrapers")
+	forceUpdate, _ := cmd.Flags().GetBool("force-update")
+	forceRefresh, _ := cmd.Flags().GetBool("force-refresh")
 
 	// Default destination is same as source
 	if destPath == "" {
@@ -412,6 +420,16 @@ func runSort(cmd *cobra.Command, args []string) {
 
 	if err := loadConfig(); err != nil {
 		logging.Fatal(err)
+	}
+
+	// Override config with flag if extrafanart is explicitly enabled
+	if downloadExtrafanart {
+		cfg.Output.DownloadExtrafanart = true
+	}
+
+	// Override config with flag if scraper priority is provided
+	if len(scraperPriority) > 0 {
+		cfg.Scrapers.Priority = scraperPriority
 	}
 
 	// Initialize database
@@ -500,33 +518,86 @@ func runSort(cmd *cobra.Command, args []string) {
 	for id := range grouped {
 		fmt.Printf("   %s... ", id)
 
-		// Check cache first
-		if movie, err := movieRepo.FindByID(id); err == nil {
-			movies[id] = movie
-			cachedCount++
-			fmt.Println("✅ (cached)")
-			continue
+		// Force refresh - clear cache if requested
+		if forceRefresh {
+			if err := movieRepo.Delete(id); err != nil {
+				logging.Debugf("Failed to delete %s from cache (may not exist): %v", id, err)
+			} else {
+				logging.Debugf("[%s] Cache cleared successfully", id)
+			}
 		}
+
+		// Check cache first (skip if force refresh)
+		if !forceRefresh {
+			if movie, err := movieRepo.FindByID(id); err == nil {
+				movies[id] = movie
+				cachedCount++
+				fmt.Println("✅ (cached)")
+				logging.Debugf("[%s] Found in cache: Title=%s, Maker=%s, Actresses=%d",
+					id, movie.Title, movie.Maker, len(movie.Actresses))
+				continue
+			}
+		}
+
+		logging.Debugf("[%s] Not found in cache, scraping from sources", id)
 
 		// Scrape from sources
 		results := []*models.ScraperResult{}
-		for _, scraper := range registry.GetByPriority(cfg.Scrapers.Priority) {
+		scrapers := registry.GetByPriority(cfg.Scrapers.Priority)
+		logging.Debugf("[%s] Initialized %d scrapers in priority order", id, len(scrapers))
+
+		for _, scraper := range scrapers {
+			logging.Debugf("[%s] Querying scraper: %s", id, scraper.Name())
 			if result, err := scraper.Search(id); err == nil {
+				logging.Debugf("[%s] Scraper %s returned: Title=%s, Language=%s, Actresses=%d, Genres=%d",
+					id, scraper.Name(), result.Title, result.Language, len(result.Actresses), len(result.Genres))
 				results = append(results, result)
+			} else {
+				logging.Debugf("[%s] Scraper %s failed: %v", id, scraper.Name(), err)
 			}
 		}
 
 		if len(results) == 0 {
 			fmt.Println("❌ (not found)")
+			logging.Debugf("[%s] No results from any scraper", id)
 			continue
 		}
+
+		logging.Debugf("[%s] Collected %d results from scrapers, starting aggregation", id, len(results))
 
 		// Aggregate and save
 		movie, err := agg.Aggregate(results)
 		if err != nil {
 			fmt.Printf("❌ (aggregate error: %v)\n", err)
+			logging.Debugf("[%s] Aggregation failed: %v", id, err)
 			continue
 		}
+
+		// Log aggregated metadata details
+		logging.Debugf("[%s] Aggregation complete - Final metadata:", id)
+		logging.Debugf("[%s]   Title: %s", id, movie.Title)
+		logging.Debugf("[%s]   Maker: %s", id, movie.Maker)
+		logging.Debugf("[%s]   Release Date: %v", id, movie.ReleaseDate)
+		logging.Debugf("[%s]   Runtime: %d min", id, movie.Runtime)
+		logging.Debugf("[%s]   Actresses: %d", id, len(movie.Actresses))
+		if len(movie.Actresses) > 0 {
+			actressNames := make([]string, len(movie.Actresses))
+			for i, a := range movie.Actresses {
+				actressNames[i] = a.FullName()
+			}
+			logging.Debugf("[%s]   Actress Names: %v", id, actressNames)
+		}
+		logging.Debugf("[%s]   Genres: %d", id, len(movie.Genres))
+		if len(movie.Genres) > 0 {
+			genreNames := make([]string, len(movie.Genres))
+			for i, g := range movie.Genres {
+				genreNames[i] = g.Name
+			}
+			logging.Debugf("[%s]   Genre Names: %v", id, genreNames)
+		}
+		logging.Debugf("[%s]   Screenshots: %d", id, len(movie.Screenshots))
+		logging.Debugf("[%s]   Cover URL: %s", id, movie.CoverURL)
+		logging.Debugf("[%s]   Trailer URL: %s", id, movie.TrailerURL)
 
 		if err := movieRepo.Upsert(movie); err != nil {
 			logging.Infof("Warning: Failed to save %s to database: %v", id, err)
@@ -551,7 +622,7 @@ func runSort(cmd *cobra.Command, args []string) {
 
 		for id, movie := range movies {
 			// Create destination folder for this movie
-			plan, err := fileOrganizer.Plan(matches[0], movie, destPath) // Use first match for folder planning
+			plan, err := fileOrganizer.Plan(matches[0], movie, destPath, forceUpdate) // Use first match for folder planning
 			if err != nil {
 				logging.Infof("Failed to plan for %s: %v", id, err)
 				continue
@@ -591,7 +662,7 @@ func runSort(cmd *cobra.Command, args []string) {
 				}
 			}
 
-			plan, err := fileOrganizer.Plan(firstMatch, movie, destPath)
+			plan, err := fileOrganizer.Plan(firstMatch, movie, destPath, forceUpdate)
 			if err != nil {
 				continue
 			}
@@ -600,23 +671,36 @@ func runSort(cmd *cobra.Command, args []string) {
 				count := 0
 				if cfg.Output.DownloadCover {
 					count++
+					logging.Debugf("[%s] Would download cover from: %s", id, movie.CoverURL)
 				}
-				if cfg.Output.DownloadScreenshots {
+				if cfg.Output.DownloadExtrafanart {
 					count += len(movie.Screenshots)
+					logging.Debugf("[%s] Would download %d screenshots", id, len(movie.Screenshots))
 				}
 				fmt.Printf("   %s: would download ~%d file(s)\n", id, count)
 			} else {
+				logging.Debugf("[%s] Starting download to: %s", id, plan.TargetDir)
 				results, err := mediaDownloader.DownloadAll(movie, plan.TargetDir)
 				if err != nil {
 					logging.Infof("Download error for %s: %v", id, err)
 				}
 
 				downloaded := 0
+				skipped := 0
+				failed := 0
 				for _, r := range results {
 					if r.Downloaded {
 						downloaded++
+						logging.Debugf("[%s] Downloaded %s: %s (%d bytes in %v)", id, r.Type, r.LocalPath, r.Size, r.Duration)
+					} else if r.Error != nil {
+						failed++
+						logging.Debugf("[%s] Failed to download %s: %v", id, r.Type, r.Error)
+					} else {
+						skipped++
+						logging.Debugf("[%s] Skipped %s (already exists): %s", id, r.Type, r.LocalPath)
 					}
 				}
+				logging.Debugf("[%s] Download summary: %d downloaded, %d skipped, %d failed", id, downloaded, skipped, failed)
 				if downloaded > 0 {
 					downloadCount += downloaded
 					fmt.Printf("   %s: %d file(s) ✅\n", id, downloaded)
@@ -639,28 +723,54 @@ func runSort(cmd *cobra.Command, args []string) {
 			continue
 		}
 
-		plan, err := fileOrganizer.Plan(match, movie, destPath)
+		logging.Debugf("[%s] Starting organize for: %s", match.ID, match.File.Path)
+		logging.Debugf("[%s] Destination: %s, Move: %v, ForceUpdate: %v, DryRun: %v",
+			match.ID, destPath, moveFiles, forceUpdate, dryRun)
+
+		plan, err := fileOrganizer.Plan(match, movie, destPath, forceUpdate)
 		if err != nil {
 			logging.Infof("Failed to plan %s: %v", match.File.Name, err)
+			logging.Debugf("[%s] Planning failed: %v", match.ID, err)
 			continue
 		}
 
-		// Validate plan
-		if issues := organizer.ValidatePlan(plan); len(issues) > 0 {
-			fmt.Printf("   ⚠️  %s: %v\n", match.File.Name, issues)
-			continue
+		logging.Debugf("[%s] Organization plan created:", match.ID)
+		logging.Debugf("[%s]   Source: %s", match.ID, plan.SourcePath)
+		logging.Debugf("[%s]   Target Dir: %s", match.ID, plan.TargetDir)
+		logging.Debugf("[%s]   Target File: %s", match.ID, plan.TargetFile)
+		logging.Debugf("[%s]   Target Path: %s", match.ID, plan.TargetPath)
+		logging.Debugf("[%s]   Will Move: %v", match.ID, plan.WillMove)
+		logging.Debugf("[%s]   Conflicts: %d", match.ID, len(plan.Conflicts))
+
+		// Validate plan (skip if force update)
+		if !forceUpdate {
+			if issues := organizer.ValidatePlan(plan); len(issues) > 0 {
+				fmt.Printf("   ⚠️  %s: %v\n", match.File.Name, issues)
+				logging.Debugf("[%s] Validation failed with %d issues: %v", match.ID, len(issues), issues)
+				continue
+			}
 		}
+		logging.Debugf("[%s] Plan validated successfully", match.ID)
 
 		var result *organizer.OrganizeResult
+		operation := "COPY"
 		if moveFiles {
+			operation = "MOVE"
+			logging.Debugf("[%s] Executing MOVE operation", match.ID)
 			result, err = fileOrganizer.Execute(plan, dryRun)
 		} else {
+			logging.Debugf("[%s] Executing COPY operation", match.ID)
 			result, err = fileOrganizer.Copy(plan, dryRun)
 		}
 
 		if err != nil {
 			fmt.Printf("   ❌ %s: %v\n", match.File.Name, err)
+			logging.Debugf("[%s] Organize execution failed: %v", match.ID, err)
 			continue
+		}
+
+		if result.Error != nil {
+			logging.Debugf("[%s] Organize result contains error: %v", match.ID, result.Error)
 		}
 
 		if result.Moved || dryRun {
@@ -668,6 +778,9 @@ func runSort(cmd *cobra.Command, args []string) {
 			status := "✅"
 			if dryRun {
 				status = "→"
+				logging.Debugf("[%s] DRY RUN mode - would %s file to %s", match.ID, operation, plan.TargetPath)
+			} else {
+				logging.Debugf("[%s] File organized successfully to: %s", match.ID, result.NewPath)
 			}
 			fmt.Printf("   %s %s\n      %s\n", status, match.File.Name, plan.TargetPath)
 		}

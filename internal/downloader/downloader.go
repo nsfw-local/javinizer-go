@@ -37,11 +37,11 @@ type DownloadResult struct {
 type MediaType string
 
 const (
-	MediaTypeCover      MediaType = "cover"
-	MediaTypePoster     MediaType = "poster"
-	MediaTypeScreenshot MediaType = "screenshot"
-	MediaTypeTrailer    MediaType = "trailer"
-	MediaTypeActress    MediaType = "actress"
+	MediaTypeCover       MediaType = "cover"
+	MediaTypePoster      MediaType = "poster"
+	MediaTypeExtrafanart MediaType = "extrafanart"
+	MediaTypeTrailer     MediaType = "trailer"
+	MediaTypeActress     MediaType = "actress"
 )
 
 // NewDownloader creates a new media downloader
@@ -59,6 +59,11 @@ func NewDownloader(cfg *config.OutputConfig, userAgent string) *Downloader {
 		},
 		userAgent: userAgent,
 	}
+}
+
+// SetDownloadExtrafanart sets whether extrafanart downloads are enabled
+func (d *Downloader) SetDownloadExtrafanart(enabled bool) {
+	d.config.DownloadExtrafanart = enabled
 }
 
 // DownloadCover downloads the movie cover image
@@ -89,25 +94,29 @@ func (d *Downloader) DownloadPoster(movie *models.Movie, destDir string) (*Downl
 	return d.download(movie.CoverURL, destPath, MediaTypePoster)
 }
 
-// DownloadScreenshots downloads all screenshot images
-func (d *Downloader) DownloadScreenshots(movie *models.Movie, destDir string) ([]DownloadResult, error) {
-	if !d.config.DownloadScreenshots || len(movie.Screenshots) == 0 {
+// DownloadExtrafanart downloads screenshots to the extrafanart subdirectory
+// Extrafanart is used by media centers like Kodi/Plex for background images
+// Note: In the original Javinizer, screenshots and extrafanart are the same thing
+func (d *Downloader) DownloadExtrafanart(movie *models.Movie, destDir string) ([]DownloadResult, error) {
+	if !d.config.DownloadExtrafanart || len(movie.Screenshots) == 0 {
 		return []DownloadResult{}, nil
 	}
 
+	// Create extrafanart subdirectory
+	extrafanartDir := filepath.Join(destDir, "extrafanart")
+
 	results := make([]DownloadResult, 0, len(movie.Screenshots))
-	ctx := template.NewContextFromMovie(movie)
 
 	for i, url := range movie.Screenshots {
-		ctx.Index = i + 1 // 1-indexed
-		filename := fmt.Sprintf("%s-screenshot%02d.jpg", ctx.ID, ctx.Index)
-		destPath := filepath.Join(destDir, filename)
+		// Extrafanart images are typically numbered: fanart1.jpg, fanart2.jpg, etc.
+		filename := fmt.Sprintf("fanart%d.jpg", i+1)
+		destPath := filepath.Join(extrafanartDir, filename)
 
-		result, err := d.download(url, destPath, MediaTypeScreenshot)
+		result, err := d.download(url, destPath, MediaTypeExtrafanart)
 		if err != nil {
 			result = &DownloadResult{
 				URL:   url,
-				Type:  MediaTypeScreenshot,
+				Type:  MediaTypeExtrafanart,
 				Error: err,
 			}
 		}
@@ -183,9 +192,9 @@ func (d *Downloader) DownloadAll(movie *models.Movie, destDir string) ([]Downloa
 		results = append(results, *posterResult)
 	}
 
-	// Download screenshots
-	if screenshots, err := d.DownloadScreenshots(movie, destDir); err == nil {
-		results = append(results, screenshots...)
+	// Download extrafanart (screenshots)
+	if extrafanart, err := d.DownloadExtrafanart(movie, destDir); err == nil {
+		results = append(results, extrafanart...)
 	}
 
 	// Download trailer

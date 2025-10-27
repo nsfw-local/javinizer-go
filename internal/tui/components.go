@@ -45,6 +45,7 @@ type Browser struct {
 	height      int
 	selected    map[string]bool
 	sourcePath  string // Current scan path
+	destPath    string // Destination path for organized files
 	pathDisplay string // Formatted path display for the view
 }
 
@@ -67,6 +68,10 @@ func (b *Browser) SetItems(items []FileItem) {
 func (b *Browser) SetSourcePath(path string) {
 	b.sourcePath = path
 	b.pathDisplay = path
+}
+
+func (b *Browser) SetDestPath(path string) {
+	b.destPath = path
 }
 
 func (b *Browser) SetPathDisplay(display string) {
@@ -138,18 +143,28 @@ func (b *Browser) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (b *Browser) View() string {
-	view := Title("Files") + "\n"
+	// Title
+	view := Title("Files") + " " + Dimmed("(f:source o:output)") + "\n"
 
-	// Show scan path if set
-	if b.sourcePath != "" {
-		pathDisplay := b.sourcePath
-		if len(pathDisplay) > 50 {
-			pathDisplay = "..." + pathDisplay[len(pathDisplay)-47:]
-		}
-		view += Dimmed("Scanning: ") + Highlight(pathDisplay) + "\n"
+	// Source path
+	sourceDisplay := b.sourcePath
+	if sourceDisplay == "" {
+		sourceDisplay = "."
 	}
+	if len(sourceDisplay) > 40 {
+		sourceDisplay = "..." + sourceDisplay[len(sourceDisplay)-37:]
+	}
+	view += Dimmed("From: ") + Highlight(sourceDisplay) + "\n"
 
-	view += "\n"
+	// Destination path
+	destDisplay := b.destPath
+	if destDisplay == "" {
+		destDisplay = sourceDisplay // Default to source
+	}
+	if len(destDisplay) > 40 {
+		destDisplay = "..." + destDisplay[len(destDisplay)-37:]
+	}
+	view += Dimmed("To:   ") + Highlight(destDisplay) + "\n\n"
 
 	if len(b.items) == 0 {
 		return view + Dimmed("No files found")
@@ -171,6 +186,9 @@ func (b *Browser) View() string {
 		if i == b.cursor {
 			cursor = "> "
 		}
+
+		// Tree indentation based on depth
+		indent := strings.Repeat("  ", item.Depth)
 
 		// Determine checkbox state
 		checkbox := "☐ "
@@ -214,7 +232,7 @@ func (b *Browser) View() string {
 			matchIndicator = " " + Dimmed("["+item.ID+"]")
 		}
 
-		view += cursor + checkbox + icon + name + matchIndicator + "\n"
+		view += cursor + indent + checkbox + icon + name + matchIndicator + "\n"
 	}
 
 	view += fmt.Sprintf("\n%d/%d files", b.cursor+1, len(b.items))
@@ -441,7 +459,50 @@ func (l *LogViewer) View() string {
 		}
 
 		level := levelStyle.Render(fmt.Sprintf("[%-5s]", log.Level))
-		view += fmt.Sprintf("%s %s %s\n", Dimmed(timestamp), level, log.Message)
+
+		// Wrap long messages to fit width
+		// Account for timestamp (8) + level (7) + spacing (2) = 17 chars
+		maxMessageWidth := l.width - 17
+		if maxMessageWidth < 40 {
+			maxMessageWidth = 40
+		}
+
+		message := log.Message
+		if len(message) > maxMessageWidth {
+			// Word wrap the message
+			words := strings.Fields(message)
+			var lines []string
+			currentLine := ""
+
+			for _, word := range words {
+				if len(currentLine)+len(word)+1 <= maxMessageWidth {
+					if currentLine == "" {
+						currentLine = word
+					} else {
+						currentLine += " " + word
+					}
+				} else {
+					if currentLine != "" {
+						lines = append(lines, currentLine)
+					}
+					currentLine = word
+				}
+			}
+			if currentLine != "" {
+				lines = append(lines, currentLine)
+			}
+
+			// Render first line with timestamp and level
+			if len(lines) > 0 {
+				view += fmt.Sprintf("%s %s %s\n", Dimmed(timestamp), level, lines[0])
+				// Continuation lines with indentation
+				for j := 1; j < len(lines); j++ {
+					view += fmt.Sprintf("%s %s %s\n", strings.Repeat(" ", 8), strings.Repeat(" ", 7), lines[j])
+				}
+			}
+		} else {
+			view += fmt.Sprintf("%s %s %s\n", Dimmed(timestamp), level, message)
+		}
 	}
 
 	return view
@@ -481,6 +542,7 @@ func (h *HelpView) View() string {
 
 	help += HelpKeyStyle.Render("Browser View") + "\n"
 	help += "  f - Change scan folder\n"
+	help += "  r - Refresh/rescan current folder\n"
 	help += "  ↑/k - Move up\n"
 	help += "  ↓/j - Move down\n"
 	help += "  Space - Toggle selection (files or entire folders)\n"
@@ -499,6 +561,244 @@ func (h *HelpView) View() string {
 	help += Dimmed("📁 Folders with checkboxes select all files inside")
 
 	return help
+}
+
+// SettingsView component
+type SettingsView struct {
+	width               int
+	height              int
+	cursor              int
+	dryRun              bool
+	forceUpdate         bool
+	forceRefresh        bool
+	moveFiles           bool
+	scrapeEnabled       bool
+	downloadEnabled     bool
+	downloadExtrafanart bool
+	organizeEnabled     bool
+	nfoEnabled          bool
+}
+
+func NewSettingsView() *SettingsView {
+	return &SettingsView{
+		scrapeEnabled:   true,
+		downloadEnabled: true,
+		organizeEnabled: true,
+		nfoEnabled:      true,
+	}
+}
+
+func (s *SettingsView) SetSize(width, height int) {
+	s.width = width
+	s.height = height
+}
+
+func (s *SettingsView) Init() tea.Cmd {
+	return nil
+}
+
+func (s *SettingsView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	return s, nil
+}
+
+func (s *SettingsView) UpdateSettings(
+	cursor int,
+	dryRun, forceUpdate, forceRefresh, moveFiles bool,
+	scrapeEnabled, downloadEnabled, downloadExtrafanart, organizeEnabled, nfoEnabled bool,
+) {
+	s.cursor = cursor
+	s.dryRun = dryRun
+	s.forceUpdate = forceUpdate
+	s.forceRefresh = forceRefresh
+	s.moveFiles = moveFiles
+	s.scrapeEnabled = scrapeEnabled
+	s.downloadEnabled = downloadEnabled
+	s.downloadExtrafanart = downloadExtrafanart
+	s.organizeEnabled = organizeEnabled
+	s.nfoEnabled = nfoEnabled
+}
+
+func (s *SettingsView) View() string {
+	view := Title("Settings") + " " + Dimmed("(space to toggle)") + "\n\n"
+
+	settings := []struct {
+		index   int
+		name    string
+		desc    string
+		enabled bool
+	}{
+		{0, "Dry Run", "Preview mode - don't make actual changes", s.dryRun},
+		{1, "Force Update", "Replace existing files (images, NFO)", s.forceUpdate},
+		{2, "Force Refresh", "Clear DB cache and rescrape metadata", s.forceRefresh},
+		{3, "Move Files", "Move instead of copy (default: copy)", s.moveFiles},
+		{4, "Scrape Metadata", "Fetch metadata from JAV sources", s.scrapeEnabled},
+		{5, "Download Media", "Download covers, screenshots, trailers", s.downloadEnabled},
+		{6, "Download Extrafanart", "Download extrafanart/screenshots to subfolder", s.downloadExtrafanart},
+		{7, "Organize Files", "Move/copy files to organized structure", s.organizeEnabled},
+		{8, "Generate NFO", "Create NFO files for media centers", s.nfoEnabled},
+	}
+
+	for _, setting := range settings {
+		cursorStr := "  "
+		if s.cursor == setting.index {
+			cursorStr = "> "
+		}
+
+		checkbox := "☐"
+		if setting.enabled {
+			checkbox = Success("☑")
+		}
+
+		view += fmt.Sprintf("%s%s %s\n", cursorStr, checkbox, HelpKeyStyle.Render(setting.name))
+		view += fmt.Sprintf("   %s\n\n", Dimmed(setting.desc))
+	}
+
+	view += "\n" + Dimmed("Changes take effect on next processing run")
+
+	return view
+}
+
+// Console component - shows live output and metadata preview
+type Console struct {
+	width      int
+	height     int
+	entries    []string
+	maxEntries int
+	autoScroll bool
+	scroll     int
+}
+
+func NewConsole() *Console {
+	return &Console{
+		entries:    make([]string, 0),
+		maxEntries: 1000,
+		autoScroll: true,
+		scroll:     0,
+	}
+}
+
+func (c *Console) SetSize(width, height int) {
+	c.width = width
+	c.height = height
+}
+
+func (c *Console) Init() tea.Cmd {
+	return nil
+}
+
+func (c *Console) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	return c, nil
+}
+
+func (c *Console) AddEntry(entry string) {
+	c.entries = append(c.entries, entry)
+
+	// Trim if exceeds max
+	if len(c.entries) > c.maxEntries {
+		c.entries = c.entries[len(c.entries)-c.maxEntries:]
+	}
+
+	// Auto-scroll to bottom
+	if c.autoScroll {
+		c.ScrollToBottom()
+	}
+}
+
+func (c *Console) Clear() {
+	c.entries = make([]string, 0)
+	c.scroll = 0
+}
+
+func (c *Console) ScrollUp() {
+	if c.scroll > 0 {
+		c.scroll--
+	}
+}
+
+func (c *Console) ScrollDown() {
+	maxScroll := len(c.entries) - c.height + 3
+	if maxScroll < 0 {
+		maxScroll = 0
+	}
+	if c.scroll < maxScroll {
+		c.scroll++
+	}
+}
+
+func (c *Console) ScrollToTop() {
+	c.scroll = 0
+}
+
+func (c *Console) ScrollToBottom() {
+	maxScroll := len(c.entries) - c.height + 3
+	if maxScroll < 0 {
+		maxScroll = 0
+	}
+	c.scroll = maxScroll
+}
+
+func (c *Console) ToggleAutoScroll() {
+	c.autoScroll = !c.autoScroll
+}
+
+func (c *Console) View() string {
+	view := Title("Console") + "\n"
+
+	if len(c.entries) == 0 {
+		return view + Dimmed("No output yet...")
+	}
+
+	// Calculate visible range
+	visibleHeight := c.height - 2 // Account for title
+	if visibleHeight < 1 {
+		visibleHeight = 1
+	}
+
+	start := c.scroll
+	if start < 0 {
+		start = 0
+	}
+	end := start + visibleHeight
+	if end > len(c.entries) {
+		end = len(c.entries)
+		start = end - visibleHeight
+		if start < 0 {
+			start = 0
+		}
+	}
+
+	// Render entries
+	for i := start; i < end; i++ {
+		entry := c.entries[i]
+
+		// Word wrap if needed
+		maxWidth := c.width - 2
+		if maxWidth < 40 {
+			maxWidth = 40
+		}
+
+		if len(entry) > maxWidth {
+			// Simple wrapping - split into chunks
+			for len(entry) > 0 {
+				if len(entry) > maxWidth {
+					view += entry[:maxWidth] + "\n"
+					entry = entry[maxWidth:]
+				} else {
+					view += entry + "\n"
+					break
+				}
+			}
+		} else {
+			view += entry + "\n"
+		}
+	}
+
+	// Show scroll indicator if not all entries visible
+	if len(c.entries) > visibleHeight {
+		view += Dimmed(fmt.Sprintf("[%d/%d]", end, len(c.entries)))
+	}
+
+	return view
 }
 
 // Helper functions

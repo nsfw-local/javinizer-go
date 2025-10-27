@@ -37,3 +37,5 @@ Thumbs.db
 /logs/
 config.local.yaml
 
+# Test files
+/test-videos/
