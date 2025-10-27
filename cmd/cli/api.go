@@ -149,11 +149,11 @@ func runAPI(hostFlag string, portFlag int) {
 
 	router := gin.Default()
 
+	// Serve OpenAPI spec directly for Scalar
+	router.StaticFile("/docs/openapi.json", "./docs/swagger/swagger.json")
+
 	// Scalar API documentation (modern, beautiful UI)
 	router.GET("/docs", serveScalarDocs)
-	router.GET("/docs/openapi.json", ginSwagger.WrapHandler(swaggerFiles.Handler,
-		ginSwagger.URL("/docs/openapi.json"),
-		ginSwagger.DefaultModelsExpandDepth(-1)))
 
 	// Also provide traditional Swagger UI as fallback
 	router.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
