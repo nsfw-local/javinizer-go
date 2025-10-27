@@ -8,22 +8,50 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/javinizer/javinizer-go/internal/aggregator"
-	"github.com/javinizer/javinizer-go/internal/config"
 	"github.com/javinizer/javinizer-go/internal/database"
+	"github.com/javinizer/javinizer-go/internal/logging"
 	"github.com/javinizer/javinizer-go/internal/models"
 	"github.com/javinizer/javinizer-go/internal/scraper/dmm"
 	"github.com/javinizer/javinizer-go/internal/scraper/r18dev"
+	"github.com/spf13/cobra"
 )
 
-func main() {
+func newAPICmd() *cobra.Command {
+	var (
+		host string
+		port int
+	)
+
+	cmd := &cobra.Command{
+		Use:   "api",
+		Short: "Start the Javinizer API server",
+		Long:  `Start a REST API server for scraping and retrieving JAV metadata`,
+		Run: func(cmd *cobra.Command, args []string) {
+			runAPI(host, port)
+		},
+	}
+
+	cmd.Flags().StringVar(&host, "host", "", "Server host address (default from config)")
+	cmd.Flags().IntVar(&port, "port", 0, "Server port (default from config)")
+
+	return cmd
+}
+
+func runAPI(hostFlag string, portFlag int) {
 	// Load configuration
-	configPath := getConfigPath()
-	cfg, err := config.LoadOrCreate(configPath)
-	if err != nil {
+	if err := loadConfig(); err != nil {
 		log.Fatalf("Failed to load config: %v", err)
 	}
 
-	log.Printf("Loaded configuration from %s", configPath)
+	// Override config with flags if provided
+	if hostFlag != "" {
+		cfg.Server.Host = hostFlag
+	}
+	if portFlag != 0 {
+		cfg.Server.Port = portFlag
+	}
+
+	logging.Infof("Loaded configuration from %s", cfgFile)
 
 	// Ensure data directory exists
 	dataDir := filepath.Dir(cfg.Database.DSN)
@@ -43,14 +71,14 @@ func main() {
 		log.Fatalf("Failed to run migrations: %v", err)
 	}
 
-	log.Println("Database initialized and migrated")
+	logging.Info("Database initialized and migrated")
 
 	// Initialize scrapers
 	registry := models.NewScraperRegistry()
 	registry.Register(r18dev.New(cfg))
 	registry.Register(dmm.New(cfg))
 
-	log.Printf("Registered %d scrapers", len(registry.GetAll()))
+	logging.Infof("Registered %d scrapers", len(registry.GetAll()))
 
 	// Initialize aggregator
 	agg := aggregator.New(cfg)
@@ -132,7 +160,7 @@ func main() {
 
 		// Save to database (upsert: create or update)
 		if err := movieRepo.Upsert(movie); err != nil {
-			log.Printf("Failed to save movie to database: %v", err)
+			logging.Errorf("Failed to save movie to database: %v", err)
 		}
 
 		c.JSON(200, gin.H{
@@ -180,17 +208,11 @@ func main() {
 
 	// Start server
 	addr := fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port)
-	log.Printf("Starting server on %s", addr)
-	log.Printf("API documentation: http://%s/health", addr)
+	logging.Infof("Starting API server on %s", addr)
+	logging.Infof("Health check: http://%s/health", addr)
+	logging.Infof("API endpoints: http://%s/api/v1/...", addr)
 
 	if err := router.Run(addr); err != nil {
 		log.Fatalf("Failed to start server: %v", err)
 	}
-}
-
-func getConfigPath() string {
-	if path := os.Getenv("JAVINIZER_CONFIG"); path != "" {
-		return path
-	}
-	return "configs/config.yaml"
 }

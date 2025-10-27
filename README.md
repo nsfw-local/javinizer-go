@@ -95,6 +95,15 @@ javinizer genre add "Blow" "Blowjob"
 javinizer genre list
 ```
 
+**Start API server**:
+```bash
+# Start API server (default: localhost:8080)
+javinizer api
+
+# Custom host/port
+javinizer api --host 0.0.0.0 --port 9000
+```
+
 ## Documentation
 
 Comprehensive documentation available in the `/docs` folder:
@@ -116,8 +125,7 @@ Comprehensive documentation available in the `/docs` folder:
 ```
 javinizer-go/
 ├── cmd/
-│   ├── api/              # API server (planned)
-│   └── cli/              # CLI application
+│   └── cli/              # Main application (CLI + API server)
 ├── internal/
 │   ├── aggregator/       # Metadata aggregation
 │   ├── config/           # Configuration management
@@ -255,12 +263,11 @@ Javinizer Go is significantly faster than the PowerShell version:
 - **Interactive TUI with concurrent processing**
 - **Worker pool for parallel task execution**
 - **Real-time progress tracking and statistics**
+- **REST API server** (`javinizer api`)
 - Comprehensive documentation (11 guides + TUI guide)
 - Integration and unit testing
 
 ### Planned 📋
-
-- REST API server
 - Web UI
 - WebSocket support for real-time updates
 - Additional scrapers (JAVLibrary, etc.)

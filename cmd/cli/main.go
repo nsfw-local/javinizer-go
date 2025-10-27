@@ -152,7 +152,10 @@ func main() {
 	// TUI command
 	tuiCmd := createTUICommand()
 
-	rootCmd.AddCommand(scrapeCmd, infoCmd, initCmd, sortCmd, genreCmd, historyCmd, tuiCmd)
+	// API command
+	apiCmd := newAPICmd()
+
+	rootCmd.AddCommand(scrapeCmd, infoCmd, initCmd, sortCmd, genreCmd, historyCmd, tuiCmd, apiCmd)
 
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Println(err)

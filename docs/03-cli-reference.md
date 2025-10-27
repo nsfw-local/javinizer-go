@@ -651,6 +651,76 @@ javinizer --config ~/configs/complete.yaml sort ~/Special
 
 ---
 
+## API Server
+
+### `api`
+
+Start a REST API server for programmatic access to Javinizer functionality.
+
+```bash
+javinizer api [flags]
+```
+
+**Flags:**
+- `--host string` - Server host address (default from config)
+- `--port int` - Server port (default from config)
+- `--verbose`, `-v` - Enable debug logging
+- `--config string` - Custom config file path
+
+**Examples:**
+
+```bash
+# Start with defaults (localhost:8080)
+javinizer api
+
+# Custom host and port
+javinizer api --host 0.0.0.0 --port 9000
+
+# With verbose logging
+javinizer api --verbose
+```
+
+**API Endpoints:**
+
+- `GET /health` - Health check and scraper status
+- `POST /api/v1/scrape` - Scrape metadata for a movie ID
+- `GET /api/v1/movie/:id` - Get movie metadata by ID
+- `GET /api/v1/movies` - List cached movies
+- `GET /api/v1/config` - Get current configuration
+
+**Example API Usage:**
+
+```bash
+# Health check
+curl http://localhost:8080/health
+
+# Scrape a movie
+curl -X POST http://localhost:8080/api/v1/scrape \
+  -H "Content-Type: application/json" \
+  -d '{"id": "IPX-535"}'
+
+# Get movie from cache
+curl http://localhost:8080/api/v1/movie/IPX-535
+```
+
+**Response Format:**
+
+```json
+{
+  "cached": false,
+  "movie": {
+    "id": "IPX-535",
+    "title": "Movie Title",
+    "actresses": [...],
+    "genres": [...],
+    ...
+  },
+  "sources_used": 2
+}
+```
+
+---
+
 ## Tips and Tricks
 
 1. **Always dry-run first**: Use `--dry-run` to preview before making changes

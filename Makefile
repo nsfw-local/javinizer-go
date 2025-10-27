@@ -1,21 +1,16 @@
-.PHONY: build run test clean deps install
+.PHONY: build run run-api test clean deps install
 
-# Build the application
+# Build the application (single binary)
 build:
-	go build -o bin/javinizer-api cmd/api/main.go
 	go build -o bin/javinizer ./cmd/cli
-
-# Run the API server
-run-api:
-	go run cmd/api/main.go
-
-# Run the CLI (for backwards compatibility)
-cli:
-	go run ./cmd/cli
 
 # Run the CLI (primary target)
 run:
 	go run ./cmd/cli
+
+# Run the API server using subcommand
+run-api:
+	go run ./cmd/cli api
 
 # Run tests
 test:
@@ -36,9 +31,8 @@ deps:
 	go mod download
 	go mod tidy
 
-# Install the binaries
+# Install the binary
 install:
-	go build -o $(GOPATH)/bin/javinizer-api cmd/api/main.go
 	go build -o $(GOPATH)/bin/javinizer ./cmd/cli
 
 # Format code
@@ -51,4 +45,4 @@ lint:
 
 # Generate API documentation
 docs:
-	swag init -g cmd/api/main.go -o api/docs
+	swag init -g cmd/cli/api.go -o api/docs
