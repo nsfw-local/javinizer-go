@@ -15,7 +15,7 @@ import (
 
 const (
 	baseURL = "https://r18.dev"
-	apiURL  = baseURL + "/videos/vod/movies/detail/-/dvd_id=%s/json"
+	apiURL  = baseURL + "/videos/vod/movies/detail/-/combined=%s/json"
 )
 
 // Scraper implements the R18.dev scraper
@@ -68,14 +68,48 @@ func (s *Scraper) GetURL(id string) (string, error) {
 
 // Search searches for and scrapes metadata for a given movie ID
 func (s *Scraper) Search(id string) (*models.ScraperResult, error) {
-	url, err := s.GetURL(id)
-	if err != nil {
-		return nil, err
-	}
+	// Step 1: Try to lookup content_id using dvd_id
+	// R18.dev uses dvd_id to find the content_id, then uses content_id for the full data
+	dvdIDURL := fmt.Sprintf("%s/videos/vod/movies/detail/-/dvd_id=%s/json", baseURL, normalizeID(id))
 
 	resp, err := s.client.R().
 		SetHeader("Accept-Encoding", ""). // Disable compression to avoid issues
-		Get(url)
+		Get(dvdIDURL)
+	if err != nil {
+		return nil, fmt.Errorf("failed to lookup content_id from R18.dev: %w", err)
+	}
+
+	var contentID string
+
+	// If dvd_id lookup succeeds, extract content_id
+	if resp.StatusCode() == 200 {
+		contentType := resp.Header().Get("Content-Type")
+		if !strings.Contains(contentType, "text/html") {
+			var lookupData struct {
+				ContentID string `json:"content_id"`
+			}
+			if err := json.Unmarshal(resp.Body(), &lookupData); err == nil && lookupData.ContentID != "" {
+				contentID = lookupData.ContentID
+			}
+		}
+	}
+
+	// Step 2: Fetch full movie data using content_id (or fall back to normalized ID)
+	var finalURL string
+	if contentID != "" {
+		// Use content_id if we got it from the lookup
+		finalURL = fmt.Sprintf("%s/videos/vod/movies/detail/-/combined=%s/json", baseURL, contentID)
+	} else {
+		// Fall back to using the normalized ID directly
+		finalURL, err = s.GetURL(id)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	resp, err = s.client.R().
+		SetHeader("Accept-Encoding", ""). // Disable compression to avoid issues
+		Get(finalURL)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch data from R18.dev: %w", err)
 	}
@@ -100,7 +134,7 @@ func (s *Scraper) Search(id string) (*models.ScraperResult, error) {
 		return nil, fmt.Errorf("failed to parse R18.dev response (preview: %s): %w", bodyPreview, err)
 	}
 
-	return s.parseResponse(&data, url)
+	return s.parseResponse(&data, finalURL)
 }
 
 // parseResponse converts R18 API response to ScraperResult
@@ -117,8 +151,8 @@ func (s *Scraper) parseResponse(data *R18Response, sourceURL string) (*models.Sc
 		Language:    "en", // R18.dev provides English metadata
 		ID:          movieID,
 		ContentID:   data.ContentID,
-		Title:       cleanString(data.Title),
-		Description: cleanString(data.Description),
+		Title:       cleanString(getPreferredString(data.TitleEn, data.Title)),
+		Description: cleanString(getPreferredString(data.DescriptionEn, data.Description)),
 		Runtime:     data.Runtime,
 	}
 
@@ -130,44 +164,69 @@ func (s *Scraper) parseResponse(data *R18Response, sourceURL string) (*models.Sc
 		}
 	}
 
-	// Parse director (now a simple string)
-	result.Director = cleanString(data.Director)
+	// Parse director - prefer English field
+	result.Director = cleanString(getPreferredString(data.DirectorEn, data.Director))
 
-	// Parse maker/studio (now nested objects)
-	result.Maker = cleanString(data.Maker.Name)
-	result.Label = cleanString(data.Label.Name)
+	// Parse maker/studio - prefer flat English field, fallback to nested object
+	result.Maker = cleanString(getPreferredString(data.MakerNameEn, data.Maker.Name))
+	result.Label = cleanString(getPreferredString(data.LabelNameEn, data.Label.Name))
 
-	// Parse series
-	if data.Series.Name != "" {
+	// Parse series - try English field first, then nested object, then fallback string
+	if data.SeriesNameEn != "" {
+		result.Series = cleanString(data.SeriesNameEn)
+	} else if data.Series.Name != "" {
 		result.Series = cleanString(data.Series.Name)
 	} else if data.SeriesName != "" {
 		result.Series = cleanString(data.SeriesName)
 	}
 
-	// Parse actresses (now simpler structure)
+	// Parse actresses with detailed information
 	result.Actresses = make([]models.ActressInfo, 0, len(data.Actresses))
 	for _, actress := range data.Actresses {
-		thumbURL := actress.Image
+		// Build thumb URL from image_url field
+		thumbURL := actress.ImageURL
 		if thumbURL != "" && !strings.HasPrefix(thumbURL, "http") {
 			thumbURL = "https://pics.dmm.co.jp/mono/actjpgs/" + thumbURL
 		}
 
-		actressName := cleanString(actress.Name)
-		parts := strings.Fields(actressName)
+		// If no image URL provided, construct from romaji name
+		if thumbURL == "" && actress.NameRomaji != "" {
+			parts := strings.Fields(actress.NameRomaji)
+			var filename string
+			if len(parts) >= 2 {
+				// Reverse the order: lastname_firstname
+				lastname := strings.ToLower(parts[1])
+				firstname := strings.ToLower(parts[0])
+				filename = lastname + "_" + firstname
+			} else if len(parts) == 1 {
+				// Single name
+				filename = strings.ToLower(parts[0])
+			}
+			// Remove any special characters that might break the URL
+			filename = regexp.MustCompile(`[^a-z0-9_]`).ReplaceAllString(filename, "")
+			if filename != "" {
+				thumbURL = "https://pics.dmm.co.jp/mono/actjpgs/" + filename + ".jpg"
+			}
+		}
+
+		// Parse romaji name into first/last names
 		firstName := ""
 		lastName := ""
-
-		if len(parts) > 0 {
-			firstName = parts[0]
-		}
-		if len(parts) > 1 {
-			lastName = parts[1]
+		if actress.NameRomaji != "" {
+			parts := strings.Fields(actress.NameRomaji)
+			if len(parts) > 0 {
+				firstName = parts[0]
+			}
+			if len(parts) > 1 {
+				lastName = parts[1]
+			}
 		}
 
 		result.Actresses = append(result.Actresses, models.ActressInfo{
+			DMMID:        actress.ID,
 			FirstName:    firstName,
 			LastName:     lastName,
-			JapaneseName: actressName, // Use full name as Japanese name
+			JapaneseName: cleanString(actress.NameKanji), // Use kanji name as Japanese name
 			ThumbURL:     thumbURL,
 		})
 	}
@@ -180,20 +239,45 @@ func (s *Scraper) parseResponse(data *R18Response, sourceURL string) (*models.Sc
 		}
 	}
 
-	// Parse cover image (now nested in Images.JacketImage)
-	if data.Images.JacketImage.Large2 != "" {
-		result.CoverURL = data.Images.JacketImage.Large2
+	// Parse cover image - R18.dev provides the large version (pl.jpg)
+	// Note: Both poster and cover use the same high-quality pl.jpg image
+	// The poster will be generated by cropping the cover during file organization
+	var coverImageURL string
+
+	// Try top-level jacket URLs first (newer API format)
+	if data.JacketFullURL != "" {
+		coverImageURL = strings.TrimSpace(data.JacketFullURL)
+	} else if data.Images.JacketImage.Large2 != "" {
+		// Fallback to nested structure (older API format)
+		coverImageURL = strings.TrimSpace(data.Images.JacketImage.Large2)
 	} else if data.Images.JacketImage.Large != "" {
-		result.CoverURL = strings.TrimSpace(data.Images.JacketImage.Large)
+		coverImageURL = strings.TrimSpace(data.Images.JacketImage.Large)
 	}
 
-	// Parse screenshots (now in Images.SampleImages)
-	if len(data.Images.SampleImages) > 0 {
+	if coverImageURL != "" {
+		// Both poster and cover use the same high-quality image
+		// Poster will be created by cropping during organization (like original Javinizer)
+		result.PosterURL = coverImageURL
+		result.CoverURL = coverImageURL
+	}
+
+	// Parse screenshots - try gallery first (newer API), then Images.SampleImages (older API)
+	if len(data.Gallery) > 0 {
+		// Extract full-size URLs from gallery
+		result.ScreenshotURL = make([]string, 0, len(data.Gallery))
+		for _, item := range data.Gallery {
+			if item.ImageFull != "" {
+				result.ScreenshotURL = append(result.ScreenshotURL, item.ImageFull)
+			}
+		}
+	} else if len(data.Images.SampleImages) > 0 {
 		result.ScreenshotURL = data.Images.SampleImages
 	}
 
-	// Parse trailer (now nested in Sample)
-	if data.Sample.High != "" {
+	// Parse trailer - try top-level sample_url first (newer API), then nested Sample (older API)
+	if data.SampleURL != "" {
+		result.TrailerURL = data.SampleURL
+	} else if data.Sample.High != "" {
 		result.TrailerURL = data.Sample.High
 	} else if data.Sample.Low != "" {
 		result.TrailerURL = data.Sample.Low
@@ -251,43 +335,73 @@ func cleanString(s string) string {
 	return s
 }
 
+// getPreferredString returns the first non-empty string from the arguments
+func getPreferredString(preferred, fallback string) string {
+	if preferred != "" {
+		return preferred
+	}
+	return fallback
+}
+
 // R18Response represents the JSON response from R18.dev API (current format)
 type R18Response struct {
 	DVDID       string `json:"dvd_id"`
 	ContentID   string `json:"content_id"`
 	Title       string `json:"title"`
+	TitleEn     string `json:"title_en"`       // New English title field
 	Description string `json:"description"`
+	DescriptionEn string `json:"description_en"` // New English description field
 	ReleaseDate string `json:"release_date"`
 	Runtime     int    `json:"runtime"`
 
+	// Top-level jacket URLs
+	JacketFullURL  string `json:"jacket_full_url"`
+	JacketThumbURL string `json:"jacket_thumb_url"`
+
+	// Gallery/screenshots
+	Gallery []struct {
+		ImageFull  string `json:"image_full"`
+		ImageThumb string `json:"image_thumb"`
+	} `json:"gallery"`
+
+	// Sample video URL
+	SampleURL string `json:"sample_url"`
+
 	// Director is now a simple string
 	Director string `json:"director"`
+	DirectorEn string `json:"director_en"` // New English director field
 
-	// Maker is now a nested object
+	// Maker - support both nested and flat structures
 	Maker struct {
 		Name string `json:"name"`
 	} `json:"maker"`
+	MakerNameEn string `json:"maker_name_en"` // New flat English field
 
-	// Label is now a nested object
+	// Label - support both nested and flat structures
 	Label struct {
 		Name string `json:"name"`
 	} `json:"label"`
+	LabelNameEn string `json:"label_name_en"` // New flat English field
 
 	// Series can be nested object or string
 	Series struct {
 		Name string `json:"name"`
 	} `json:"series"`
-	SeriesName string `json:"series_name"` // Fallback
+	SeriesName   string `json:"series_name"`    // Fallback
+	SeriesNameEn string `json:"series_name_en"` // New English series field
 
 	// Categories with simple name field
 	Categories []struct {
 		Name string `json:"name"`
 	} `json:"categories"`
 
-	// Actresses with simple name field
+	// Actresses with detailed fields
 	Actresses []struct {
-		Name  string `json:"name"`
-		Image string `json:"image"`
+		ID         int    `json:"id"`
+		ImageURL   string `json:"image_url"`
+		NameKana   string `json:"name_kana"`
+		NameKanji  string `json:"name_kanji"`
+		NameRomaji string `json:"name_romaji"`
 	} `json:"actresses"`
 
 	// Images are now nested differently

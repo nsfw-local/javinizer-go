@@ -67,6 +67,7 @@ type PriorityConfig struct {
 	ContentID     []string `yaml:"content_id"`
 	Label         []string `yaml:"label"`
 	Maker         []string `yaml:"maker"`
+	PosterURL     []string `yaml:"poster_url"`
 	Rating        []string `yaml:"rating"`
 	ReleaseDate   []string `yaml:"release_date"`
 	Runtime       []string `yaml:"runtime"`
@@ -174,6 +175,7 @@ func DefaultConfig() *Config {
 				ContentID:     []string{"r18dev", "dmm"},
 				Label:         []string{"r18dev", "dmm"},
 				Maker:         []string{"r18dev", "dmm"},
+				PosterURL:     []string{"r18dev", "dmm"},
 				Rating:        []string{"dmm", "r18dev"},
 				ReleaseDate:   []string{"r18dev", "dmm"},
 				Runtime:       []string{"r18dev", "dmm"},

@@ -164,8 +164,22 @@ func (r *MovieRepository) ensureGenresExist(genres []models.Genre) error {
 func (r *MovieRepository) ensureActressesExist(actresses []models.Actress) error {
 	for i := range actresses {
 		var existing models.Actress
-		// Use Japanese name as unique identifier
-		err := r.db.Where("japanese_name = ?", actresses[i].JapaneseName).First(&existing).Error
+		var err error
+
+		// Try to find actress using DMMID if available (primary unique identifier)
+		if actresses[i].DMMID != 0 {
+			err = r.db.Where("dmm_id = ?", actresses[i].DMMID).First(&existing).Error
+		} else if actresses[i].JapaneseName != "" {
+			// Fall back to japanese_name if DMMID is not available
+			err = r.db.Where("japanese_name = ?", actresses[i].JapaneseName).First(&existing).Error
+		} else if actresses[i].FirstName != "" || actresses[i].LastName != "" {
+			// Fall back to first_name and last_name if neither DMMID nor japanese_name is available
+			err = r.db.Where("first_name = ? AND last_name = ?", actresses[i].FirstName, actresses[i].LastName).First(&existing).Error
+		} else {
+			// Skip actresses with no identifying information
+			continue
+		}
+
 		if err == nil {
 			// Actress exists, use their ID
 			actresses[i] = existing
@@ -173,11 +187,23 @@ func (r *MovieRepository) ensureActressesExist(actresses []models.Actress) error
 			// Actress doesn't exist, create them
 			if err := r.db.Create(&actresses[i]).Error; err != nil {
 				// Might be a race condition, try to find again
-				if err := r.db.Where("japanese_name = ?", actresses[i].JapaneseName).First(&existing).Error; err == nil {
-					actresses[i] = existing
-				} else {
-					return err
+				if actresses[i].DMMID != 0 {
+					if err := r.db.Where("dmm_id = ?", actresses[i].DMMID).First(&existing).Error; err == nil {
+						actresses[i] = existing
+						continue
+					}
+				} else if actresses[i].JapaneseName != "" {
+					if err := r.db.Where("japanese_name = ?", actresses[i].JapaneseName).First(&existing).Error; err == nil {
+						actresses[i] = existing
+						continue
+					}
+				} else if actresses[i].FirstName != "" || actresses[i].LastName != "" {
+					if err := r.db.Where("first_name = ? AND last_name = ?", actresses[i].FirstName, actresses[i].LastName).First(&existing).Error; err == nil {
+						actresses[i] = existing
+						continue
+					}
 				}
+				return err
 			}
 		}
 	}

@@ -157,17 +157,20 @@ func (o *Organizer) Execute(plan *OrganizePlan, dryRun bool) (*OrganizeResult, e
 }
 
 // Organize plans and executes file organization in one step
-func (o *Organizer) Organize(match matcher.MatchResult, movie *models.Movie, destDir string, dryRun bool, forceUpdate bool) (*OrganizeResult, error) {
+func (o *Organizer) Organize(match matcher.MatchResult, movie *models.Movie, destDir string, dryRun bool, forceUpdate bool, copyOnly bool) (*OrganizeResult, error) {
 	plan, err := o.Plan(match, movie, destDir, forceUpdate)
 	if err != nil {
 		return nil, err
 	}
 
+	if copyOnly {
+		return o.Copy(plan, dryRun)
+	}
 	return o.Execute(plan, dryRun)
 }
 
 // OrganizeBatch organizes multiple files
-func (o *Organizer) OrganizeBatch(matches []matcher.MatchResult, movies map[string]*models.Movie, destDir string, dryRun bool, forceUpdate bool) ([]OrganizeResult, error) {
+func (o *Organizer) OrganizeBatch(matches []matcher.MatchResult, movies map[string]*models.Movie, destDir string, dryRun bool, forceUpdate bool, copyOnly bool) ([]OrganizeResult, error) {
 	results := make([]OrganizeResult, 0, len(matches))
 
 	for _, match := range matches {
@@ -180,7 +183,7 @@ func (o *Organizer) OrganizeBatch(matches []matcher.MatchResult, movies map[stri
 			continue
 		}
 
-		result, err := o.Organize(match, movie, destDir, dryRun, forceUpdate)
+		result, err := o.Organize(match, movie, destDir, dryRun, forceUpdate, copyOnly)
 		if err != nil {
 			result = &OrganizeResult{
 				OriginalPath: match.File.Path,

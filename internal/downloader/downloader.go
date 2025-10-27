@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/javinizer/javinizer-go/internal/config"
+	imageutil "github.com/javinizer/javinizer-go/internal/image"
 	"github.com/javinizer/javinizer-go/internal/models"
 	"github.com/javinizer/javinizer-go/internal/template"
 )
@@ -66,32 +67,78 @@ func (d *Downloader) SetDownloadExtrafanart(enabled bool) {
 	d.config.DownloadExtrafanart = enabled
 }
 
-// DownloadCover downloads the movie cover image
+// DownloadCover downloads the movie cover image (fanart)
 func (d *Downloader) DownloadCover(movie *models.Movie, destDir string) (*DownloadResult, error) {
 	if !d.config.DownloadCover || movie.CoverURL == "" {
 		return &DownloadResult{Type: MediaTypeCover, Downloaded: false}, nil
 	}
 
 	ctx := template.NewContextFromMovie(movie)
-	filename := fmt.Sprintf("%s-poster.jpg", ctx.ID)
+	filename := fmt.Sprintf("%s-fanart.jpg", ctx.ID)
 	destPath := filepath.Join(destDir, filename)
 
 	return d.download(movie.CoverURL, destPath, MediaTypeCover)
 }
 
-// DownloadPoster downloads the movie poster (vertical cover)
+// DownloadPoster downloads and crops the movie poster
+// The poster is created by cropping the right 47.2% of the cover image
+// This matches the original Javinizer's behavior
 func (d *Downloader) DownloadPoster(movie *models.Movie, destDir string) (*DownloadResult, error) {
-	if !d.config.DownloadPoster || movie.CoverURL == "" {
+	if !d.config.DownloadPoster {
 		return &DownloadResult{Type: MediaTypePoster, Downloaded: false}, nil
 	}
 
-	// For now, poster is the same as cover
-	// In the future, we could add poster-specific URL field
+	// Use PosterURL if available, otherwise fall back to CoverURL
+	posterURL := movie.PosterURL
+	if posterURL == "" {
+		posterURL = movie.CoverURL
+	}
+	if posterURL == "" {
+		return &DownloadResult{Type: MediaTypePoster, Downloaded: false}, nil
+	}
+
 	ctx := template.NewContextFromMovie(movie)
-	filename := fmt.Sprintf("%s-fanart.jpg", ctx.ID)
+	filename := fmt.Sprintf("%s-poster.jpg", ctx.ID)
 	destPath := filepath.Join(destDir, filename)
 
-	return d.download(movie.CoverURL, destPath, MediaTypePoster)
+	// Check if poster already exists
+	if _, err := os.Stat(destPath); err == nil {
+		// Already exists
+		info, _ := os.Stat(destPath)
+		return &DownloadResult{
+			Type:       MediaTypePoster,
+			LocalPath:  destPath,
+			Size:       info.Size(),
+			Downloaded: false,
+		}, nil
+	}
+
+	// Download the source image to a temporary location
+	tempPath := destPath + ".full.tmp"
+	result, err := d.download(posterURL, tempPath, MediaTypePoster)
+	if err != nil || !result.Downloaded {
+		os.Remove(tempPath) // Clean up if exists
+		return result, err
+	}
+
+	// Crop the poster from the downloaded image
+	if err := imageutil.CropPosterFromCover(tempPath, destPath); err != nil {
+		os.Remove(tempPath) // Clean up temp file
+		result.Error = fmt.Errorf("failed to crop poster: %w", err)
+		result.Downloaded = false
+		return result, result.Error
+	}
+
+	// Clean up the temporary full image
+	os.Remove(tempPath)
+
+	// Update result with final path and size
+	if info, err := os.Stat(destPath); err == nil {
+		result.LocalPath = destPath
+		result.Size = info.Size()
+	}
+
+	return result, nil
 }
 
 // DownloadExtrafanart downloads screenshots to the extrafanart subdirectory

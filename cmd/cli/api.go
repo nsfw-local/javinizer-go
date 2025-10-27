@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
@@ -9,11 +10,15 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/javinizer/javinizer-go/internal/aggregator"
+	"github.com/javinizer/javinizer-go/internal/config"
 	"github.com/javinizer/javinizer-go/internal/database"
 	"github.com/javinizer/javinizer-go/internal/logging"
+	"github.com/javinizer/javinizer-go/internal/matcher"
 	"github.com/javinizer/javinizer-go/internal/models"
 	"github.com/javinizer/javinizer-go/internal/scraper/dmm"
 	"github.com/javinizer/javinizer-go/internal/scraper/r18dev"
+	ws "github.com/javinizer/javinizer-go/internal/websocket"
+	"github.com/javinizer/javinizer-go/internal/worker"
 	"github.com/spf13/cobra"
 	swaggerFiles "github.com/swaggo/files"
 	ginSwagger "github.com/swaggo/gin-swagger"
@@ -142,12 +147,35 @@ func runAPI(hostFlag string, portFlag int) {
 	// Initialize repositories
 	movieRepo := database.NewMovieRepository(db)
 
+	// Initialize matcher
+	mat, err := matcher.NewMatcher(&cfg.Matching)
+	if err != nil {
+		log.Fatalf("Failed to initialize matcher: %v", err)
+	}
+
+	// Initialize job queue and WebSocket hub
+	jobQueue = worker.NewJobQueue()
+	wsHub = ws.NewHub()
+	go wsHub.Run()
+
 	// Setup Gin router
 	if cfg.Logging.Level != "debug" {
 		gin.SetMode(gin.ReleaseMode)
 	}
 
 	router := gin.Default()
+
+	// Enable CORS for web UI
+	router.Use(func(c *gin.Context) {
+		c.Writer.Header().Set("Access-Control-Allow-Origin", "*")
+		c.Writer.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
+		c.Writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+		if c.Request.Method == "OPTIONS" {
+			c.AbortWithStatus(204)
+			return
+		}
+		c.Next()
+	})
 
 	// Serve OpenAPI spec directly for Scalar
 	router.StaticFile("/docs/openapi.json", "./docs/swagger/swagger.json")
@@ -161,13 +189,30 @@ func runAPI(hostFlag string, portFlag int) {
 	// Health check endpoint
 	router.GET("/health", healthCheck(registry))
 
+	// WebSocket endpoint for progress updates
+	router.GET("/ws/progress", handleWebSocket())
+
 	// API v1 routes
 	v1 := router.Group("/api/v1")
 	{
+		// Original endpoints
 		v1.POST("/scrape", scrapeMovie(registry, agg, movieRepo))
 		v1.GET("/movie/:id", getMovie(movieRepo))
 		v1.GET("/movies", listMovies(movieRepo))
 		v1.GET("/config", getConfig())
+		v1.PUT("/config", updateConfig())
+		v1.GET("/scrapers", getAvailableScrapers(registry))
+
+		// Web UI endpoints
+		v1.GET("/cwd", getCurrentWorkingDirectory())
+		v1.POST("/scan", scanDirectory(mat))
+		v1.POST("/browse", browseDirectory())
+		v1.POST("/batch/scrape", batchScrape(registry, agg, movieRepo, mat))
+		v1.GET("/batch/:id", getBatchJob())
+		v1.POST("/batch/:id/cancel", cancelBatchJob())
+		v1.PATCH("/batch/:id/movies/:movieId", updateBatchMovie(movieRepo))
+		v1.POST("/batch/:id/movies/:movieId/preview", previewOrganize())
+		v1.POST("/batch/:id/organize", organizeJob(mat))
 	}
 
 	// Start server
@@ -356,5 +401,128 @@ func listMovies(movieRepo *database.MovieRepository) gin.HandlerFunc {
 func getConfig() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		c.JSON(200, cfg)
+	}
+}
+
+// ScraperOption represents a configurable option for a scraper
+type ScraperOption struct {
+	Key         string `json:"key" example:"scrape_actress"`
+	Label       string `json:"label" example:"Scrape Actress Information"`
+	Description string `json:"description" example:"Enable detailed actress data scraping from DMM (may be slower)"`
+	Type        string `json:"type" example:"boolean"` // boolean, string, number, etc.
+}
+
+// ScraperInfo represents information about a scraper
+type ScraperInfo struct {
+	Name        string           `json:"name" example:"r18dev"`
+	DisplayName string           `json:"display_name" example:"R18.dev"`
+	Enabled     bool             `json:"enabled" example:"true"`
+	Options     []ScraperOption  `json:"options,omitempty"`
+}
+
+// AvailableScrapersResponse represents the list of available scrapers
+type AvailableScrapersResponse struct {
+	Scrapers []ScraperInfo `json:"scrapers"`
+}
+
+// getAvailableScrapers godoc
+// @Summary Get available scrapers
+// @Description Get list of all available scrapers with their display names and enabled status
+// @Tags system
+// @Produce json
+// @Success 200 {object} AvailableScrapersResponse
+// @Router /api/v1/scrapers [get]
+func getAvailableScrapers(registry *models.ScraperRegistry) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		scrapers := []ScraperInfo{}
+
+		// Get all registered scrapers
+		for _, scraper := range registry.GetAll() {
+			name := scraper.Name()
+
+			// Map internal names to display names
+			displayName := name
+			var options []ScraperOption
+
+			switch name {
+			case "r18dev":
+				displayName = "R18.dev"
+				// R18Dev has no additional options
+				options = []ScraperOption{}
+			case "dmm":
+				displayName = "DMM/Fanza"
+				// DMM scraper options
+				options = []ScraperOption{
+					{
+						Key:         "scrape_actress",
+						Label:       "Scrape Actress Information",
+						Description: "Enable detailed actress data scraping from DMM (may be slower)",
+						Type:        "boolean",
+					},
+				}
+			}
+
+			scrapers = append(scrapers, ScraperInfo{
+				Name:        name,
+				DisplayName: displayName,
+				Enabled:     scraper.IsEnabled(),
+				Options:     options,
+			})
+		}
+
+		c.JSON(200, AvailableScrapersResponse{
+			Scrapers: scrapers,
+		})
+	}
+}
+
+// updateConfig godoc
+// @Summary Update configuration
+// @Description Update and save the server configuration to config.yaml
+// @Tags system
+// @Accept json
+// @Produce json
+// @Param config body map[string]interface{} true "Configuration to save"
+// @Success 200 {object} map[string]interface{} "message: Configuration saved successfully"
+// @Failure 400 {object} ErrorResponse
+// @Failure 500 {object} ErrorResponse
+// @Router /api/v1/config [put]
+func updateConfig() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var newConfig map[string]interface{}
+
+		if err := c.ShouldBindJSON(&newConfig); err != nil {
+			c.JSON(400, ErrorResponse{Error: err.Error()})
+			return
+		}
+
+		// Convert the map back to Config struct
+		// This is a simple approach - unmarshal the JSON again
+		jsonBytes, err := json.Marshal(newConfig)
+		if err != nil {
+			c.JSON(500, ErrorResponse{Error: "Failed to process configuration"})
+			return
+		}
+
+		var updatedConfig config.Config
+		if err := json.Unmarshal(jsonBytes, &updatedConfig); err != nil {
+			c.JSON(400, ErrorResponse{Error: "Invalid configuration format"})
+			return
+		}
+
+		// Save to config file
+		if err := config.Save(&updatedConfig, cfgFile); err != nil {
+			logging.Errorf("Failed to save config: %v", err)
+			c.JSON(500, ErrorResponse{Error: fmt.Sprintf("Failed to save configuration: %v", err)})
+			return
+		}
+
+		// Update the global config
+		cfg = &updatedConfig
+
+		logging.Info("Configuration saved successfully")
+		c.JSON(200, gin.H{
+			"message": "Configuration saved successfully",
+		})
 	}
 }

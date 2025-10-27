@@ -80,6 +80,7 @@ type Model struct {
 	downloadExtrafanart bool // Enable extrafanart (screenshots) downloads
 	organizeEnabled    bool // Enable file organization
 	nfoEnabled         bool // Enable NFO generation
+	updateMode         bool // Update mode: only create/update metadata without moving files
 	settingsCursor     int  // Cursor position in settings view
 
 	// Statistics

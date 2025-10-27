@@ -1,0 +1,300 @@
+<script lang="ts">
+	import { onMount, onDestroy } from 'svelte';
+	import { goto } from '$app/navigation';
+	import { apiClient } from '$lib/api/client';
+	import { websocketStore } from '$lib/stores/websocket';
+	import type { BatchJobResponse, ProgressMessage } from '$lib/api/types';
+	import { X, CheckCircle, XCircle, Loader2 } from 'lucide-svelte';
+	import Button from './ui/Button.svelte';
+	import Card from './ui/Card.svelte';
+
+	interface Props {
+		jobId: string;
+		destination: string;
+		onClose: () => void;
+	}
+
+	let { jobId, destination, onClose }: Props = $props();
+
+	let job: BatchJobResponse | null = $state(null);
+	let loading = $state(true);
+	let error = $state<string | null>(null);
+	let pollInterval: ReturnType<typeof setInterval> | null = null;
+	let countdown = $state(3);
+	let countdownInterval: ReturnType<typeof setInterval> | null = null;
+	let cancelRedirect = $state(false);
+
+	const wsState = $derived($websocketStore);
+	const progressMessages = $derived(
+		wsState.messages.filter((m: ProgressMessage) => m.job_id === jobId)
+	);
+	const latestMessage = $derived(progressMessages[progressMessages.length - 1]);
+
+	async function fetchJob() {
+		try {
+			job = await apiClient.getBatchJob(jobId);
+			loading = false;
+
+			// Stop polling if job is complete (scraping finished)
+			if (
+				job &&
+				(job.status === 'completed' || job.status === 'failed' || job.status === 'cancelled')
+			) {
+				if (pollInterval) {
+					clearInterval(pollInterval);
+					pollInterval = null;
+				}
+				// Redirect to review page if completed successfully
+				if (job.status === 'completed' && !countdownInterval && !cancelRedirect) {
+					// Start countdown timer
+					countdownInterval = setInterval(() => {
+						countdown -= 1;
+						if (countdown <= 0 && !cancelRedirect) {
+							if (countdownInterval) clearInterval(countdownInterval);
+							const params = new URLSearchParams({ destination });
+							goto(`/review/${jobId}?${params.toString()}`);
+						}
+					}, 1000);
+				}
+			}
+		} catch (e) {
+			error = e instanceof Error ? e.message : 'Failed to fetch job status';
+			loading = false;
+		}
+	}
+
+	async function handleCancel() {
+		if (!job) return;
+		try {
+			await apiClient.cancelBatchJob(jobId);
+			await fetchJob();
+		} catch (e) {
+			error = e instanceof Error ? e.message : 'Failed to cancel job';
+		}
+	}
+
+	onMount(() => {
+		fetchJob();
+		// Poll for updates every 2 seconds
+		pollInterval = setInterval(fetchJob, 2000);
+	});
+
+	onDestroy(() => {
+		if (pollInterval) {
+			clearInterval(pollInterval);
+		}
+		if (countdownInterval) {
+			clearInterval(countdownInterval);
+		}
+	});
+
+	function handleStayHere() {
+		cancelRedirect = true;
+		if (countdownInterval) {
+			clearInterval(countdownInterval);
+			countdownInterval = null;
+		}
+	}
+
+	function handleViewResults() {
+		const params = new URLSearchParams({ destination });
+		goto(`/review/${jobId}?${params.toString()}`);
+	}
+</script>
+
+<!-- Modal Overlay -->
+<div class="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 animate-fade-in">
+	<Card class="w-full max-w-2xl max-h-[80vh] overflow-hidden flex flex-col animate-scale-in">
+		<!-- Header -->
+		<div class="flex items-center justify-between p-6 border-b">
+			<h2 class="text-2xl font-semibold">Batch Scraping Progress</h2>
+			<Button variant="ghost" size="icon" onclick={onClose}>
+				<X class="h-4 w-4" />
+			</Button>
+		</div>
+
+		<!-- Content -->
+		<div class="flex-1 overflow-y-auto p-6 space-y-6">
+			{#if loading}
+				<div class="text-center py-8">
+					<Loader2 class="h-8 w-8 animate-spin mx-auto mb-2" />
+					<p class="text-muted-foreground">Loading job status...</p>
+				</div>
+			{:else if error}
+				<div class="bg-destructive/10 border border-destructive text-destructive px-4 py-3 rounded">
+					<p>{error}</p>
+				</div>
+			{:else if job}
+				<!-- Progress Bar -->
+				<div class="space-y-2">
+					<div class="flex items-center justify-between text-sm">
+						<span class="font-medium">Progress</span>
+						<span class="text-muted-foreground">
+							{job.completed + job.failed} / {job.total_files} files
+						</span>
+					</div>
+					<div class="h-4 bg-secondary rounded-full overflow-hidden">
+						<div
+							class="h-full bg-primary transition-all duration-300"
+							style="width: {job.progress}%"
+						></div>
+					</div>
+					<div class="flex items-center justify-between text-sm text-muted-foreground">
+						<span>{job.progress.toFixed(1)}%</span>
+						<span>
+							{job.completed} completed • {job.failed} failed
+						</span>
+					</div>
+				</div>
+
+				<!-- Status Badge -->
+				<div class="flex items-center gap-2">
+					<span class="text-sm font-medium">Status:</span>
+					{#if job.status === 'completed'}
+						<span
+							class="inline-flex items-center gap-1 px-2 py-1 bg-green-100 text-green-700 rounded text-sm"
+						>
+							<CheckCircle class="h-4 w-4" />
+							Completed
+						</span>
+					{:else if job.status === 'failed'}
+						<span
+							class="inline-flex items-center gap-1 px-2 py-1 bg-red-100 text-red-700 rounded text-sm"
+						>
+							<XCircle class="h-4 w-4" />
+							Failed
+						</span>
+					{:else if job.status === 'cancelled'}
+						<span class="inline-flex items-center gap-1 px-2 py-1 bg-gray-100 text-gray-700 rounded text-sm">
+							<XCircle class="h-4 w-4" />
+							Cancelled
+						</span>
+					{:else}
+						<span class="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 text-blue-700 rounded text-sm">
+							<Loader2 class="h-4 w-4 animate-spin" />
+							{job.status}
+						</span>
+					{/if}
+				</div>
+
+				<!-- Latest Progress Message -->
+				{#if latestMessage}
+					<div class="bg-accent/50 rounded-lg p-4">
+						<p class="text-sm font-medium mb-1">Latest Update:</p>
+						<p class="text-sm text-muted-foreground">{latestMessage.message}</p>
+						{#if latestMessage.file_path}
+							<p class="text-xs text-muted-foreground mt-1">
+								{latestMessage.file_path}
+							</p>
+						{/if}
+					</div>
+				{/if}
+
+				<!-- File Results -->
+				{#if Object.keys(job.results).length > 0}
+					<!-- File Results (during scraping or organizing) -->
+					<div class="space-y-2">
+						<h3 class="font-semibold">File Results:</h3>
+						<div class="space-y-1 max-h-60 overflow-y-auto">
+							{#each Object.values(job.results) as result}
+								<div class="flex items-start gap-2 p-2 rounded-lg bg-accent/30 text-sm">
+									{#if result.status === 'completed'}
+										<CheckCircle class="h-4 w-4 text-green-500 mt-0.5" />
+									{:else if result.status === 'failed'}
+										<XCircle class="h-4 w-4 text-red-500 mt-0.5" />
+									{:else}
+										<Loader2 class="h-4 w-4 text-blue-500 animate-spin mt-0.5" />
+									{/if}
+									<div class="flex-1 min-w-0">
+										<div class="font-medium truncate">
+											{result.movie_id || 'Unknown'}
+										</div>
+										<div class="text-xs text-muted-foreground truncate">
+											{result.file_path}
+										</div>
+										{#if result.error}
+											<div class="text-xs text-destructive mt-1">
+												{result.error}
+											</div>
+										{/if}
+									</div>
+								</div>
+							{/each}
+						</div>
+					</div>
+				{/if}
+			{/if}
+		</div>
+
+		<!-- Footer -->
+		<div class="flex items-center justify-between gap-3 p-6 border-t">
+			{#if job && job.status === 'running'}
+				<div></div>
+				<div class="flex items-center gap-3">
+					<Button variant="destructive" onclick={handleCancel}>Cancel Job</Button>
+					<Button variant="outline" onclick={onClose}>Close & Run in Background</Button>
+				</div>
+			{:else if job && job.status === 'completed'}
+				{#if !cancelRedirect && countdown > 0}
+					<div class="flex items-center gap-2">
+						<CheckCircle class="h-5 w-5 text-green-500" />
+						<p class="text-sm font-medium text-green-700">
+							Scraping completed! {job.completed} file{job.completed !== 1 ? 's' : ''} processed successfully.
+						</p>
+					</div>
+					<div class="flex items-center gap-3">
+						<p class="text-sm text-muted-foreground">Redirecting in {countdown}s...</p>
+						<Button variant="outline" onclick={handleStayHere}>Stay Here</Button>
+						<Button onclick={handleViewResults}>View Results Now</Button>
+					</div>
+				{:else}
+					<div class="flex items-center gap-2">
+						<CheckCircle class="h-5 w-5 text-green-500" />
+						<p class="text-sm font-medium text-green-700">
+							Scraping completed! {job.completed} file{job.completed !== 1 ? 's' : ''} processed successfully.
+						</p>
+					</div>
+					<div class="flex items-center gap-3">
+						<Button variant="outline" onclick={onClose}>Close</Button>
+						<Button onclick={handleViewResults}>View Results</Button>
+					</div>
+				{/if}
+			{:else}
+				<div></div>
+				<Button variant="outline" onclick={onClose}>
+					{job && (job.status === 'failed' || job.status === 'cancelled') ? 'Close' : 'Close & Run in Background'}
+				</Button>
+			{/if}
+		</div>
+	</Card>
+</div>
+
+<style>
+	@keyframes fade-in {
+		from {
+			opacity: 0;
+		}
+		to {
+			opacity: 1;
+		}
+	}
+
+	@keyframes scale-in {
+		from {
+			transform: scale(0.95);
+			opacity: 0;
+		}
+		to {
+			transform: scale(1);
+			opacity: 1;
+		}
+	}
+
+	.animate-fade-in {
+		animation: fade-in 0.2s ease-out;
+	}
+
+	:global(.animate-scale-in) {
+		animation: scale-in 0.3s ease-out;
+	}
+</style>

@@ -20,7 +20,8 @@ type Movie struct {
 	Label            string     `json:"label"`  // Sub-label
 	Series           string     `json:"series"` // Series name
 	Rating           *Rating    `json:"rating" gorm:"embedded;embeddedPrefix:rating_"`
-	CoverURL         string     `json:"cover_url"`
+	PosterURL        string     `json:"poster_url"`  // Portrait/box art image
+	CoverURL         string     `json:"cover_url"`   // Landscape/fanart image
 	TrailerURL       string     `json:"trailer_url"`
 	OriginalFileName string     `json:"original_filename"`
 
@@ -65,6 +66,7 @@ type Rating struct {
 // Actress represents a JAV actress
 type Actress struct {
 	ID           uint   `json:"id" gorm:"primaryKey"`
+	DMMID        int    `json:"dmm_id" gorm:"uniqueIndex"` // DMM actress ID for unique identification
 	FirstName    string `json:"first_name"`
 	LastName     string `json:"last_name"`
 	JapaneseName string `json:"japanese_name" gorm:"index"`

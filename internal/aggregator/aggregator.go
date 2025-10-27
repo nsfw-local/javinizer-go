@@ -104,6 +104,10 @@ func (a *Aggregator) Aggregate(results []*models.ScraperResult) (*models.Movie, 
 		return r.Series
 	})
 
+	movie.PosterURL = a.getFieldByPriority(resultsBySource, a.config.Metadata.Priority.PosterURL, func(r *models.ScraperResult) string {
+		return r.PosterURL
+	})
+
 	movie.CoverURL = a.getFieldByPriority(resultsBySource, a.config.Metadata.Priority.CoverURL, func(r *models.ScraperResult) string {
 		return r.CoverURL
 	})
@@ -237,6 +241,7 @@ func (a *Aggregator) getActressesByPriority(
 				actresses := make([]models.Actress, 0, len(result.Actresses))
 				for _, info := range result.Actresses {
 					actresses = append(actresses, models.Actress{
+						DMMID:        info.DMMID,
 						FirstName:    info.FirstName,
 						LastName:     info.LastName,
 						JapaneseName: info.JapaneseName,

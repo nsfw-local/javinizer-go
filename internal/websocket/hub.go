@@ -1,0 +1,155 @@
+package websocket
+
+import (
+	"encoding/json"
+	"sync"
+
+	"github.com/gorilla/websocket"
+	"github.com/javinizer/javinizer-go/internal/logging"
+)
+
+// ProgressMessage represents a progress update message
+type ProgressMessage struct {
+	JobID     string  `json:"job_id"`
+	FileIndex int     `json:"file_index"`
+	FilePath  string  `json:"file_path"`
+	Status    string  `json:"status"`
+	Progress  float64 `json:"progress"`
+	Message   string  `json:"message"`
+	Error     string  `json:"error,omitempty"`
+}
+
+// Client represents a websocket client
+type Client struct {
+	conn *websocket.Conn
+	send chan []byte
+}
+
+// Hub maintains the set of active clients and broadcasts messages to them
+type Hub struct {
+	clients    map[*Client]bool
+	broadcast  chan []byte
+	register   chan *Client
+	unregister chan *Client
+	mu         sync.RWMutex
+}
+
+// NewHub creates a new Hub
+func NewHub() *Hub {
+	return &Hub{
+		clients:    make(map[*Client]bool),
+		broadcast:  make(chan []byte, 256),
+		register:   make(chan *Client),
+		unregister: make(chan *Client),
+	}
+}
+
+// Run starts the hub's main loop
+func (h *Hub) Run() {
+	for {
+		select {
+		case client := <-h.register:
+			h.mu.Lock()
+			h.clients[client] = true
+			h.mu.Unlock()
+			logging.Infof("WebSocket client connected. Total clients: %d", len(h.clients))
+
+		case client := <-h.unregister:
+			h.mu.Lock()
+			if _, ok := h.clients[client]; ok {
+				delete(h.clients, client)
+				close(client.send)
+			}
+			h.mu.Unlock()
+			logging.Infof("WebSocket client disconnected. Total clients: %d", len(h.clients))
+
+		case message := <-h.broadcast:
+			h.mu.RLock()
+			for client := range h.clients {
+				select {
+				case client.send <- message:
+				default:
+					// Client's send channel is full, close it
+					close(client.send)
+					delete(h.clients, client)
+				}
+			}
+			h.mu.RUnlock()
+		}
+	}
+}
+
+// Register registers a new client
+func (h *Hub) Register(client *Client) {
+	h.register <- client
+}
+
+// Unregister unregisters a client
+func (h *Hub) Unregister(client *Client) {
+	h.unregister <- client
+}
+
+// Broadcast sends a message to all connected clients
+func (h *Hub) Broadcast(message interface{}) error {
+	data, err := json.Marshal(message)
+	if err != nil {
+		return err
+	}
+	h.broadcast <- data
+	return nil
+}
+
+// BroadcastProgress sends a progress update to all clients
+func (h *Hub) BroadcastProgress(msg *ProgressMessage) error {
+	return h.Broadcast(msg)
+}
+
+// NewClient creates a new client
+func NewClient(conn *websocket.Conn) *Client {
+	return &Client{
+		conn: conn,
+		send: make(chan []byte, 256),
+	}
+}
+
+// WritePump pumps messages from the hub to the websocket connection
+func (c *Client) WritePump() {
+	defer func() {
+		c.conn.Close()
+	}()
+
+	for {
+		select {
+		case message, ok := <-c.send:
+			if !ok {
+				// The hub closed the channel
+				c.conn.WriteMessage(websocket.CloseMessage, []byte{})
+				return
+			}
+
+			if err := c.conn.WriteMessage(websocket.TextMessage, message); err != nil {
+				logging.Errorf("Error writing to websocket: %v", err)
+				return
+			}
+		}
+	}
+}
+
+// ReadPump pumps messages from the websocket connection to the hub
+func (c *Client) ReadPump(hub *Hub) {
+	defer func() {
+		hub.Unregister(c)
+		c.conn.Close()
+	}()
+
+	for {
+		_, _, err := c.conn.ReadMessage()
+		if err != nil {
+			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
+				logging.Errorf("Unexpected websocket error: %v", err)
+			}
+			break
+		}
+		// We don't process client messages for now, just keep the connection alive
+	}
+}

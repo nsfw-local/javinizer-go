@@ -1,4 +1,4 @@
-.PHONY: build run run-api test clean deps install
+.PHONY: build run run-api test clean deps install web-dev web-build web-preview web-install web-clean
 
 # Build the application (single binary)
 build:
@@ -46,3 +46,19 @@ lint:
 # Generate API documentation
 docs:
 	swag init -g cmd/cli/api.go -o api/docs
+
+# Web frontend targets
+web-dev:
+	cd web/frontend && npm run dev
+
+web-build:
+	cd web/frontend && npm run build
+
+web-preview:
+	cd web/frontend && npm run preview
+
+web-install:
+	cd web/frontend && npm install
+
+web-clean:
+	rm -rf web/frontend/node_modules web/frontend/.svelte-kit web/frontend/build

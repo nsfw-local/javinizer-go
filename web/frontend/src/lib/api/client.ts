@@ -1,0 +1,139 @@
+import type {
+	ScanRequest,
+	ScanResponse,
+	BrowseRequest,
+	BrowseResponse,
+	BatchScrapeRequest,
+	BatchScrapeResponse,
+	BatchJobResponse,
+	HealthResponse,
+	ErrorResponse,
+	Movie,
+	OrganizeRequest,
+	OrganizeResponse,
+	OrganizePreviewRequest,
+	OrganizePreviewResponse,
+	AvailableScrapersResponse
+} from './types';
+
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080';
+
+class APIClient {
+	private baseURL: string;
+
+	constructor(baseURL: string = API_BASE_URL) {
+		this.baseURL = baseURL;
+	}
+
+	public async request<T>(endpoint: string, options?: RequestInit): Promise<T> {
+		const url = `${this.baseURL}${endpoint}`;
+		const response = await fetch(url, {
+			...options,
+			headers: {
+				'Content-Type': 'application/json',
+				...options?.headers
+			}
+		});
+
+		if (!response.ok) {
+			const error: ErrorResponse = await response.json().catch(() => ({
+				error: `HTTP ${response.status}: ${response.statusText}`
+			}));
+			throw new Error(error.error || 'API request failed');
+		}
+
+		return response.json();
+	}
+
+	// Health check
+	async health(): Promise<HealthResponse> {
+		return this.request<HealthResponse>('/health');
+	}
+
+	// Get current working directory
+	async getCurrentWorkingDirectory(): Promise<{ path: string }> {
+		return this.request<{ path: string }>('/api/v1/cwd');
+	}
+
+	// Scan directory for video files
+	async scan(request: ScanRequest): Promise<ScanResponse> {
+		return this.request<ScanResponse>('/api/v1/scan', {
+			method: 'POST',
+			body: JSON.stringify(request)
+		});
+	}
+
+	// Browse filesystem
+	async browse(request: BrowseRequest): Promise<BrowseResponse> {
+		return this.request<BrowseResponse>('/api/v1/browse', {
+			method: 'POST',
+			body: JSON.stringify(request)
+		});
+	}
+
+	// Start batch scrape job
+	async batchScrape(request: BatchScrapeRequest): Promise<BatchScrapeResponse> {
+		return this.request<BatchScrapeResponse>('/api/v1/batch/scrape', {
+			method: 'POST',
+			body: JSON.stringify(request)
+		});
+	}
+
+	// Get batch job status
+	async getBatchJob(jobId: string): Promise<BatchJobResponse> {
+		return this.request<BatchJobResponse>(`/api/v1/batch/${jobId}`);
+	}
+
+	// Cancel batch job
+	async cancelBatchJob(jobId: string): Promise<void> {
+		await this.request(`/api/v1/batch/${jobId}/cancel`, {
+			method: 'POST'
+		});
+	}
+
+	// Update movie in batch job
+	async updateBatchMovie(jobId: string, movieId: string, movie: Movie): Promise<{ movie: Movie }> {
+		return this.request<{ movie: Movie }>(`/api/v1/batch/${jobId}/movies/${movieId}`, {
+			method: 'PATCH',
+			body: JSON.stringify({ movie })
+		});
+	}
+
+	// Organize scraped files
+	async organizeBatchJob(jobId: string, request: OrganizeRequest): Promise<OrganizeResponse> {
+		return this.request<OrganizeResponse>(`/api/v1/batch/${jobId}/organize`, {
+			method: 'POST',
+			body: JSON.stringify(request)
+		});
+	}
+
+	// Preview organize output
+	async previewOrganize(jobId: string, movieId: string, request: OrganizePreviewRequest): Promise<OrganizePreviewResponse> {
+		return this.request<OrganizePreviewResponse>(`/api/v1/batch/${jobId}/movies/${movieId}/preview`, {
+			method: 'POST',
+			body: JSON.stringify(request)
+		});
+	}
+
+	// Get movie by ID
+	async getMovie(id: string): Promise<Movie> {
+		return this.request<Movie>(`/api/v1/movie/${id}`);
+	}
+
+	// List all movies
+	async listMovies(limit?: number, offset?: number): Promise<{ movies: Movie[]; count: number }> {
+		const params = new URLSearchParams();
+		if (limit) params.set('limit', limit.toString());
+		if (offset) params.set('offset', offset.toString());
+		const query = params.toString() ? `?${params}` : '';
+		return this.request(`/api/v1/movies${query}`);
+	}
+
+	// Get available scrapers
+	async getAvailableScrapers(): Promise<AvailableScrapersResponse> {
+		return this.request<AvailableScrapersResponse>('/api/v1/scrapers');
+	}
+}
+
+export const apiClient = new APIClient();
+export default apiClient;

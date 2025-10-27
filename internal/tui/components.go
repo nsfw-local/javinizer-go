@@ -577,6 +577,7 @@ type SettingsView struct {
 	downloadExtrafanart bool
 	organizeEnabled     bool
 	nfoEnabled          bool
+	updateMode          bool
 }
 
 func NewSettingsView() *SettingsView {
@@ -604,7 +605,7 @@ func (s *SettingsView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (s *SettingsView) UpdateSettings(
 	cursor int,
 	dryRun, forceUpdate, forceRefresh, moveFiles bool,
-	scrapeEnabled, downloadEnabled, downloadExtrafanart, organizeEnabled, nfoEnabled bool,
+	scrapeEnabled, downloadEnabled, downloadExtrafanart, organizeEnabled, nfoEnabled, updateMode bool,
 ) {
 	s.cursor = cursor
 	s.dryRun = dryRun
@@ -616,6 +617,7 @@ func (s *SettingsView) UpdateSettings(
 	s.downloadExtrafanart = downloadExtrafanart
 	s.organizeEnabled = organizeEnabled
 	s.nfoEnabled = nfoEnabled
+	s.updateMode = updateMode
 }
 
 func (s *SettingsView) View() string {
@@ -636,6 +638,7 @@ func (s *SettingsView) View() string {
 		{6, "Download Extrafanart", "Download extrafanart/screenshots to subfolder", s.downloadExtrafanart},
 		{7, "Organize Files", "Move/copy files to organized structure", s.organizeEnabled},
 		{8, "Generate NFO", "Create NFO files for media centers", s.nfoEnabled},
+		{9, "Update Mode", "Only create/update metadata, don't move files", s.updateMode},
 	}
 
 	for _, setting := range settings {

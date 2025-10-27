@@ -413,6 +413,12 @@ func (s *Scraper) extractActresses(doc *goquery.Document) []models.ActressInfo {
 
 	for _, match := range matches {
 		if len(match) > 2 {
+			// Extract actress ID from URL
+			actressID := 0
+			if len(match) > 1 {
+				actressID, _ = strconv.Atoi(match[1])
+			}
+
 			actressName := cleanString(match[2])
 
 			// Remove parenthetical content
@@ -422,7 +428,9 @@ func (s *Scraper) extractActresses(doc *goquery.Document) []models.ActressInfo {
 			// Determine if name is Japanese
 			isJapanese := regexp.MustCompile(`[\u3040-\u309f]|[\u30a0-\u30ff]|[\uff66-\uff9f]|[\u4e00-\u9faf]`).MatchString(actressName)
 
-			actress := models.ActressInfo{}
+			actress := models.ActressInfo{
+				DMMID: actressID,
+			}
 
 			if isJapanese {
 				actress.JapaneseName = actressName

@@ -20,13 +20,15 @@ type ScraperResult struct {
 	Rating        *Rating       `json:"rating"`
 	Actresses     []ActressInfo `json:"actresses"`
 	Genres        []string      `json:"genres"`
-	CoverURL      string        `json:"cover_url"`
+	PosterURL     string        `json:"poster_url"`      // Portrait/box art image
+	CoverURL      string        `json:"cover_url"`       // Landscape/fanart image
 	ScreenshotURL []string      `json:"screenshot_urls"`
 	TrailerURL    string        `json:"trailer_url"`
 }
 
 // ActressInfo represents actress information from a scraper
 type ActressInfo struct {
+	DMMID        int    `json:"dmm_id"` // DMM actress ID for unique identification
 	FirstName    string `json:"first_name"`
 	LastName     string `json:"last_name"`
 	JapaneseName string `json:"japanese_name"`

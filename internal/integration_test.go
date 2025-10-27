@@ -224,7 +224,7 @@ func TestFullWorkflow(t *testing.T) {
 		}
 
 		// Test dry run first
-		dryRunResult, err := org.Organize(match, movie, destDir, true, false)
+		dryRunResult, err := org.Organize(match, movie, destDir, true, false, false)
 		if err != nil {
 			t.Fatalf("Dry run organize failed: %v", err)
 		}
@@ -239,7 +239,7 @@ func TestFullWorkflow(t *testing.T) {
 		}
 
 		// Now do actual organization
-		result, err := org.Organize(match, movie, destDir, false, false)
+		result, err := org.Organize(match, movie, destDir, false, false, false)
 		if err != nil {
 			t.Fatalf("Organize failed: %v", err)
 		}

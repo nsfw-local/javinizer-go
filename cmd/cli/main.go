@@ -48,6 +48,7 @@ func main() {
 		Run:   runScrape,
 	}
 	scrapeCmd.Flags().StringSliceVarP(&scrapersFlag, "scrapers", "s", nil, "Comma-separated list of scrapers to use (e.g., 'r18dev,dmm' or 'dmm')")
+	scrapeCmd.Flags().BoolP("force", "f", false, "Force refresh metadata from scrapers (clear cache)")
 
 	// Info command
 	infoCmd := &cobra.Command{
@@ -81,6 +82,7 @@ func main() {
 	sortCmd.Flags().StringSliceP("scrapers", "p", nil, "Scraper priority (comma-separated, e.g., 'r18dev,dmm')")
 	sortCmd.Flags().BoolP("force-update", "f", false, "Force update existing files")
 	sortCmd.Flags().Bool("force-refresh", false, "Force refresh metadata from scrapers (clear cache)")
+	sortCmd.Flags().BoolP("update", "u", false, "Update mode: only create/update metadata files without moving video files")
 
 	// Genre command with subcommands
 	genreCmd := &cobra.Command{
@@ -197,6 +199,9 @@ func runScrape(cmd *cobra.Command, args []string) {
 		logging.Fatal(err)
 	}
 
+	// Get force flag
+	forceRefresh, _ := cmd.Flags().GetBool("force")
+
 	// Initialize database
 	db, err := database.New(cfg)
 	if err != nil {
@@ -229,11 +234,20 @@ func runScrape(cmd *cobra.Command, args []string) {
 		logging.Infof("Using scrapers from CLI flag: %v", scrapersFlag)
 	}
 
-	// Check cache first (skip cache if user specified custom scrapers)
-	if !usingCustomScrapers {
+	// Force refresh - clear cache if requested
+	if forceRefresh {
+		if err := movieRepo.Delete(id); err != nil {
+			logging.Debugf("Failed to delete %s from cache (may not exist): %v", id, err)
+		} else {
+			logging.Infof("🔄 Cache cleared for %s", id)
+		}
+	}
+
+	// Check cache first (skip cache if user specified custom scrapers or force refresh)
+	if !usingCustomScrapers && !forceRefresh {
 		if movie, err := movieRepo.FindByID(id); err == nil {
 			logging.Info("✅ Found in cache!")
-			printMovie(movie)
+			printMovie(movie, nil)
 			return
 		}
 	}
@@ -274,7 +288,7 @@ func runScrape(cmd *cobra.Command, args []string) {
 		fmt.Println("💾 Saved to database")
 	}
 
-	printMovie(movie)
+	printMovie(movie, results)
 }
 
 func runInfo(cmd *cobra.Command, args []string) {
@@ -337,68 +351,249 @@ func runInit(cmd *cobra.Command, args []string) {
 	fmt.Println("  - Run 'javinizer info' to view configuration")
 }
 
-func printMovie(movie *models.Movie) {
-	fmt.Println("=== Movie Details ===")
-	fmt.Printf("ID: %s\n", movie.ID)
-	fmt.Printf("Content ID: %s\n", movie.ContentID)
-	fmt.Printf("Title: %s\n", movie.Title)
-	if movie.AlternateTitle != "" {
-		fmt.Printf("Alt Title: %s\n", movie.AlternateTitle)
+func printMovie(movie *models.Movie, results []*models.ScraperResult) {
+	fmt.Println()
+
+	// Build table rows
+	rows := [][]string{}
+
+	// ID and Content ID
+	rows = append(rows, []string{"ID", movie.ID})
+	if movie.ContentID != "" && movie.ContentID != movie.ID {
+		rows = append(rows, []string{"ContentID", movie.ContentID})
 	}
 
-	// Display available translations
-	if len(movie.Translations) > 0 {
-		fmt.Printf("\nTranslations (%d):\n", len(movie.Translations))
-		for _, trans := range movie.Translations {
-			fmt.Printf("  [%s] %s (from %s)\n", trans.Language, trans.Title, trans.SourceName)
-		}
-		fmt.Println()
+	// Title
+	if movie.Title != "" {
+		rows = append(rows, []string{"Title", movie.Title})
 	}
 
-	fmt.Printf("Description: %s\n", movie.Description)
-
+	// Release Date
 	if movie.ReleaseDate != nil {
-		fmt.Printf("Release Date: %s\n", movie.ReleaseDate.Format("2006-01-02"))
-	}
-	fmt.Printf("Runtime: %d min\n", movie.Runtime)
-	fmt.Printf("Director: %s\n", movie.Director)
-	fmt.Printf("Maker: %s\n", movie.Maker)
-	fmt.Printf("Label: %s\n", movie.Label)
-	fmt.Printf("Series: %s\n", movie.Series)
-
-	if movie.Rating != nil {
-		fmt.Printf("Rating: %.1f/10 (%d votes)\n", movie.Rating.Score, movie.Rating.Votes)
+		rows = append(rows, []string{"ReleaseDate", movie.ReleaseDate.Format("2006-01-02")})
 	}
 
+	// Runtime
+	if movie.Runtime > 0 {
+		rows = append(rows, []string{"Runtime", fmt.Sprintf("%d min", movie.Runtime)})
+	}
+
+	// Director
+	if movie.Director != "" {
+		rows = append(rows, []string{"Director", movie.Director})
+	}
+
+	// Maker
+	if movie.Maker != "" {
+		rows = append(rows, []string{"Maker", movie.Maker})
+	}
+
+	// Label
+	if movie.Label != "" {
+		rows = append(rows, []string{"Label", movie.Label})
+	}
+
+	// Series
+	if movie.Series != "" {
+		rows = append(rows, []string{"Series", movie.Series})
+	}
+
+	// Rating
+	if movie.Rating != nil && movie.Rating.Score > 0 {
+		rows = append(rows, []string{"Rating", fmt.Sprintf("%.1f/10 (%d votes)", movie.Rating.Score, movie.Rating.Votes)})
+	}
+
+	// Actresses
 	if len(movie.Actresses) > 0 {
-		fmt.Printf("\nActresses (%d):\n", len(movie.Actresses))
-		for _, actress := range movie.Actresses {
+		actressNames := []string{}
+		for i, actress := range movie.Actresses {
 			name := actress.FullName()
 			if actress.JapaneseName != "" {
 				name += fmt.Sprintf(" (%s)", actress.JapaneseName)
 			}
-			fmt.Printf("  - %s\n", name)
+			if i < 3 || len(movie.Actresses) <= 4 {
+				actressNames = append(actressNames, name)
+			} else if i == 3 {
+				actressNames = append(actressNames, fmt.Sprintf("... and %d more", len(movie.Actresses)-3))
+				break
+			}
 		}
+		rows = append(rows, []string{"Actresses", strings.Join(actressNames, ", ")})
 	}
 
+	// Genres
 	if len(movie.Genres) > 0 {
-		fmt.Printf("\nGenres (%d):\n", len(movie.Genres))
-		for _, genre := range movie.Genres {
-			fmt.Printf("  - %s\n", genre.Name)
+		genreNames := make([]string, 0, len(movie.Genres))
+		for i, genre := range movie.Genres {
+			if i < 8 || len(movie.Genres) <= 9 {
+				genreNames = append(genreNames, genre.Name)
+			} else if i == 8 {
+				genreNames = append(genreNames, fmt.Sprintf("... and %d more", len(movie.Genres)-8))
+				break
+			}
+		}
+		rows = append(rows, []string{"Genres", strings.Join(genreNames, ", ")})
+	}
+
+	// Translations
+	if len(movie.Translations) > 1 {
+		langNames := []string{}
+		for _, trans := range movie.Translations {
+			langName := map[string]string{
+				"en": "English",
+				"ja": "Japanese",
+				"zh": "Chinese",
+				"ko": "Korean",
+			}[trans.Language]
+			if langName == "" {
+				langName = trans.Language
+			}
+			langNames = append(langNames, fmt.Sprintf("%s (%s)", langName, trans.SourceName))
+		}
+		rows = append(rows, []string{"Translations", strings.Join(langNames, ", ")})
+	}
+
+	// Sources - collect unique sources from translations
+	sourcesMap := make(map[string]bool)
+	var sources []string
+
+	// Add sources from translations
+	for _, trans := range movie.Translations {
+		if trans.SourceName != "" && !sourcesMap[trans.SourceName] {
+			sourcesMap[trans.SourceName] = true
+			sources = append(sources, trans.SourceName)
 		}
 	}
 
-	if movie.CoverURL != "" {
-		fmt.Printf("\nCover: %s\n", movie.CoverURL)
-	}
-	if len(movie.Screenshots) > 0 {
-		fmt.Printf("Screenshots: %d\n", len(movie.Screenshots))
-	}
-	if movie.TrailerURL != "" {
-		fmt.Printf("Trailer: %s\n", movie.TrailerURL)
+	// If no translations, fall back to movie.SourceName
+	if len(sources) == 0 && movie.SourceName != "" {
+		sources = append(sources, movie.SourceName)
 	}
 
-	fmt.Printf("\nSource: %s\n", movie.SourceName)
+	// Display sources (names only in the main table)
+	if len(sources) > 0 {
+		rows = append(rows, []string{"Sources", strings.Join(sources, ", ")})
+	}
+
+	// Calculate column widths
+	maxLabelWidth := 0
+	for _, row := range rows {
+		if len(row[0]) > maxLabelWidth {
+			maxLabelWidth = len(row[0])
+		}
+	}
+
+	// Terminal width for wrapping (default 120, can be adjusted)
+	terminalWidth := 120
+	valueWidth := terminalWidth - maxLabelWidth - 5 // Account for label, " : ", and padding
+
+	// Helper function to wrap text to specified width
+	wrapText := func(text string, width int) []string {
+		if width <= 0 {
+			width = 80
+		}
+		words := strings.Fields(text)
+		if len(words) == 0 {
+			return []string{""}
+		}
+
+		var lines []string
+		currentLine := ""
+
+		for _, word := range words {
+			if currentLine == "" {
+				currentLine = word
+			} else if len(currentLine)+1+len(word) <= width {
+				currentLine += " " + word
+			} else {
+				lines = append(lines, currentLine)
+				currentLine = word
+			}
+		}
+		if currentLine != "" {
+			lines = append(lines, currentLine)
+		}
+		return lines
+	}
+
+	// Print table header
+	fmt.Println(strings.Repeat("-", maxLabelWidth+2) + " " + strings.Repeat("-", 100))
+
+	// Print rows with proper wrapping
+	for _, row := range rows {
+		label := row[0]
+		value := row[1]
+
+		// For multi-line values (description, media URLs), wrap them
+		lines := wrapText(value, valueWidth)
+
+		for i, line := range lines {
+			if i == 0 {
+				// First line: show label
+				paddedLabel := label + strings.Repeat(" ", maxLabelWidth-len(label))
+				fmt.Printf("%-*s : %s\n", maxLabelWidth, paddedLabel, line)
+			} else {
+				// Continuation lines: indent to align with first line's value
+				fmt.Printf("%*s   %s\n", maxLabelWidth, "", line)
+			}
+		}
+	}
+
+	// Print Source URLs section (if we have scraperResults from fresh scrape)
+	if results != nil && len(results) > 0 {
+		fmt.Println(strings.Repeat("-", maxLabelWidth+2) + " " + strings.Repeat("-", 100))
+		fmt.Println()
+		fmt.Println("Source URLs:")
+		fmt.Println()
+
+		for _, result := range results {
+			fmt.Printf("  %-12s : %s\n", result.Source, result.SourceURL)
+		}
+	}
+
+	// Now print expanded media section
+	if movie.CoverURL != "" || movie.PosterURL != "" || len(movie.Screenshots) > 0 || movie.TrailerURL != "" {
+		fmt.Println(strings.Repeat("-", maxLabelWidth+2) + " " + strings.Repeat("-", 100))
+		fmt.Println()
+		fmt.Println("Media URLs:")
+		fmt.Println()
+
+		if movie.CoverURL != "" {
+			fmt.Printf("  Cover URL    : %s\n", movie.CoverURL)
+		}
+		if movie.PosterURL != "" && movie.PosterURL != movie.CoverURL {
+			fmt.Printf("  Poster URL   : %s\n", movie.PosterURL)
+		}
+		if movie.TrailerURL != "" {
+			fmt.Printf("  Trailer URL  : %s\n", movie.TrailerURL)
+		}
+		if len(movie.Screenshots) > 0 {
+			fmt.Printf("  Screenshots  : %d total\n", len(movie.Screenshots))
+			for i, url := range movie.Screenshots {
+				fmt.Printf("    [%2d] %s\n", i+1, url)
+			}
+		}
+	}
+
+	// Description section (full text, properly wrapped)
+	if movie.Description != "" {
+		fmt.Println()
+		fmt.Println(strings.Repeat("-", maxLabelWidth+2) + " " + strings.Repeat("-", 100))
+		fmt.Println()
+		fmt.Println("Description:")
+		fmt.Println()
+
+		// Wrap description to terminal width with some padding
+		descLines := wrapText(movie.Description, terminalWidth-4)
+		for _, line := range descLines {
+			fmt.Printf("  %s\n", line)
+		}
+	}
+
+	// Print table footer
+	fmt.Println()
+	fmt.Println(strings.Repeat("-", maxLabelWidth+2) + " " + strings.Repeat("-", 100))
+	fmt.Println()
 }
 
 func runSort(cmd *cobra.Command, args []string) {
@@ -415,6 +610,7 @@ func runSort(cmd *cobra.Command, args []string) {
 	scraperPriority, _ := cmd.Flags().GetStringSlice("scrapers")
 	forceUpdate, _ := cmd.Flags().GetBool("force-update")
 	forceRefresh, _ := cmd.Flags().GetBool("force-refresh")
+	updateMode, _ := cmd.Flags().GetBool("update")
 
 	// Default destination is same as source
 	if destPath == "" {
@@ -716,83 +912,90 @@ func runSort(cmd *cobra.Command, args []string) {
 		}
 	}
 
-	// Step 6: Organize files
-	fmt.Println("\n📦 Organizing files...")
+	// Step 6: Organize files (skip in update mode)
 	organizedCount := 0
+	if !updateMode {
+		fmt.Println("\n📦 Organizing files...")
 
-	for _, match := range matches {
-		movie, exists := movies[match.ID]
-		if !exists {
-			continue
-		}
-
-		logging.Debugf("[%s] Starting organize for: %s", match.ID, match.File.Path)
-		logging.Debugf("[%s] Destination: %s, Move: %v, ForceUpdate: %v, DryRun: %v",
-			match.ID, destPath, moveFiles, forceUpdate, dryRun)
-
-		plan, err := fileOrganizer.Plan(match, movie, destPath, forceUpdate)
-		if err != nil {
-			logging.Infof("Failed to plan %s: %v", match.File.Name, err)
-			logging.Debugf("[%s] Planning failed: %v", match.ID, err)
-			continue
-		}
-
-		logging.Debugf("[%s] Organization plan created:", match.ID)
-		logging.Debugf("[%s]   Source: %s", match.ID, plan.SourcePath)
-		logging.Debugf("[%s]   Target Dir: %s", match.ID, plan.TargetDir)
-		logging.Debugf("[%s]   Target File: %s", match.ID, plan.TargetFile)
-		logging.Debugf("[%s]   Target Path: %s", match.ID, plan.TargetPath)
-		logging.Debugf("[%s]   Will Move: %v", match.ID, plan.WillMove)
-		logging.Debugf("[%s]   Conflicts: %d", match.ID, len(plan.Conflicts))
-
-		// Validate plan (skip if force update)
-		if !forceUpdate {
-			if issues := organizer.ValidatePlan(plan); len(issues) > 0 {
-				fmt.Printf("   ⚠️  %s: %v\n", match.File.Name, issues)
-				logging.Debugf("[%s] Validation failed with %d issues: %v", match.ID, len(issues), issues)
+		for _, match := range matches {
+			movie, exists := movies[match.ID]
+			if !exists {
 				continue
 			}
-		}
-		logging.Debugf("[%s] Plan validated successfully", match.ID)
 
-		var result *organizer.OrganizeResult
-		operation := "COPY"
-		if moveFiles {
-			operation = "MOVE"
-			logging.Debugf("[%s] Executing MOVE operation", match.ID)
-			result, err = fileOrganizer.Execute(plan, dryRun)
-		} else {
-			logging.Debugf("[%s] Executing COPY operation", match.ID)
-			result, err = fileOrganizer.Copy(plan, dryRun)
-		}
+			logging.Debugf("[%s] Starting organize for: %s", match.ID, match.File.Path)
+			logging.Debugf("[%s] Destination: %s, Move: %v, ForceUpdate: %v, DryRun: %v",
+				match.ID, destPath, moveFiles, forceUpdate, dryRun)
 
-		if err != nil {
-			fmt.Printf("   ❌ %s: %v\n", match.File.Name, err)
-			logging.Debugf("[%s] Organize execution failed: %v", match.ID, err)
-			continue
-		}
-
-		if result.Error != nil {
-			logging.Debugf("[%s] Organize result contains error: %v", match.ID, result.Error)
-		}
-
-		if result.Moved || dryRun {
-			organizedCount++
-			status := "✅"
-			if dryRun {
-				status = "→"
-				logging.Debugf("[%s] DRY RUN mode - would %s file to %s", match.ID, operation, plan.TargetPath)
-			} else {
-				logging.Debugf("[%s] File organized successfully to: %s", match.ID, result.NewPath)
+			plan, err := fileOrganizer.Plan(match, movie, destPath, forceUpdate)
+			if err != nil {
+				logging.Infof("Failed to plan %s: %v", match.File.Name, err)
+				logging.Debugf("[%s] Planning failed: %v", match.ID, err)
+				continue
 			}
-			fmt.Printf("   %s %s\n      %s\n", status, match.File.Name, plan.TargetPath)
+
+			logging.Debugf("[%s] Organization plan created:", match.ID)
+			logging.Debugf("[%s]   Source: %s", match.ID, plan.SourcePath)
+			logging.Debugf("[%s]   Target Dir: %s", match.ID, plan.TargetDir)
+			logging.Debugf("[%s]   Target File: %s", match.ID, plan.TargetFile)
+			logging.Debugf("[%s]   Target Path: %s", match.ID, plan.TargetPath)
+			logging.Debugf("[%s]   Will Move: %v", match.ID, plan.WillMove)
+			logging.Debugf("[%s]   Conflicts: %d", match.ID, len(plan.Conflicts))
+
+			// Validate plan (skip if force update)
+			if !forceUpdate {
+				if issues := organizer.ValidatePlan(plan); len(issues) > 0 {
+					fmt.Printf("   ⚠️  %s: %v\n", match.File.Name, issues)
+					logging.Debugf("[%s] Validation failed with %d issues: %v", match.ID, len(issues), issues)
+					continue
+				}
+			}
+			logging.Debugf("[%s] Plan validated successfully", match.ID)
+
+			var result *organizer.OrganizeResult
+			operation := "COPY"
+			if moveFiles {
+				operation = "MOVE"
+				logging.Debugf("[%s] Executing MOVE operation", match.ID)
+				result, err = fileOrganizer.Execute(plan, dryRun)
+			} else {
+				logging.Debugf("[%s] Executing COPY operation", match.ID)
+				result, err = fileOrganizer.Copy(plan, dryRun)
+			}
+
+			if err != nil {
+				fmt.Printf("   ❌ %s: %v\n", match.File.Name, err)
+				logging.Debugf("[%s] Organize execution failed: %v", match.ID, err)
+				continue
+			}
+
+			if result.Error != nil {
+				logging.Debugf("[%s] Organize result contains error: %v", match.ID, result.Error)
+			}
+
+			if result.Moved || dryRun {
+				organizedCount++
+				status := "✅"
+				if dryRun {
+					status = "→"
+					logging.Debugf("[%s] DRY RUN mode - would %s file to %s", match.ID, operation, plan.TargetPath)
+				} else {
+					logging.Debugf("[%s] File organized successfully to: %s", match.ID, result.NewPath)
+				}
+				fmt.Printf("   %s %s\n      %s\n", status, match.File.Name, plan.TargetPath)
+			}
 		}
+	} else {
+		fmt.Println("\n📝 Update mode: Files will remain in their original locations")
+		fmt.Printf("   Source directory: %s\n", sourcePath)
 	}
 
-	if dryRun {
-		fmt.Printf("\n   Would organize %d file(s)\n", organizedCount)
-	} else {
-		fmt.Printf("\n   Organized %d file(s)\n", organizedCount)
+	if !updateMode {
+		if dryRun {
+			fmt.Printf("\n   Would organize %d file(s)\n", organizedCount)
+		} else {
+			fmt.Printf("\n   Organized %d file(s)\n", organizedCount)
+		}
 	}
 
 	// Summary
@@ -801,14 +1004,22 @@ func runSort(cmd *cobra.Command, args []string) {
 	fmt.Printf("IDs matched: %d\n", len(matches))
 	fmt.Printf("Metadata found: %d\n", len(movies))
 	if generateNFO {
-		fmt.Printf("NFOs generated: %s\n", map[bool]string{true: fmt.Sprintf("%d (dry-run)", len(movies)), false: fmt.Sprintf("%d", organizedCount)}[dryRun])
+		fmt.Printf("NFOs generated: %s\n", map[bool]string{true: fmt.Sprintf("%d (dry-run)", len(movies)), false: fmt.Sprintf("%d", len(movies))}[dryRun])
 	}
-	fmt.Printf("Files organized: %s\n", map[bool]string{true: fmt.Sprintf("%d (dry-run)", organizedCount), false: fmt.Sprintf("%d", organizedCount)}[dryRun])
+	if !updateMode {
+		fmt.Printf("Files organized: %s\n", map[bool]string{true: fmt.Sprintf("%d (dry-run)", organizedCount), false: fmt.Sprintf("%d", organizedCount)}[dryRun])
+	} else {
+		fmt.Printf("Mode: Update (metadata only, files remain in place)\n")
+	}
 
 	if dryRun {
 		fmt.Println("\n💡 Run without --dry-run to apply changes")
 	} else {
-		fmt.Println("\n✅ Sort complete!")
+		if updateMode {
+			fmt.Println("\n✅ Update complete!")
+		} else {
+			fmt.Println("\n✅ Sort complete!")
+		}
 	}
 }
 

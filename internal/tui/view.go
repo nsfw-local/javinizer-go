@@ -258,6 +258,7 @@ func (m *Model) renderSettingsView() string {
 			m.downloadExtrafanart,
 			m.organizeEnabled,
 			m.nfoEnabled,
+			m.updateMode,
 		)
 		return m.settingsView.View()
 	}

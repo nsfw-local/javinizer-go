@@ -392,7 +392,7 @@ func (m *Model) handleFolderPickerKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 // handleSettingsKeys handles settings view keybindings
 func (m *Model) handleSettingsKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	maxSettings := 8 // 0-8: 9 total settings
+	maxSettings := 9 // 0-9: 10 total settings
 
 	switch msg.String() {
 	case "up", "k":
@@ -511,6 +511,24 @@ func (m *Model) handleSettingsKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.AddLog("info", "NFO generation enabled")
 			} else {
 				m.AddLog("info", "NFO generation disabled")
+			}
+
+		case 9:
+			m.updateMode = !m.updateMode
+			// When update mode is enabled, disable file organization
+			// When update mode is disabled, re-enable file organization
+			if m.updateMode {
+				m.organizeEnabled = false
+				if m.processor != nil {
+					m.processor.SetOrganizeEnabled(false)
+				}
+				m.AddLog("info", "Update mode enabled - files will remain in place, only metadata updated")
+			} else {
+				m.organizeEnabled = true
+				if m.processor != nil {
+					m.processor.SetOrganizeEnabled(true)
+				}
+				m.AddLog("info", "Update mode disabled - file organization re-enabled")
 			}
 		}
 	}
