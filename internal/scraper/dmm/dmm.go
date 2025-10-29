@@ -35,6 +35,7 @@ type Scraper struct {
 	enableHeadless  bool
 	headlessTimeout int
 	contentIDRepo   *database.ContentIDMappingRepository
+	proxyConfig     *config.ProxyConfig // Store proxy config for headless browser
 }
 
 // New creates a new DMM scraper
@@ -82,6 +83,7 @@ func New(cfg *config.Config, contentIDRepo *database.ContentIDMappingRepository)
 		enableHeadless:  cfg.Scrapers.DMM.EnableHeadless,
 		headlessTimeout: cfg.Scrapers.DMM.HeadlessTimeout,
 		contentIDRepo:   contentIDRepo,
+		proxyConfig:     &cfg.Scrapers.Proxy, // Store proxy config for headless browser
 	}
 }
 
@@ -346,7 +348,7 @@ func (s *Scraper) Search(id string) (*models.ScraperResult, error) {
 		logging.Debug("DMM: Using headless browser for video.dmm.co.jp page")
 
 		// Use headless browser to fetch JavaScript-rendered content
-		bodyHTML, err := FetchWithHeadless(url, s.headlessTimeout)
+		bodyHTML, err := FetchWithHeadless(url, s.headlessTimeout, s.proxyConfig)
 		if err != nil {
 			return nil, fmt.Errorf("headless browser failed: %w", err)
 		}
