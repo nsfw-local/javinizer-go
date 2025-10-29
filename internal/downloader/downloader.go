@@ -11,7 +11,9 @@ import (
 	"time"
 
 	"github.com/javinizer/javinizer-go/internal/config"
+	"github.com/javinizer/javinizer-go/internal/httpclient"
 	imageutil "github.com/javinizer/javinizer-go/internal/image"
+	"github.com/javinizer/javinizer-go/internal/logging"
 	"github.com/javinizer/javinizer-go/internal/models"
 	"github.com/javinizer/javinizer-go/internal/template"
 )
@@ -53,9 +55,18 @@ func NewDownloader(cfg *config.OutputConfig, userAgent string) *Downloader {
 		timeout = 60
 	}
 
-	return &Downloader{
-		config: cfg,
-		httpClient: &http.Client{
+	// Determine proxy config: use download_proxy if enabled, otherwise no proxy
+	proxyConfig := &cfg.DownloadProxy
+	if !proxyConfig.Enabled {
+		proxyConfig = nil // No proxy for downloads
+	}
+
+	// Create HTTP client with proxy support
+	client, err := httpclient.NewHTTPClient(proxyConfig, time.Duration(timeout)*time.Second)
+	if err != nil {
+		logging.Errorf("Downloader: Failed to create HTTP client with proxy: %v, using default", err)
+		// Fallback to client without proxy
+		client = &http.Client{
 			Timeout: time.Duration(timeout) * time.Second,
 			Transport: &http.Transport{
 				MaxIdleConns:        10,
@@ -63,8 +74,17 @@ func NewDownloader(cfg *config.OutputConfig, userAgent string) *Downloader {
 				DisableCompression:  false,
 				MaxIdleConnsPerHost: 2,
 			},
-		},
-		userAgent: userAgent,
+		}
+	}
+
+	if cfg.DownloadProxy.Enabled {
+		logging.Infof("Downloader: Using proxy %s", httpclient.SanitizeProxyURL(cfg.DownloadProxy.URL))
+	}
+
+	return &Downloader{
+		config:     cfg,
+		httpClient: client,
+		userAgent:  userAgent,
 	}
 }
 

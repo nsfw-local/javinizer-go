@@ -6,6 +6,12 @@ scrapers:
     priority:
         - r18dev
         - dmm
+    # HTTP/SOCKS5 proxy for all scraper requests (optional)
+    proxy:
+        enabled: false
+        url: ""  # Examples: "http://proxy.example.com:8080", "socks5://localhost:1080"
+        username: ""  # Optional authentication
+        password: ""  # Optional authentication
     r18dev:
         enabled: true
     dmm:
@@ -139,6 +145,12 @@ output:
     download_extrafanart: true
     download_trailer: true
     download_actress: true
+    # Separate proxy for downloads (optional - leave disabled to use no proxy for downloads)
+    download_proxy:
+        enabled: false
+        url: ""  # Leave empty or set to use a different proxy than scrapers
+        username: ""
+        password: ""
 database:
     type: sqlite
     dsn: data/javinizer.db

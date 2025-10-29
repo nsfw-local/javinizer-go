@@ -30,6 +30,7 @@ type ServerConfig struct {
 type ScrapersConfig struct {
 	UserAgent string       `yaml:"user_agent"`
 	Priority  []string     `yaml:"priority"` // Global scraper priority order
+	Proxy     ProxyConfig  `yaml:"proxy"`    // HTTP/SOCKS5 proxy for scraper requests
 	R18Dev    R18DevConfig `yaml:"r18dev"`
 	DMM       DMMConfig    `yaml:"dmm"`
 }
@@ -45,6 +46,14 @@ type DMMConfig struct {
 	ScrapeActress   bool `yaml:"scrape_actress"`
 	EnableHeadless  bool `yaml:"enable_headless"`  // Enable headless browser for video.dmm.co.jp
 	HeadlessTimeout int  `yaml:"headless_timeout"` // Timeout in seconds for headless browser (default: 30)
+}
+
+// ProxyConfig holds HTTP/SOCKS5 proxy configuration
+type ProxyConfig struct {
+	Enabled  bool   `yaml:"enabled"`  // Enable proxy for HTTP requests
+	URL      string `yaml:"url"`      // Proxy URL (e.g., "http://proxy:8080" or "socks5://proxy:1080")
+	Username string `yaml:"username"` // Optional proxy authentication username
+	Password string `yaml:"password"` // Optional proxy authentication password
 }
 
 // MetadataConfig holds metadata aggregation settings
@@ -155,8 +164,9 @@ type OutputConfig struct {
 	DownloadPoster      bool `yaml:"download_poster"`
 	DownloadExtrafanart bool `yaml:"download_extrafanart"`
 	DownloadTrailer     bool `yaml:"download_trailer"`
-	DownloadActress     bool `yaml:"download_actress"`
-	DownloadTimeout     int  `yaml:"download_timeout"` // Timeout in seconds for HTTP downloads (default: 60)
+	DownloadActress     bool        `yaml:"download_actress"`
+	DownloadTimeout     int         `yaml:"download_timeout"` // Timeout in seconds for HTTP downloads (default: 60)
+	DownloadProxy       ProxyConfig `yaml:"download_proxy"`   // Separate proxy for downloads (optional)
 }
 
 // DatabaseConfig holds database configuration
@@ -190,6 +200,10 @@ func DefaultConfig() *Config {
 		Scrapers: ScrapersConfig{
 			UserAgent: "Javinizer (+https://github.com/javinizer/Javinizer)",
 			Priority:  []string{"r18dev", "dmm"}, // Global scraper execution order
+			Proxy: ProxyConfig{
+				Enabled: false,
+				URL:     "",
+			},
 			R18Dev: R18DevConfig{
 				Enabled: true,
 			},
@@ -277,6 +291,10 @@ func DefaultConfig() *Config {
 			DownloadTrailer:     false,
 			DownloadActress:     false,
 			DownloadTimeout:     60, // 60 seconds default
+			DownloadProxy: ProxyConfig{
+				Enabled: false,
+				URL:     "",
+			},
 		},
 		Database: DatabaseConfig{
 			Type: "sqlite",

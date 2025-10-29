@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -251,6 +252,38 @@ func loadConfig() error {
 	}
 
 	logging.Debugf("Loaded configuration from: %s", cfgFile)
+
+	// Validate proxy configuration
+	if cfg.Scrapers.Proxy.Enabled {
+		if cfg.Scrapers.Proxy.URL == "" {
+			logging.Warn("Scraper proxy is enabled but URL is empty, disabling proxy")
+			cfg.Scrapers.Proxy.Enabled = false
+		} else {
+			// Sanitize URL to avoid logging credentials
+			sanitizedURL := cfg.Scrapers.Proxy.URL
+			if u, err := url.Parse(sanitizedURL); err == nil && u.User != nil {
+				u.User = url.User("[REDACTED]")
+				sanitizedURL = u.String()
+			}
+			logging.Infof("Scraper proxy enabled: %s", sanitizedURL)
+		}
+	}
+
+	if cfg.Output.DownloadProxy.Enabled {
+		if cfg.Output.DownloadProxy.URL == "" {
+			logging.Warn("Download proxy is enabled but URL is empty, disabling proxy")
+			cfg.Output.DownloadProxy.Enabled = false
+		} else {
+			// Sanitize URL to avoid logging credentials
+			sanitizedURL := cfg.Output.DownloadProxy.URL
+			if u, err := url.Parse(sanitizedURL); err == nil && u.User != nil {
+				u.User = url.User("[REDACTED]")
+				sanitizedURL = u.String()
+			}
+			logging.Infof("Download proxy enabled: %s", sanitizedURL)
+		}
+	}
+
 	return nil
 }
 
