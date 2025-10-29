@@ -115,14 +115,23 @@ func analyzeFLV(f *os.File) (*VideoInfo, error) {
 		switch tag.TagType {
 		case 18: // Script data (metadata)
 			if !foundMetadata {
+				startPos, _ := f.Seek(0, io.SeekCurrent)
 				metadata, err := parseAMF0(f, tag.DataSize)
 				if err == nil {
 					applyFLVMetadata(info, metadata)
 					foundMetadata = true
 				}
+				// Calculate how many bytes were consumed and skip only the remainder
+				currentPos, _ := f.Seek(0, io.SeekCurrent)
+				bytesConsumed := currentPos - startPos
+				bytesRemaining := int64(tag.DataSize) - bytesConsumed
+				if bytesRemaining > 0 {
+					f.Seek(bytesRemaining, io.SeekCurrent)
+				}
+			} else {
+				// Skip tag data if metadata already found
+				f.Seek(int64(tag.DataSize), io.SeekCurrent)
 			}
-			// Skip tag data if not parsed
-			f.Seek(int64(tag.DataSize), io.SeekCurrent)
 
 		case 9: // Video
 			if info.VideoCodec == "" {
@@ -302,9 +311,34 @@ func parseAMF0(f *os.File, dataSize uint32) (map[string]interface{}, error) {
 			f.Read(strBytes)
 			metadata[name] = string(strBytes)
 
+		case 0x08: // ECMA array - skip entire array
+			var arrayLen uint32
+			binary.Read(f, binary.BigEndian, &arrayLen)
+			// Skip to end marker (would need recursive parsing)
+			// For now, seek to endPos to avoid corruption
+			f.Seek(endPos, io.SeekStart)
+			return metadata, nil
+
+		case 0x0A: // Strict array
+			var arrayLen uint32
+			binary.Read(f, binary.BigEndian, &arrayLen)
+			// Skip array elements - would need recursive parsing
+			f.Seek(endPos, io.SeekStart)
+			return metadata, nil
+
+		case 0x0B: // Date
+			// Date is 8 bytes (double) + 2 bytes (timezone)
+			f.Seek(10, io.SeekCurrent)
+
+		case 0x03: // Object
+			// Skip nested object - would need recursive parsing
+			f.Seek(endPos, io.SeekStart)
+			return metadata, nil
+
 		default:
-			// Skip unknown types
-			break
+			// Unknown type - seek to end to avoid corruption
+			f.Seek(endPos, io.SeekStart)
+			return metadata, nil
 		}
 	}
 

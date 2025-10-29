@@ -174,7 +174,8 @@ func analyzeAVI(f *os.File) (*VideoInfo, error) {
 
 			info.Width = int(mainHeader.Width)
 			info.Height = int(mainHeader.Height)
-			info.Duration = float64(mainHeader.TotalFrames*mainHeader.MicroSecPerFrame) / 1000000.0
+			// Cast to uint64 before multiplication to avoid overflow for long videos
+			info.Duration = float64(uint64(mainHeader.TotalFrames)*uint64(mainHeader.MicroSecPerFrame)) / 1000000.0
 
 			if mainHeader.MicroSecPerFrame > 0 {
 				info.FrameRate = 1000000.0 / float64(mainHeader.MicroSecPerFrame)
@@ -241,7 +242,8 @@ func parseHdrlList(f *os.File, info *VideoInfo, startPos int64, size uint32) err
 
 			info.Width = int(mainHeader.Width)
 			info.Height = int(mainHeader.Height)
-			info.Duration = float64(mainHeader.TotalFrames*mainHeader.MicroSecPerFrame) / 1000000.0
+			// Cast to uint64 before multiplication to avoid overflow for long videos
+			info.Duration = float64(uint64(mainHeader.TotalFrames)*uint64(mainHeader.MicroSecPerFrame)) / 1000000.0
 
 			if mainHeader.MicroSecPerFrame > 0 {
 				info.FrameRate = 1000000.0 / float64(mainHeader.MicroSecPerFrame)
@@ -325,7 +327,12 @@ func parseStrlList(f *os.File, startPos int64, size uint32) (*streamInfo, error)
 				}
 
 				stream.width = int(bitmapHeader.Width)
-				stream.height = int(bitmapHeader.Height)
+				// Height can be negative for top-down frames, take absolute value
+				if bitmapHeader.Height < 0 {
+					stream.height = int(-bitmapHeader.Height)
+				} else {
+					stream.height = int(bitmapHeader.Height)
+				}
 
 				// Update codec from compression field if available
 				compressionCodec := mapAVIVideoCodec(string(bitmapHeader.Compression[:]))
