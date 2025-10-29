@@ -1289,7 +1289,7 @@ func runTagAdd(cmd *cobra.Command, args []string) {
 
 	repo := database.NewMovieTagRepository(db)
 
-	addedCount := 0
+	addedTags := []string{}
 	for _, tag := range tags {
 		if err := repo.AddTag(movieID, tag); err != nil {
 			// Check if it's a duplicate error (UNIQUE constraint)
@@ -1299,13 +1299,13 @@ func runTagAdd(cmd *cobra.Command, args []string) {
 			}
 			logging.Fatalf("Failed to add tag '%s': %v", tag, err)
 		}
-		addedCount++
+		addedTags = append(addedTags, tag)
 	}
 
-	if addedCount == 1 {
-		fmt.Printf("✅ Added tag '%s' to %s\n", tags[0], movieID)
-	} else if addedCount > 1 {
-		fmt.Printf("✅ Added %d tags to %s: %v\n", addedCount, movieID, tags[:addedCount])
+	if len(addedTags) == 1 {
+		fmt.Printf("✅ Added tag '%s' to %s\n", addedTags[0], movieID)
+	} else if len(addedTags) > 1 {
+		fmt.Printf("✅ Added %d tags to %s: %v\n", len(addedTags), movieID, addedTags)
 	} else {
 		fmt.Println("ℹ️  No new tags added (all already exist)")
 	}
@@ -1455,7 +1455,12 @@ func runTagAllTags(cmd *cobra.Command, args []string) {
 	fmt.Println("=== All Tags ===")
 	for _, tag := range tags {
 		// Count movies with this tag
-		movies, _ := repo.GetMoviesWithTag(tag)
+		movies, err := repo.GetMoviesWithTag(tag)
+		if err != nil {
+			logging.Warnf("Failed to count movies for tag '%s': %v", tag, err)
+			fmt.Printf("  - %-30s (error)\n", tag)
+			continue
+		}
 		fmt.Printf("  - %-30s (%d movies)\n", tag, len(movies))
 	}
 	fmt.Printf("\nTotal: %d unique tags\n", len(tags))

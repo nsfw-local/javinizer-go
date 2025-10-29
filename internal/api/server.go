@@ -32,6 +32,7 @@ type ServerDependencies struct {
 	Config      *config.Config
 	ConfigFile  string
 	Registry    *models.ScraperRegistry
+	DB          *database.DB
 	Aggregator  *aggregator.Aggregator
 	MovieRepo   *database.MovieRepository
 	ActressRepo *database.ActressRepository
@@ -106,7 +107,7 @@ func NewServer(deps *ServerDependencies) *gin.Engine {
 		v1.POST("/batch/:id/cancel", cancelBatchJob(deps.JobQueue))
 		v1.PATCH("/batch/:id/movies/:movieId", updateBatchMovie(deps.MovieRepo, deps.JobQueue))
 		v1.POST("/batch/:id/movies/:movieId/preview", previewOrganize(deps.JobQueue, deps.Config))
-		v1.POST("/batch/:id/organize", organizeJob(deps.Matcher, deps.JobQueue, deps.Config))
+		v1.POST("/batch/:id/organize", organizeJob(deps.Matcher, deps.JobQueue, deps.DB, deps.Config))
 	}
 
 	return router

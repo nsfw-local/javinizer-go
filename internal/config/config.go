@@ -96,8 +96,7 @@ type GenreReplacementConfig struct {
 
 // TagDatabaseConfig holds per-movie tag database configuration
 type TagDatabaseConfig struct {
-	Enabled bool `yaml:"enabled"`  // Enable per-movie tag lookup from database
-	AutoAdd bool `yaml:"auto_add"` // Automatically add movies to tag database (with empty tag list)
+	Enabled bool `yaml:"enabled"` // Enable per-movie tag lookup from database
 }
 
 // NFOConfig holds NFO generation settings
@@ -229,7 +228,6 @@ func DefaultConfig() *Config {
 			},
 			TagDatabase: TagDatabaseConfig{
 				Enabled: false, // Opt-in feature for per-movie custom tags
-				AutoAdd: false,
 			},
 			IgnoreGenres: []string{},
 			NFO: NFOConfig{

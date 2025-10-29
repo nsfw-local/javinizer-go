@@ -121,6 +121,7 @@ func runAPI(hostFlag string, portFlag int) {
 		Config:      cfg,
 		ConfigFile:  cfgFile,
 		Registry:    registry,
+		DB:          db,
 		Aggregator:  agg,
 		MovieRepo:   movieRepo,
 		ActressRepo: actressRepo,

@@ -182,7 +182,7 @@ func updateBatchMovie(movieRepo *database.MovieRepository, jobQueue *worker.JobQ
 // @Failure 400 {object} ErrorResponse
 // @Failure 404 {object} ErrorResponse
 // @Router /api/v1/batch/{id}/organize [post]
-func organizeJob(mat *matcher.Matcher, jobQueue *worker.JobQueue, cfg *config.Config) gin.HandlerFunc {
+func organizeJob(mat *matcher.Matcher, jobQueue *worker.JobQueue, db *database.DB, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		jobID := c.Param("id")
 
@@ -206,7 +206,7 @@ func organizeJob(mat *matcher.Matcher, jobQueue *worker.JobQueue, cfg *config.Co
 		}
 
 		// Start organization in background
-		go processOrganizeJob(job, mat, req.Destination, req.CopyOnly, cfg)
+		go processOrganizeJob(job, mat, req.Destination, req.CopyOnly, db, cfg)
 
 		c.JSON(200, gin.H{"message": "Organization started"})
 	}

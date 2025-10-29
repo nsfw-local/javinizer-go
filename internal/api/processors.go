@@ -241,12 +241,11 @@ func processBatchJob(job *worker.BatchJob, registry *models.ScraperRegistry, agg
 }
 
 // processOrganizeJob processes file organization for a completed scrape job
-func processOrganizeJob(job *worker.BatchJob, mat *matcher.Matcher, destination string, copyOnly bool, cfg *config.Config) {
+func processOrganizeJob(job *worker.BatchJob, mat *matcher.Matcher, destination string, copyOnly bool, db *database.DB, cfg *config.Config) {
 	// Initialize organizer, downloader, and NFO generator
 	org := organizer.NewOrganizer(&cfg.Output)
 	dl := downloader.NewDownloader(&cfg.Output, "Javinizer/1.0")
-	// Note: nil db means tag database not available in API context
-	nfoGen := nfo.NewGenerator(nfo.ConfigFromAppConfig(&cfg.Metadata.NFO, &cfg.Output, &cfg.Metadata, nil))
+	nfoGen := nfo.NewGenerator(nfo.ConfigFromAppConfig(&cfg.Metadata.NFO, &cfg.Output, &cfg.Metadata, db))
 
 	// Broadcast organization started
 	wsHub.BroadcastProgress(&ws.ProgressMessage{

@@ -40,3 +40,4 @@ configs/config.yaml
 
 # Test files
 /test-videos/
+cli
