@@ -43,6 +43,8 @@ type SecurityConfig struct {
 	MaxFilesPerScan int `yaml:"max_files_per_scan"`
 	// Timeout for scan operations in seconds
 	ScanTimeoutSeconds int `yaml:"scan_timeout_seconds"`
+	// Allowed origins for CORS and WebSocket connections (empty = same-origin only, "*" = allow all)
+	AllowedOrigins []string `yaml:"allowed_origins"`
 }
 
 // ScrapersConfig holds scraper-specific settings

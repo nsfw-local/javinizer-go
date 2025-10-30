@@ -20,11 +20,7 @@ import (
 
 var (
 	wsHub      *ws.Hub
-	wsUpgrader = websocket.Upgrader{
-		CheckOrigin: func(r *http.Request) bool {
-			return true // Allow all origins for development
-		},
-	}
+	wsUpgrader websocket.Upgrader
 )
 
 // ServerDependencies holds all dependencies needed to create the API server
@@ -40,11 +36,37 @@ type ServerDependencies struct {
 	JobQueue    *worker.JobQueue
 }
 
+// isOriginAllowed checks if an origin is allowed based on configuration
+func isOriginAllowed(origin string, allowedOrigins []string) bool {
+	// Empty list = same-origin only (most secure default)
+	if len(allowedOrigins) == 0 {
+		return false
+	}
+
+	// Check each allowed origin
+	for _, allowed := range allowedOrigins {
+		if allowed == "*" || allowed == origin {
+			return true
+		}
+	}
+
+	return false
+}
+
 // NewServer creates and configures the Gin router with all API endpoints
 func NewServer(deps *ServerDependencies) *gin.Engine {
 	// Initialize job queue and WebSocket hub
 	wsHub = ws.NewHub()
 	go wsHub.Run()
+
+	// Configure WebSocket upgrader with origin checking from config
+	allowedOrigins := deps.Config.API.Security.AllowedOrigins
+	wsUpgrader = websocket.Upgrader{
+		CheckOrigin: func(r *http.Request) bool {
+			origin := r.Header.Get("Origin")
+			return isOriginAllowed(origin, allowedOrigins)
+		},
+	}
 
 	// Setup Gin router
 	if deps.Config.Logging.Level != "debug" {
@@ -53,11 +75,31 @@ func NewServer(deps *ServerDependencies) *gin.Engine {
 
 	router := gin.Default()
 
-	// Enable CORS for web UI
+	// Enable CORS for web UI with origin validation
 	router.Use(func(c *gin.Context) {
-		c.Writer.Header().Set("Access-Control-Allow-Origin", "*")
+		origin := c.Request.Header.Get("Origin")
+
+		// Check for wildcard in allowed origins
+		hasWildcard := false
+		for _, allowed := range allowedOrigins {
+			if allowed == "*" {
+				hasWildcard = true
+				break
+			}
+		}
+
+		if hasWildcard {
+			// Wildcard: allow all origins
+			c.Writer.Header().Set("Access-Control-Allow-Origin", "*")
+		} else if isOriginAllowed(origin, allowedOrigins) {
+			// Specific origin allowed
+			c.Writer.Header().Set("Access-Control-Allow-Origin", origin)
+			c.Writer.Header().Set("Access-Control-Allow-Credentials", "true")
+		}
+
 		c.Writer.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
 		c.Writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+
 		if c.Request.Method == "OPTIONS" {
 			c.AbortWithStatus(204)
 			return
@@ -99,7 +141,7 @@ func NewServer(deps *ServerDependencies) *gin.Engine {
 		// File endpoints
 		v1.GET("/cwd", getCurrentWorkingDirectory())
 		v1.POST("/scan", scanDirectory(deps.Matcher, deps.Config))
-		v1.POST("/browse", browseDirectory())
+		v1.POST("/browse", browseDirectory(deps.Config))
 
 		// Batch endpoints
 		v1.POST("/batch/scrape", batchScrape(deps.Registry, deps.Aggregator, deps.MovieRepo, deps.Matcher, deps.JobQueue, deps.Config))

@@ -13,6 +13,11 @@ api:
         max_files_per_scan: 10000
         # Timeout for scan operations (seconds)
         scan_timeout_seconds: 30
+        # Allowed origins for CORS and WebSocket connections
+        # Empty = same-origin only (most secure)
+        # "*" = allow all origins (use only for local development)
+        # Specific origins: ["http://localhost:3000", "http://localhost:8080"]
+        allowed_origins: []
 scrapers:
     user_agent: Javinizer (+https://github.com/javinizer/Javinizer)
     priority:

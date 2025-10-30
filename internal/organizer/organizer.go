@@ -599,8 +599,14 @@ func CleanEmptyDirectories(path string, baseDir string) error {
 	// Get the directory of the file
 	dir := filepath.Dir(path)
 
+	// Make paths absolute for safe comparison
+	dir, err := filepath.Abs(dir)
+	if err != nil {
+		return err
+	}
+
 	// Don't go above base directory
-	baseDir, err := filepath.Abs(baseDir)
+	baseDir, err = filepath.Abs(baseDir)
 	if err != nil {
 		return err
 	}
@@ -625,8 +631,19 @@ func CleanEmptyDirectories(path string, baseDir string) error {
 		// Move up one level
 		parentDir := filepath.Dir(dir)
 
-		// Stop if we've reached or gone above the base directory
-		if parentDir == dir || !strings.HasPrefix(parentDir, baseDir) {
+		// Stop if we've reached the root (no more parents)
+		if parentDir == dir {
+			break
+		}
+
+		// Stop if we've reached or gone above the base directory using safe path comparison
+		rel, err := filepath.Rel(baseDir, parentDir)
+		if err != nil {
+			// Cannot determine relationship, stop to be safe
+			break
+		}
+		if rel == "." || strings.HasPrefix(rel, "..") {
+			// We've reached or gone above baseDir
 			break
 		}
 
