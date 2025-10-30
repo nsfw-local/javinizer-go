@@ -1,6 +1,18 @@
 server:
     host: localhost
     port: 8080
+api:
+    security:
+        # Allowed directories for scanning/browsing (empty = no allowlist restriction)
+        # Supports ~ for home directory expansion
+        allowed_directories: []
+        # Denied directories are always blocked (system directories)
+        # These are in addition to the built-in denylist
+        denied_directories: []
+        # Maximum number of files to return in a scan
+        max_files_per_scan: 10000
+        # Timeout for scan operations (seconds)
+        scan_timeout_seconds: 30
 scrapers:
     user_agent: Javinizer (+https://github.com/javinizer/Javinizer)
     priority:

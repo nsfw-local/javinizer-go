@@ -11,6 +11,7 @@ import (
 // Config represents the application configuration
 type Config struct {
 	Server      ServerConfig      `yaml:"server"`
+	API         APIConfig         `yaml:"api"`
 	Scrapers    ScrapersConfig    `yaml:"scrapers"`
 	Metadata    MetadataConfig    `yaml:"metadata"`
 	Matching    MatchingConfig    `yaml:"file_matching"`
@@ -25,6 +26,23 @@ type Config struct {
 type ServerConfig struct {
 	Host string `yaml:"host"`
 	Port int    `yaml:"port"`
+}
+
+// APIConfig holds API-specific configuration
+type APIConfig struct {
+	Security SecurityConfig `yaml:"security"`
+}
+
+// SecurityConfig holds API security settings for path validation and resource limits
+type SecurityConfig struct {
+	// Allowed directories for scanning/browsing (empty = no allowlist restriction)
+	AllowedDirectories []string `yaml:"allowed_directories"`
+	// Denied directories (in addition to built-in system directories)
+	DeniedDirectories []string `yaml:"denied_directories"`
+	// Maximum number of files to return in a scan
+	MaxFilesPerScan int `yaml:"max_files_per_scan"`
+	// Timeout for scan operations in seconds
+	ScanTimeoutSeconds int `yaml:"scan_timeout_seconds"`
 }
 
 // ScrapersConfig holds scraper-specific settings
@@ -204,6 +222,14 @@ func DefaultConfig() *Config {
 		Server: ServerConfig{
 			Host: "localhost",
 			Port: 8080,
+		},
+		API: APIConfig{
+			Security: SecurityConfig{
+				AllowedDirectories: []string{}, // Empty = no allowlist restriction
+				DeniedDirectories:  []string{}, // Additional denied dirs beyond built-in
+				MaxFilesPerScan:    10000,      // Reasonable limit for large directories
+				ScanTimeoutSeconds: 30,         // 30 seconds timeout for scans
+			},
 		},
 		Scrapers: ScrapersConfig{
 			UserAgent: "Javinizer (+https://github.com/javinizer/Javinizer)",

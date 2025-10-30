@@ -1,11 +1,25 @@
 package scanner
 
 import (
+	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/javinizer/javinizer-go/internal/config"
+)
+
+var (
+	ErrMaxFilesExceeded = errors.New("maximum file limit exceeded")
+	ErrScanTimeout      = errors.New("scan operation timed out")
+)
+
+const (
+	// MaxSkippedFiles is the maximum number of skipped file paths to store
+	// to prevent unbounded memory growth when scanning directories with millions of non-video files
+	MaxSkippedFiles = 1000
 )
 
 // Scanner finds video files based on configuration
@@ -22,22 +36,34 @@ func NewScanner(cfg *config.MatchingConfig) *Scanner {
 
 // FileInfo represents a discovered video file
 type FileInfo struct {
-	Path      string // Full absolute path
-	Name      string // Filename without path
-	Extension string // File extension (e.g., ".mp4")
-	Size      int64  // File size in bytes
-	Dir       string // Directory containing the file
+	Path      string    // Full absolute path
+	Name      string    // Filename without path
+	Extension string    // File extension (e.g., ".mp4")
+	Size      int64     // File size in bytes
+	ModTime   time.Time // Last modified time
+	Dir       string    // Directory containing the file
 }
 
 // ScanResult contains the results of a directory scan
 type ScanResult struct {
-	Files   []FileInfo // Matched video files
-	Skipped []string   // Files that were skipped (reason in comment)
-	Errors  []error    // Errors encountered during scan
+	Files        []FileInfo // Matched video files
+	Skipped      []string   // Sample of skipped files (capped at MaxSkippedFiles)
+	SkippedCount int        // Total count of skipped files
+	Errors       []error    // Errors encountered during scan
+	LimitReached bool       // Whether max file limit was reached
+	TimedOut     bool       // Whether scan timed out
+	TotalScanned int        // Total number of files scanned before limit/timeout
 }
 
-// Scan recursively scans a directory for video files
+// Scan recursively scans a directory for video files (no limits)
 func (s *Scanner) Scan(rootPath string) (*ScanResult, error) {
+	// Call ScanWithLimits with no limits (context.Background(), maxFiles = 0)
+	return s.ScanWithLimits(context.Background(), rootPath, 0)
+}
+
+// ScanWithLimits recursively scans a directory for video files with timeout and file count limits
+// maxFiles = 0 means no limit
+func (s *Scanner) ScanWithLimits(ctx context.Context, rootPath string, maxFiles int) (*ScanResult, error) {
 	result := &ScanResult{
 		Files:   make([]FileInfo, 0),
 		Skipped: make([]string, 0),
@@ -56,7 +82,19 @@ func (s *Scanner) Scan(rootPath string) (*ScanResult, error) {
 	}
 
 	// Walk the directory tree
+	fileCount := 0
 	err = filepath.WalkDir(absPath, func(path string, d os.DirEntry, err error) error {
+		// Check context for timeout/cancellation (check every 100 files for performance)
+		fileCount++
+		if fileCount%100 == 0 {
+			select {
+			case <-ctx.Done():
+				result.TimedOut = true
+				return filepath.SkipAll // Stop walking
+			default:
+			}
+		}
+
 		if err != nil {
 			result.Errors = append(result.Errors, err)
 			return nil // Continue scanning
@@ -67,6 +105,8 @@ func (s *Scanner) Scan(rootPath string) (*ScanResult, error) {
 			return nil
 		}
 
+		result.TotalScanned++
+
 		// Check if file matches criteria
 		if s.shouldIncludeFile(path, d) {
 			info, err := d.Info()
@@ -75,17 +115,37 @@ func (s *Scanner) Scan(rootPath string) (*ScanResult, error) {
 				return nil
 			}
 
+			// Skip symlinks to prevent metadata leakage from protected files
+			if info.Mode()&os.ModeSymlink != 0 {
+				result.SkippedCount++
+				if len(result.Skipped) < MaxSkippedFiles {
+					result.Skipped = append(result.Skipped, path)
+				}
+				return nil
+			}
+
 			fileInfo := FileInfo{
 				Path:      path,
 				Name:      d.Name(),
 				Extension: filepath.Ext(path),
 				Size:      info.Size(),
+				ModTime:   info.ModTime(),
 				Dir:       filepath.Dir(path),
 			}
 
 			result.Files = append(result.Files, fileInfo)
+
+			// Check if we've reached the file limit
+			if maxFiles > 0 && len(result.Files) >= maxFiles {
+				result.LimitReached = true
+				return filepath.SkipAll // Stop walking
+			}
 		} else {
-			result.Skipped = append(result.Skipped, path)
+			// Track skipped files count, but only store first MaxSkippedFiles paths to prevent memory issues
+			result.SkippedCount++
+			if len(result.Skipped) < MaxSkippedFiles {
+				result.Skipped = append(result.Skipped, path)
+			}
 		}
 
 		return nil
@@ -112,8 +172,8 @@ func (s *Scanner) ScanSingle(path string) (*ScanResult, error) {
 		return nil, err
 	}
 
-	// Check if it's a file or directory
-	info, err := os.Stat(absPath)
+	// Check if it's a file or directory (use Lstat to not follow symlinks)
+	info, err := os.Lstat(absPath)
 	if err != nil {
 		return nil, err
 	}
@@ -138,33 +198,58 @@ func (s *Scanner) ScanSingle(path string) (*ScanResult, error) {
 					continue
 				}
 
+				// Skip symlinks to prevent metadata leakage from protected files
+				if entryInfo.Mode()&os.ModeSymlink != 0 {
+					result.SkippedCount++
+					if len(result.Skipped) < MaxSkippedFiles {
+						result.Skipped = append(result.Skipped, fullPath)
+					}
+					continue
+				}
+
 				fileInfo := FileInfo{
 					Path:      fullPath,
 					Name:      entry.Name(),
 					Extension: filepath.Ext(fullPath),
 					Size:      entryInfo.Size(),
+					ModTime:   entryInfo.ModTime(),
 					Dir:       absPath,
 				}
 
 				result.Files = append(result.Files, fileInfo)
 			} else {
-				result.Skipped = append(result.Skipped, fullPath)
+				result.SkippedCount++
+				if len(result.Skipped) < MaxSkippedFiles {
+					result.Skipped = append(result.Skipped, fullPath)
+				}
 			}
 		}
 	} else {
 		// Single file
 		if s.shouldIncludeFile(absPath, nil) {
-			fileInfo := FileInfo{
-				Path:      absPath,
-				Name:      info.Name(),
-				Extension: filepath.Ext(absPath),
-				Size:      info.Size(),
-				Dir:       filepath.Dir(absPath),
-			}
+			// Skip symlinks to prevent metadata leakage from protected files
+			if info.Mode()&os.ModeSymlink != 0 {
+				result.SkippedCount++
+				if len(result.Skipped) < MaxSkippedFiles {
+					result.Skipped = append(result.Skipped, absPath)
+				}
+			} else {
+				fileInfo := FileInfo{
+					Path:      absPath,
+					Name:      info.Name(),
+					Extension: filepath.Ext(absPath),
+					Size:      info.Size(),
+					ModTime:   info.ModTime(),
+					Dir:       filepath.Dir(absPath),
+				}
 
-			result.Files = append(result.Files, fileInfo)
+				result.Files = append(result.Files, fileInfo)
+			}
 		} else {
-			result.Skipped = append(result.Skipped, absPath)
+			result.SkippedCount++
+			if len(result.Skipped) < MaxSkippedFiles {
+				result.Skipped = append(result.Skipped, absPath)
+			}
 		}
 	}
 
@@ -228,7 +313,8 @@ func (s *Scanner) Filter(files []string) []FileInfo {
 			continue
 		}
 
-		info, err := os.Stat(path)
+		// Use Lstat to not follow symlinks
+		info, err := os.Lstat(path)
 		if err != nil {
 			continue
 		}
@@ -237,11 +323,17 @@ func (s *Scanner) Filter(files []string) []FileInfo {
 			continue
 		}
 
+		// Skip symlinks to prevent metadata leakage from protected files
+		if info.Mode()&os.ModeSymlink != 0 {
+			continue
+		}
+
 		fileInfo := FileInfo{
 			Path:      path,
 			Name:      info.Name(),
 			Extension: filepath.Ext(path),
 			Size:      info.Size(),
+			ModTime:   info.ModTime(),
 			Dir:       filepath.Dir(path),
 		}
 

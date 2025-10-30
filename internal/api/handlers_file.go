@@ -1,9 +1,10 @@
 package api
 
 import (
-	"fmt"
+	"context"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/javinizer/javinizer-go/internal/config"
@@ -30,17 +31,34 @@ func scanDirectory(mat *matcher.Matcher, cfg *config.Config) gin.HandlerFunc {
 			return
 		}
 
-		// Verify path exists
-		if _, err := os.Stat(req.Path); os.IsNotExist(err) {
-			c.JSON(400, ErrorResponse{Error: fmt.Sprintf("Path does not exist: %s", req.Path)})
+		// Validate and sanitize the path for security
+		validPath, err := validateScanPath(req.Path, &cfg.API.Security)
+		if err != nil {
+			// Return 403 for access denied, 400 for other validation errors
+			statusCode := 400
+			if contains(err.Error(), "access denied") {
+				statusCode = 403
+			}
+			c.JSON(statusCode, ErrorResponse{Error: err.Error()})
 			return
 		}
 
-		// Scan directory
+		// Create context with timeout from config
+		timeout := time.Duration(cfg.API.Security.ScanTimeoutSeconds) * time.Second
+		ctx, cancel := context.WithTimeout(context.Background(), timeout)
+		defer cancel()
+
+		// Scan directory with resource limits
 		scan := scanner.NewScanner(&cfg.Matching)
-		result, err := scan.Scan(req.Path)
+		result, err := scan.ScanWithLimits(ctx, validPath, cfg.API.Security.MaxFilesPerScan)
 		if err != nil {
 			c.JSON(500, ErrorResponse{Error: err.Error()})
+			return
+		}
+
+		// Check if scan was limited or timed out
+		if result.TimedOut {
+			c.JSON(503, ErrorResponse{Error: "scan operation timed out"})
 			return
 		}
 
@@ -56,14 +74,13 @@ func scanDirectory(mat *matcher.Matcher, cfg *config.Config) gin.HandlerFunc {
 
 		for _, fileInfo := range result.Files {
 			match, found := matchMap[fileInfo.Path]
-			info, _ := os.Stat(fileInfo.Path)
 
 			apiFileInfo := FileInfo{
 				Name:    fileInfo.Name,
 				Path:    fileInfo.Path,
 				IsDir:   false,
-				Size:    info.Size(),
-				ModTime: info.ModTime().Format("2006-01-02T15:04:05Z07:00"),
+				Size:    fileInfo.Size,
+				ModTime: fileInfo.ModTime.Format("2006-01-02T15:04:05Z07:00"),
 				Matched: found,
 			}
 			if found {
@@ -108,7 +125,7 @@ func getCurrentWorkingDirectory() gin.HandlerFunc {
 // @Success 200 {object} BrowseResponse
 // @Failure 400 {object} ErrorResponse
 // @Router /api/v1/browse [post]
-func browseDirectory() gin.HandlerFunc {
+func browseDirectory(cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req BrowseRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
@@ -121,19 +138,20 @@ func browseDirectory() gin.HandlerFunc {
 			req.Path, _ = os.Getwd()
 		}
 
-		// Verify path exists and is a directory
-		info, err := os.Stat(req.Path)
-		if os.IsNotExist(err) {
-			c.JSON(400, ErrorResponse{Error: fmt.Sprintf("Path does not exist: %s", req.Path)})
-			return
-		}
-		if !info.IsDir() {
-			c.JSON(400, ErrorResponse{Error: fmt.Sprintf("Path is not a directory: %s", req.Path)})
+		// Validate and sanitize the path for security
+		validPath, err := validateScanPath(req.Path, &cfg.API.Security)
+		if err != nil {
+			// Return 403 for access denied, 400 for other validation errors
+			statusCode := 400
+			if contains(err.Error(), "access denied") {
+				statusCode = 403
+			}
+			c.JSON(statusCode, ErrorResponse{Error: err.Error()})
 			return
 		}
 
 		// Read directory contents
-		entries, err := os.ReadDir(req.Path)
+		entries, err := os.ReadDir(validPath)
 		if err != nil {
 			c.JSON(500, ErrorResponse{Error: err.Error()})
 			return
@@ -142,7 +160,7 @@ func browseDirectory() gin.HandlerFunc {
 		// Build response
 		items := make([]FileInfo, 0, len(entries))
 		for _, entry := range entries {
-			fullPath := filepath.Join(req.Path, entry.Name())
+			fullPath := filepath.Join(validPath, entry.Name())
 			info, err := entry.Info()
 			if err != nil {
 				continue
