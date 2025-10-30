@@ -24,6 +24,10 @@ go.work
 *.swo
 *~
 
+# Backup files
+*.bak
+*.backup
+
 # OS
 .DS_Store
 Thumbs.db
