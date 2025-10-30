@@ -202,8 +202,27 @@ func (o *Organizer) Plan(match matcher.MatchResult, movie *models.Movie, destDir
 		// Check if source and dest base directories match (same parent location)
 		sourceParent := filepath.Dir(sourceDir)
 
+		// Normalize both paths for accurate comparison (handles symlinks and different path formats)
+		sourceParentAbs, err := filepath.Abs(filepath.Clean(sourceParent))
+		if err == nil {
+			// Resolve symlinks if possible (ignore errors - fall back to non-symlink path)
+			sourceParentAbs, _ = filepath.EvalSymlinks(sourceParentAbs)
+		} else {
+			// If Abs fails, use original path
+			sourceParentAbs = sourceParent
+		}
+
+		destDirAbs, err := filepath.Abs(filepath.Clean(destDir))
+		if err == nil {
+			// Resolve symlinks if possible (ignore errors - fall back to non-symlink path)
+			destDirAbs, _ = filepath.EvalSymlinks(destDirAbs)
+		} else {
+			// If Abs fails, use original path
+			destDirAbs = destDir
+		}
+
 		// For in-place, we ignore SubfolderFormat - just check if destDir matches sourceParent
-		if sourceParent == destDir {
+		if sourceParentAbs == destDirAbs {
 			// Check if source folder is dedicated to this ID
 			isDedicated = o.isDedicatedFolder(sourceDir, match.ID, o.matcher)
 
@@ -599,19 +618,37 @@ func CleanEmptyDirectories(path string, baseDir string) error {
 	// Get the directory of the file
 	dir := filepath.Dir(path)
 
-	// Make paths absolute for safe comparison
-	dir, err := filepath.Abs(dir)
+	// Canonicalize and resolve symlinks for safe comparison
+	dir, err := filepath.Abs(filepath.Clean(dir))
 	if err != nil {
 		return err
 	}
-
-	// Don't go above base directory
-	baseDir, err = filepath.Abs(baseDir)
+	// Resolve symlinks to prevent symlink-based escapes
+	dir, err = filepath.EvalSymlinks(dir)
 	if err != nil {
+		// If we can't resolve symlinks, fail safely
+		return err
+	}
+
+	// Canonicalize base directory
+	baseDir, err = filepath.Abs(filepath.Clean(baseDir))
+	if err != nil {
+		return err
+	}
+	// Resolve symlinks in base directory
+	baseDir, err = filepath.EvalSymlinks(baseDir)
+	if err != nil {
+		// If we can't resolve symlinks, fail safely
 		return err
 	}
 
 	for {
+		// CRITICAL: Check if we've reached baseDir BEFORE attempting removal
+		if dir == baseDir {
+			// Don't remove the base directory itself
+			break
+		}
+
 		// Check if directory is empty
 		entries, err := os.ReadDir(dir)
 		if err != nil {
@@ -623,7 +660,7 @@ func CleanEmptyDirectories(path string, baseDir string) error {
 			break
 		}
 
-		// Remove empty directory
+		// Safe to remove (we've verified dir != baseDir)
 		if err := os.Remove(dir); err != nil {
 			return err
 		}
@@ -636,14 +673,14 @@ func CleanEmptyDirectories(path string, baseDir string) error {
 			break
 		}
 
-		// Stop if we've reached or gone above the base directory using safe path comparison
+		// Additional safety check: ensure parentDir is not above baseDir
 		rel, err := filepath.Rel(baseDir, parentDir)
 		if err != nil {
 			// Cannot determine relationship, stop to be safe
 			break
 		}
-		if rel == "." || strings.HasPrefix(rel, "..") {
-			// We've reached or gone above baseDir
+		if strings.HasPrefix(rel, "..") {
+			// We've gone above baseDir, stop
 			break
 		}
 

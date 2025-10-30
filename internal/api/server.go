@@ -3,6 +3,7 @@ package api
 import (
 	"fmt"
 	"net/http"
+	"net/url"
 
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
@@ -36,13 +37,24 @@ type ServerDependencies struct {
 	JobQueue    *worker.JobQueue
 }
 
-// isOriginAllowed checks if an origin is allowed based on configuration
-func isOriginAllowed(origin string, allowedOrigins []string) bool {
-	// Empty list = same-origin only (most secure default)
-	if len(allowedOrigins) == 0 {
+// isSameOrigin checks if the origin matches the request host (same-origin)
+func isSameOrigin(origin string, r *http.Request) bool {
+	if origin == "" {
+		// No Origin header (e.g., some non-browser clients) - treat as same-origin
+		return true
+	}
+
+	u, err := url.Parse(origin)
+	if err != nil {
 		return false
 	}
 
+	return u.Host == r.Host
+}
+
+// isOriginAllowed checks if an origin is allowed based on configuration
+// Note: This does NOT handle same-origin checking - use isSameOrigin for that
+func isOriginAllowed(origin string, allowedOrigins []string) bool {
 	// Check each allowed origin
 	for _, allowed := range allowedOrigins {
 		if allowed == "*" || allowed == origin {
@@ -64,7 +76,28 @@ func NewServer(deps *ServerDependencies) *gin.Engine {
 	wsUpgrader = websocket.Upgrader{
 		CheckOrigin: func(r *http.Request) bool {
 			origin := r.Header.Get("Origin")
-			return isOriginAllowed(origin, allowedOrigins)
+
+			// Empty config → allow same-origin only (secure default)
+			if len(allowedOrigins) == 0 {
+				return isSameOrigin(origin, r)
+			}
+
+			// Check for wildcard
+			for _, allowed := range allowedOrigins {
+				if allowed == "*" {
+					logging.Debugf("WebSocket: Allowing connection from any origin (wildcard enabled)")
+					return true
+				}
+			}
+
+			// Check for exact origin match
+			if isOriginAllowed(origin, allowedOrigins) {
+				return true
+			}
+
+			// Reject
+			logging.Debugf("WebSocket: Rejected origin %s (not in allowed list)", origin)
+			return false
 		},
 	}
 
@@ -79,22 +112,31 @@ func NewServer(deps *ServerDependencies) *gin.Engine {
 	router.Use(func(c *gin.Context) {
 		origin := c.Request.Header.Get("Origin")
 
-		// Check for wildcard in allowed origins
-		hasWildcard := false
-		for _, allowed := range allowedOrigins {
-			if allowed == "*" {
-				hasWildcard = true
-				break
+		// Handle CORS based on configuration
+		if len(allowedOrigins) == 0 {
+			// Empty config → allow same-origin only
+			if isSameOrigin(origin, c.Request) {
+				c.Writer.Header().Set("Access-Control-Allow-Origin", origin)
+				c.Writer.Header().Set("Access-Control-Allow-Credentials", "true")
 			}
-		}
+		} else {
+			// Check for wildcard in allowed origins
+			hasWildcard := false
+			for _, allowed := range allowedOrigins {
+				if allowed == "*" {
+					hasWildcard = true
+					break
+				}
+			}
 
-		if hasWildcard {
-			// Wildcard: allow all origins
-			c.Writer.Header().Set("Access-Control-Allow-Origin", "*")
-		} else if isOriginAllowed(origin, allowedOrigins) {
-			// Specific origin allowed
-			c.Writer.Header().Set("Access-Control-Allow-Origin", origin)
-			c.Writer.Header().Set("Access-Control-Allow-Credentials", "true")
+			if hasWildcard {
+				// Wildcard: allow all origins (no credentials for wildcard)
+				c.Writer.Header().Set("Access-Control-Allow-Origin", "*")
+			} else if isOriginAllowed(origin, allowedOrigins) {
+				// Specific origin allowed
+				c.Writer.Header().Set("Access-Control-Allow-Origin", origin)
+				c.Writer.Header().Set("Access-Control-Allow-Credentials", "true")
+			}
 		}
 
 		c.Writer.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
