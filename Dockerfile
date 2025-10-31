@@ -93,11 +93,15 @@ COPY --from=go-builder /build/web/dist /app/web/dist
 # Copy API documentation (Swagger/OpenAPI) to /app (avoids volume mount shadowing)
 COPY --from=go-builder /build/docs/swagger /app/docs/swagger
 
-# Copy default configuration
-COPY configs/config.yaml.example /javinizer/config.yaml
+# Copy default configuration to /app (not /javinizer, to avoid volume shadowing)
+COPY configs/config.yaml.example /app/config/config.yaml.default
 
 # Configure server to bind to 0.0.0.0 for Docker (not localhost)
-RUN sed -i 's/host: localhost/host: 0.0.0.0/' /javinizer/config.yaml
+RUN sed -i 's/^\([[:space:]]*\)host: localhost/\1host: 0.0.0.0/' /app/config/config.yaml.default
+
+# Copy entrypoint script
+COPY scripts/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
 # Create directory structure for volumes
 RUN mkdir -p /javinizer/logs /javinizer/cache /data && \
@@ -121,5 +125,8 @@ EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
     CMD wget --no-verbose --tries=1 --spider http://localhost:8080/health || exit 1
 
-# Run API server
+# Entrypoint script to initialize config
+ENTRYPOINT ["docker-entrypoint.sh"]
+
+# Run API server (will be passed to entrypoint)
 CMD ["javinizer", "api"]
