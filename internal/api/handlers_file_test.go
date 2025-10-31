@@ -158,10 +158,12 @@ func TestScanDirectory_PathTraversalPrevention(t *testing.T) {
 	router.POST("/scan", scanDirectory(mat, cfg))
 
 	tests := []struct {
-		name           string
-		path           string
-		expectedStatus int
-		errorContains  string
+		name             string
+		path             string
+		expectedStatus   int      // Single expected status (use 0 if acceptedStatuses is set)
+		acceptedStatuses []int    // Multiple acceptable statuses (for platform-dependent behavior)
+		errorContains    string   // Single error substring (use "" if acceptedErrors is set)
+		acceptedErrors   []string // Multiple acceptable error substrings
 	}{
 		{
 			name:           "valid temp directory",
@@ -181,8 +183,8 @@ func TestScanDirectory_PathTraversalPrevention(t *testing.T) {
 			// Behavior depends on temp directory depth:
 			// - macOS: /var/folders/.../T/test/../../../etc → /var/folders/.../etc (doesn't exist) → 400
 			// - Linux: /tmp/test/../../../etc → /etc (exists, blocked) → 403
-			expectedStatus: 0,  // Will validate manually
-			errorContains:  "", // Will validate manually
+			acceptedStatuses: []int{400, 403},
+			acceptedErrors:   []string{"does not exist", "system directory", "access denied"},
 		},
 		{
 			name:           "nonexistent path",
@@ -204,23 +206,39 @@ func TestScanDirectory_PathTraversalPrevention(t *testing.T) {
 
 			router.ServeHTTP(w, req)
 
-			// Special handling for path traversal test (environment-dependent behavior)
-			if tt.expectedStatus == 0 {
-				// Accept either 400 (path doesn't exist) or 403 (system directory blocked)
-				assert.True(t, w.Code == 400 || w.Code == 403,
-					"Expected 400 or 403 for path traversal, got %d. Response: %s", w.Code, w.Body.String())
-				// Verify error message contains security-related keywords
-				responseBody := w.Body.String()
-				assert.True(t,
-					strings.Contains(responseBody, "does not exist") ||
-						strings.Contains(responseBody, "system directory") ||
-						strings.Contains(responseBody, "access denied"),
-					"Expected security-related error message, got: %s", responseBody)
-			} else {
-				assert.Equal(t, tt.expectedStatus, w.Code, "Response body: %s", w.Body.String())
-				if tt.errorContains != "" {
-					assert.Contains(t, w.Body.String(), tt.errorContains)
+			// Handle status code validation
+			if len(tt.acceptedStatuses) > 0 {
+				// Multiple acceptable statuses (platform-dependent behavior)
+				statusMatched := false
+				for _, acceptedStatus := range tt.acceptedStatuses {
+					if w.Code == acceptedStatus {
+						statusMatched = true
+						break
+					}
 				}
+				assert.True(t, statusMatched,
+					"Expected one of %v, got %d. Response: %s", tt.acceptedStatuses, w.Code, w.Body.String())
+			} else {
+				// Single expected status
+				assert.Equal(t, tt.expectedStatus, w.Code, "Response body: %s", w.Body.String())
+			}
+
+			// Handle error message validation
+			if len(tt.acceptedErrors) > 0 {
+				// Multiple acceptable error messages
+				responseBody := w.Body.String()
+				errorMatched := false
+				for _, acceptedError := range tt.acceptedErrors {
+					if strings.Contains(responseBody, acceptedError) {
+						errorMatched = true
+						break
+					}
+				}
+				assert.True(t, errorMatched,
+					"Expected response to contain one of %v, got: %s", tt.acceptedErrors, responseBody)
+			} else if tt.errorContains != "" {
+				// Single expected error substring
+				assert.Contains(t, w.Body.String(), tt.errorContains)
 			}
 		})
 	}
