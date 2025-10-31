@@ -67,8 +67,8 @@ services:
       # Mount frontend source for live development
       - ./web/frontend:/app/web/frontend
     environment:
-      - JAVINIZER_DEV_MODE=true
-      - VITE_API_URL=http://localhost:8080
+      - JAVINIZER_DEV_MODE=${JAVINIZER_DEV_MODE:-true}
+      - VITE_API_URL=${VITE_API_URL:-http://localhost:8080}
       - JAVINIZER_HOME=/javinizer
       - JAVINIZER_CONFIG=/javinizer/config.yaml
       - JAVINIZER_DB=/javinizer/javinizer.db
