@@ -24,13 +24,17 @@ The fastest way to get Javinizer running:
 git clone https://github.com/javinizer/javinizer-go.git
 cd javinizer-go
 
-# 2. Build the Docker image
+# 2. Configure environment variables
+cp .env.example .env
+# Edit .env to set your USER_ID, GROUP_ID, and MEDIA_PATH
+
+# 3. Build the Docker image
 docker build -t javinizer:latest .
 
-# 3. Run with Docker Compose
+# 4. Run with Docker Compose
 docker-compose up -d
 
-# 4. Access the web UI
+# 5. Access the web UI
 open http://localhost:8080
 ```
 
@@ -102,6 +106,58 @@ docker-compose build
 
 # Restart with new image
 docker-compose up -d
+```
+
+---
+
+## Configuration with .env File
+
+Javinizer uses a `.env` file to configure Docker Compose variables. This makes it easy to customize your deployment without editing `docker-compose.yml`.
+
+### Setup
+
+1. **Copy the example file**:
+   ```bash
+   cp .env.example .env
+   ```
+
+2. **Edit `.env` with your settings**:
+   ```bash
+   # Required: Match container user to your host user (prevents permission issues)
+   USER_ID=1000        # Run: id -u
+   GROUP_ID=1000       # Run: id -g
+
+   # Required: Set your JAV library path
+   MEDIA_PATH=/Users/you/JAV
+
+   # Optional: Change port if 8080 is in use
+   HOST_PORT=8080
+
+   # Optional: Set your timezone
+   TZ=America/New_York
+   ```
+
+3. **Start the container**:
+   ```bash
+   docker-compose up -d
+   ```
+
+### Available Variables
+
+| Variable | Description | Default | Required |
+|----------|-------------|---------|----------|
+| `USER_ID` | User ID for container (run `id -u`) | 1000 | Recommended |
+| `GROUP_ID` | Group ID for container (run `id -g`) | 1000 | Recommended |
+| `MEDIA_PATH` | Path to your JAV library on host | `/path/to/your/jav-library` | Yes |
+| `HOST_PORT` | Port to expose on host | 8080 | No |
+| `TZ` | Timezone (IANA format) | UTC | No |
+
+### Alternative: Command-Line Variables
+
+You can also set variables on the command line (overrides `.env`):
+
+```bash
+USER_ID=$(id -u) GROUP_ID=$(id -g) docker-compose up -d
 ```
 
 ---
@@ -351,16 +407,18 @@ docker inspect javinizer
 
 ### Running as Non-Root User
 
-The container runs as user `javinizer` for security. By default, the user is created with UID 1000 and GID 1000, but this can be customized to match your host user:
+The container runs as user `javinizer` for security. By default, the user is created with UID 1000 and GID 1000, but this can be customized to match your host user.
 
+**Recommended method**: Use the `.env` file (see [Configuration with .env File](#configuration-with-env-file)):
 ```bash
-# Match container user to your host user (recommended)
-USER_ID=$(id -u) GROUP_ID=$(id -g) docker-compose up -d
+# In .env file:
+USER_ID=1000   # Get with: id -u
+GROUP_ID=1000  # Get with: id -g
+```
 
-# Or set in .env file:
-echo "USER_ID=$(id -u)" > .env
-echo "GROUP_ID=$(id -g)" >> .env
-docker-compose up -d
+**Alternative**: Set via command line:
+```bash
+USER_ID=$(id -u) GROUP_ID=$(id -g) docker-compose up -d
 ```
 
 **Why this matters**: Matching the container UID/GID to your host user prevents permission issues when the container writes to mounted volumes (`./data` and `/media`). Without this, you may see "permission denied" errors or files owned by the wrong user.

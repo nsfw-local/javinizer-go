@@ -12,7 +12,7 @@ services:
     user: "${USER_ID:-1000}:${GROUP_ID:-1000}"
 
     ports:
-      - "8080:8080"
+      - "${HOST_PORT:-8080}:8080"
 
     # SIMPLIFIED: Only 2 volumes
     volumes:
@@ -20,7 +20,7 @@ services:
       - ./data:/javinizer
 
       # JAV files for sorting (read-write for organize operations)
-      - /path/to/your/jav-library:/media
+      - ${MEDIA_PATH:-/path/to/your/jav-library}:/media
 
     # UPDATED environment variables
     environment:
@@ -40,7 +40,7 @@ services:
       - JAVINIZER_DATA_DIR=/media
 
       # Timezone
-      - TZ=UTC
+      - TZ=${TZ:-UTC}
 
     healthcheck:
       test: ["CMD", "wget", "--spider", "-q", "http://localhost:8080/health"]
@@ -60,10 +60,10 @@ services:
     profiles: ["dev"]
     user: "${USER_ID:-1000}:${GROUP_ID:-1000}"
     ports:
-      - "8080:8080"
+      - "${HOST_PORT:-8080}:8080"
     volumes:
       - ./data:/javinizer
-      - /path/to/your/jav-library:/media
+      - ${MEDIA_PATH:-/path/to/your/jav-library}:/media
       # Mount frontend source for live development
       - ./web/frontend:/app/web/frontend
     environment:
@@ -74,4 +74,4 @@ services:
       - JAVINIZER_DB=/javinizer/javinizer.db
       - JAVINIZER_LOG_DIR=/javinizer/logs
       - JAVINIZER_DATA_DIR=/media
-      - TZ=UTC
+      - TZ=${TZ:-UTC}

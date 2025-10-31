@@ -42,6 +42,9 @@ Thumbs.db
 config.local.yaml
 configs/config.yaml
 
+# Docker environment configuration
+.env
+
 # Test files
 /test-videos/
 /cli
