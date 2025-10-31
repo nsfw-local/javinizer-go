@@ -20,7 +20,6 @@ import (
 	"github.com/javinizer/javinizer-go/internal/organizer"
 	"github.com/javinizer/javinizer-go/internal/scanner"
 	"github.com/javinizer/javinizer-go/internal/scraper/dmm"
-	"github.com/javinizer/javinizer-go/internal/scraper/r18dev"
 	"github.com/spf13/cobra"
 )
 
@@ -46,7 +45,7 @@ func main() {
 		Use:   "scrape [id]",
 		Short: "Scrape metadata for a movie ID",
 		Args:  cobra.ExactArgs(1),
-		Run:   runScrape,
+		RunE:  runWithDeps(runScrape),
 	}
 	scrapeCmd.Flags().StringSliceVarP(&scrapersFlag, "scrapers", "s", nil, "Comma-separated list of scrapers to use (e.g., 'r18dev,dmm' or 'dmm')")
 	scrapeCmd.Flags().BoolP("force", "f", false, "Force refresh metadata from scrapers (clear cache)")
@@ -55,14 +54,14 @@ func main() {
 	infoCmd := &cobra.Command{
 		Use:   "info",
 		Short: "Show configuration and scraper information",
-		Run:   runInfo,
+		RunE:  runWithConfig(runInfo),
 	}
 
 	// Init command
 	initCmd := &cobra.Command{
 		Use:   "init",
 		Short: "Initialize configuration and database",
-		Run:   runInit,
+		RunE:  runWithDeps(runInit),
 	}
 
 	// Sort command
@@ -71,7 +70,7 @@ func main() {
 		Short: "Scan, scrape, and organize video files",
 		Long:  `Scans a directory for video files, scrapes metadata, generates NFO files, downloads media, and organizes files`,
 		Args:  cobra.ExactArgs(1),
-		Run:   runSort,
+		RunE:  runWithDeps(runSort),
 	}
 	sortCmd.Flags().BoolP("dry-run", "n", false, "Preview operations without making changes")
 	sortCmd.Flags().BoolP("recursive", "r", true, "Scan directories recursively")
@@ -96,20 +95,20 @@ func main() {
 		Use:   "add <original> <replacement>",
 		Short: "Add a genre replacement",
 		Args:  cobra.ExactArgs(2),
-		Run:   runGenreAdd,
+		RunE:  runWithDeps(runGenreAdd),
 	}
 
 	genreListCmd := &cobra.Command{
 		Use:   "list",
 		Short: "List all genre replacements",
-		Run:   runGenreList,
+		RunE:  runWithDeps(runGenreList),
 	}
 
 	genreRemoveCmd := &cobra.Command{
 		Use:   "remove <original>",
 		Short: "Remove a genre replacement",
 		Args:  cobra.ExactArgs(1),
-		Run:   runGenreRemove,
+		RunE:  runWithDeps(runGenreRemove),
 	}
 
 	genreCmd.AddCommand(genreAddCmd, genreListCmd, genreRemoveCmd)
@@ -130,7 +129,7 @@ Examples:
   javinizer tag add IPX-535 "Favorite" "Uncensored"
   javinizer tag add ABC-123 "Collection: Summer 2023"`,
 		Args: cobra.MinimumNArgs(2),
-		Run:  runTagAdd,
+		RunE: runWithDeps(runTagAdd),
 	}
 
 	tagListCmd := &cobra.Command{
@@ -142,7 +141,7 @@ Examples:
   javinizer tag list              # Show all tag mappings
   javinizer tag list IPX-535      # Show tags for IPX-535`,
 		Args: cobra.MaximumNArgs(1),
-		Run:  runTagList,
+		RunE: runWithDeps(runTagList),
 	}
 
 	tagRemoveCmd := &cobra.Command{
@@ -154,7 +153,7 @@ Examples:
   javinizer tag remove IPX-535 "Favorite"    # Remove one tag
   javinizer tag remove IPX-535               # Remove all tags`,
 		Args: cobra.RangeArgs(1, 2),
-		Run:  runTagRemove,
+		RunE: runWithDeps(runTagRemove),
 	}
 
 	tagSearchCmd := &cobra.Command{
@@ -165,13 +164,13 @@ Examples:
 Example:
   javinizer tag search "Favorite"`,
 		Args: cobra.ExactArgs(1),
-		Run:  runTagSearch,
+		RunE: runWithDeps(runTagSearch),
 	}
 
 	tagAllTagsCmd := &cobra.Command{
 		Use:   "tags",
 		Short: "List all unique tags in database",
-		Run:   runTagAllTags,
+		RunE:  runWithDeps(runTagAllTags),
 	}
 
 	tagCmd.AddCommand(tagAddCmd, tagListCmd, tagRemoveCmd, tagSearchCmd, tagAllTagsCmd)
@@ -186,7 +185,7 @@ Example:
 	historyListCmd := &cobra.Command{
 		Use:   "list",
 		Short: "List recent operations",
-		Run:   runHistoryList,
+		RunE:  runWithDeps(runHistoryList),
 	}
 	historyListCmd.Flags().IntP("limit", "n", 20, "Number of records to show")
 	historyListCmd.Flags().StringP("operation", "o", "", "Filter by operation type (scrape, organize, download, nfo)")
@@ -195,20 +194,20 @@ Example:
 	historyStatsCmd := &cobra.Command{
 		Use:   "stats",
 		Short: "Show operation statistics",
-		Run:   runHistoryStats,
+		RunE:  runWithDeps(runHistoryStats),
 	}
 
 	historyMovieCmd := &cobra.Command{
 		Use:   "movie <id>",
 		Short: "Show history for a specific movie",
 		Args:  cobra.ExactArgs(1),
-		Run:   runHistoryMovie,
+		RunE:  runWithDeps(runHistoryMovie),
 	}
 
 	historyCleanCmd := &cobra.Command{
 		Use:   "clean",
 		Short: "Clean up old history records",
-		Run:   runHistoryClean,
+		RunE:  runWithDeps(runHistoryClean),
 	}
 	historyCleanCmd.Flags().IntP("days", "d", 30, "Delete records older than this many days")
 
@@ -287,43 +286,25 @@ func loadConfig() error {
 	return nil
 }
 
-func runScrape(cmd *cobra.Command, args []string) {
+func runScrape(cmd *cobra.Command, args []string, deps *Dependencies) error {
 	id := args[0]
-
-	if err := loadConfig(); err != nil {
-		logging.Fatal(err)
-	}
 
 	// Get force flag
 	forceRefresh, _ := cmd.Flags().GetBool("force")
 
-	// Initialize database
-	db, err := database.New(cfg)
-	if err != nil {
-		logging.Fatalf("Failed to connect to database: %v", err)
-	}
-	defer db.Close()
-
-	if err := db.AutoMigrate(); err != nil {
-		logging.Fatalf("Failed to run migrations: %v", err)
-	}
-
 	// Initialize repositories
-	movieRepo := database.NewMovieRepository(db)
-	contentIDRepo := database.NewContentIDMappingRepository(db)
+	movieRepo := database.NewMovieRepository(deps.DB)
 
-	// Initialize scrapers
-	registry := models.NewScraperRegistry()
-	registry.Register(r18dev.New(cfg))
-	registry.Register(dmm.New(cfg, contentIDRepo))
+	// Use injected scraper registry
+	registry := deps.ScraperRegistry
 
 	// Initialize aggregator with database support
-	agg := aggregator.NewWithDatabase(cfg, db)
+	agg := aggregator.NewWithDatabase(deps.Config, deps.DB)
 
 	logging.Infof("Scraping metadata for: %s", id)
 
 	// Determine which scrapers to use: CLI flag overrides config
-	scrapersToUse := cfg.Scrapers.Priority
+	scrapersToUse := deps.Config.Scrapers.Priority
 	usingCustomScrapers := len(scrapersFlag) > 0
 	if usingCustomScrapers {
 		scrapersToUse = scrapersFlag
@@ -344,7 +325,7 @@ func runScrape(cmd *cobra.Command, args []string) {
 		if movie, err := movieRepo.FindByID(id); err == nil {
 			logging.Info("✅ Found in cache!")
 			printMovie(movie, nil)
-			return
+			return nil
 		}
 	}
 
@@ -397,7 +378,7 @@ func runScrape(cmd *cobra.Command, args []string) {
 
 	if len(results) == 0 {
 		logging.Error("❌ No results found from any scraper")
-		return
+		return fmt.Errorf("no results found from any scraper")
 	}
 
 	logging.Infof("✅ Found %d source(s)", len(results))
@@ -405,7 +386,7 @@ func runScrape(cmd *cobra.Command, args []string) {
 	// Aggregate results
 	movie, err := agg.Aggregate(results)
 	if err != nil {
-		logging.Fatalf("Failed to aggregate: %v", err)
+		return fmt.Errorf("failed to aggregate: %w", err)
 	}
 
 	movie.OriginalFileName = id
@@ -418,13 +399,10 @@ func runScrape(cmd *cobra.Command, args []string) {
 	}
 
 	printMovie(movie, results)
+	return nil
 }
 
-func runInfo(cmd *cobra.Command, args []string) {
-	if err := loadConfig(); err != nil {
-		logging.Fatal(err)
-	}
-
+func runInfo(cmd *cobra.Command, args []string, cfg *config.Config) error {
 	fmt.Println("=== Javinizer Configuration ===")
 	fmt.Printf("Config file: %s\n", cfgFile)
 	fmt.Printf("Database: %s (%s)\n", cfg.Database.DSN, cfg.Database.Type)
@@ -440,37 +418,29 @@ func runInfo(cmd *cobra.Command, args []string) {
 	fmt.Printf("  - File format: %s\n", cfg.Output.FileFormat)
 	fmt.Printf("  - Download cover: %v\n", cfg.Output.DownloadCover)
 	fmt.Printf("  - Download extrafanart: %v\n", cfg.Output.DownloadExtrafanart)
+
+	return nil
 }
 
-func runInit(cmd *cobra.Command, args []string) {
-	if err := loadConfig(); err != nil {
-		logging.Fatal(err)
-	}
-
+func runInit(cmd *cobra.Command, args []string, deps *Dependencies) error {
 	fmt.Println("Initializing Javinizer...")
 
 	// Create data directory
-	dataDir := filepath.Dir(cfg.Database.DSN)
+	dataDir := filepath.Dir(deps.Config.Database.DSN)
 	if err := os.MkdirAll(dataDir, 0755); err != nil {
-		logging.Fatalf("Failed to create data directory: %v", err)
+		return fmt.Errorf("failed to create data directory: %w", err)
 	}
 	fmt.Printf("✅ Created data directory: %s\n", dataDir)
 
-	// Initialize database
-	db, err := database.New(cfg)
-	if err != nil {
-		logging.Fatalf("Failed to connect to database: %v", err)
+	// Database is already initialized via deps, just run migrations
+	if err := deps.DB.AutoMigrate(); err != nil {
+		return fmt.Errorf("failed to run migrations: %w", err)
 	}
-	defer db.Close()
-
-	if err := db.AutoMigrate(); err != nil {
-		logging.Fatalf("Failed to run migrations: %v", err)
-	}
-	fmt.Printf("✅ Initialized database: %s\n", cfg.Database.DSN)
+	fmt.Printf("✅ Initialized database: %s\n", deps.Config.Database.DSN)
 
 	// Save config if it was just created
-	if err := config.Save(cfg, cfgFile); err != nil {
-		logging.Fatalf("Failed to save config: %v", err)
+	if err := config.Save(deps.Config, cfgFile); err != nil {
+		return fmt.Errorf("failed to save config: %w", err)
 	}
 	fmt.Printf("✅ Saved configuration: %s\n", cfgFile)
 
@@ -478,6 +448,8 @@ func runInit(cmd *cobra.Command, args []string) {
 	fmt.Println("\nNext steps:")
 	fmt.Println("  - Run 'javinizer scrape IPX-535' to test scraping")
 	fmt.Println("  - Run 'javinizer info' to view configuration")
+
+	return nil
 }
 
 func printMovie(movie *models.Movie, results []*models.ScraperResult) {
@@ -725,7 +697,7 @@ func printMovie(movie *models.Movie, results []*models.ScraperResult) {
 	fmt.Println()
 }
 
-func runSort(cmd *cobra.Command, args []string) {
+func runSort(cmd *cobra.Command, args []string, deps *Dependencies) error {
 	sourcePath := args[0]
 
 	// Get flags
@@ -746,50 +718,32 @@ func runSort(cmd *cobra.Command, args []string) {
 		destPath = sourcePath
 	}
 
-	if err := loadConfig(); err != nil {
-		logging.Fatal(err)
-	}
-
 	// Override config with flag if extrafanart is explicitly enabled
 	if downloadExtrafanart {
-		cfg.Output.DownloadExtrafanart = true
+		deps.Config.Output.DownloadExtrafanart = true
 	}
 
 	// Override config with flag if scraper priority is provided
 	if len(scraperPriority) > 0 {
-		cfg.Scrapers.Priority = scraperPriority
-	}
-
-	// Initialize database
-	db, err := database.New(cfg)
-	if err != nil {
-		logging.Fatalf("Failed to connect to database: %v", err)
-	}
-	defer db.Close()
-
-	if err := db.AutoMigrate(); err != nil {
-		logging.Fatalf("Failed to run migrations: %v", err)
+		deps.Config.Scrapers.Priority = scraperPriority
 	}
 
 	// Initialize components
-	movieRepo := database.NewMovieRepository(db)
-	contentIDRepo := database.NewContentIDMappingRepository(db)
+	movieRepo := database.NewMovieRepository(deps.DB)
 
-	registry := models.NewScraperRegistry()
-	registry.Register(r18dev.New(cfg))
-	registry.Register(dmm.New(cfg, contentIDRepo))
+	registry := deps.ScraperRegistry
 
-	agg := aggregator.NewWithDatabase(cfg, db)
+	agg := aggregator.NewWithDatabase(deps.Config, deps.DB)
 
-	fileScanner := scanner.NewScanner(&cfg.Matching)
-	fileMatcher, err := matcher.NewMatcher(&cfg.Matching)
+	fileScanner := scanner.NewScanner(&deps.Config.Matching)
+	fileMatcher, err := matcher.NewMatcher(&deps.Config.Matching)
 	if err != nil {
-		logging.Fatalf("Failed to create matcher: %v", err)
+		return fmt.Errorf("failed to create matcher: %w", err)
 	}
 
-	fileOrganizer := organizer.NewOrganizer(&cfg.Output)
-	nfoGenerator := nfo.NewGenerator(nfo.ConfigFromAppConfig(&cfg.Metadata.NFO, &cfg.Output, &cfg.Metadata, db))
-	mediaDownloader := downloader.NewDownloader(&cfg.Output, cfg.Scrapers.UserAgent)
+	fileOrganizer := organizer.NewOrganizer(&deps.Config.Output)
+	nfoGenerator := nfo.NewGenerator(nfo.ConfigFromAppConfig(&deps.Config.Metadata.NFO, &deps.Config.Output, &deps.Config.Metadata, deps.DB))
+	mediaDownloader := downloader.NewDownloader(&deps.Config.Output, deps.Config.Scrapers.UserAgent)
 
 	// Print configuration
 	fmt.Println("=== Javinizer Sort ===")
@@ -809,7 +763,7 @@ func runSort(cmd *cobra.Command, args []string) {
 		scanResult, err = fileScanner.ScanSingle(sourcePath)
 	}
 	if err != nil {
-		logging.Fatalf("Scan failed: %v", err)
+		return fmt.Errorf("scan failed: %w", err)
 	}
 
 	fmt.Printf("   Found %d video file(s)\n", len(scanResult.Files))
@@ -822,7 +776,7 @@ func runSort(cmd *cobra.Command, args []string) {
 
 	if len(scanResult.Files) == 0 {
 		fmt.Println("\n✅ No files to process")
-		return
+		return nil
 	}
 
 	// Step 2: Match JAV IDs
@@ -832,7 +786,7 @@ func runSort(cmd *cobra.Command, args []string) {
 
 	if len(matches) == 0 {
 		fmt.Println("\n⚠️  No JAV IDs found in filenames")
-		return
+		return nil
 	}
 
 	// Group by ID
@@ -873,7 +827,7 @@ func runSort(cmd *cobra.Command, args []string) {
 
 		// Scrape from sources
 		results := []*models.ScraperResult{}
-		scrapers := registry.GetByPriority(cfg.Scrapers.Priority)
+		scrapers := registry.GetByPriority(deps.Config.Scrapers.Priority)
 		logging.Debugf("[%s] Initialized %d scrapers in priority order", id, len(scrapers))
 
 		for _, scraper := range scrapers {
@@ -942,11 +896,11 @@ func runSort(cmd *cobra.Command, args []string) {
 
 	if len(movies) == 0 {
 		fmt.Println("\n⚠️  No metadata found")
-		return
+		return nil
 	}
 
 	// Step 4: Generate NFO files
-	if generateNFO && cfg.Metadata.NFO.Enabled {
+	if generateNFO && deps.Config.Metadata.NFO.Enabled {
 		fmt.Println("\n📝 Generating NFO files...")
 		nfoCount := 0
 
@@ -961,7 +915,7 @@ func runSort(cmd *cobra.Command, args []string) {
 
 			// Determine output directory: either organized folder or source directory
 			var outputDir string
-			if cfg.Output.MoveToFolder {
+			if deps.Config.Output.MoveToFolder {
 				// Create destination folder for this movie (use first match for planning)
 				plan, err := fileOrganizer.Plan(idMatches[0], movie, destPath, forceUpdate)
 				if err != nil {
@@ -975,7 +929,7 @@ func runSort(cmd *cobra.Command, args []string) {
 			}
 
 			// If per_file is enabled and this is multi-part, generate NFO for each part
-			if cfg.Metadata.NFO.PerFile && len(idMatches) > 1 {
+			if deps.Config.Metadata.NFO.PerFile && len(idMatches) > 1 {
 				for _, match := range idMatches {
 					partSuffix := ""
 					if match.IsMultiPart {
@@ -1035,7 +989,7 @@ func runSort(cmd *cobra.Command, args []string) {
 
 			// Determine output directory: either organized folder or source directory
 			var downloadDir string
-			if cfg.Output.MoveToFolder {
+			if deps.Config.Output.MoveToFolder {
 				plan, err := fileOrganizer.Plan(firstMatch, movie, destPath, forceUpdate)
 				if err != nil {
 					continue
@@ -1048,11 +1002,11 @@ func runSort(cmd *cobra.Command, args []string) {
 
 			if dryRun {
 				count := 0
-				if cfg.Output.DownloadCover {
+				if deps.Config.Output.DownloadCover {
 					count++
 					logging.Debugf("[%s] Would download cover from: %s", id, movie.CoverURL)
 				}
-				if cfg.Output.DownloadExtrafanart {
+				if deps.Config.Output.DownloadExtrafanart {
 					count += len(movie.Screenshots)
 					logging.Debugf("[%s] Would download %d screenshots", id, len(movie.Screenshots))
 				}
@@ -1112,7 +1066,7 @@ func runSort(cmd *cobra.Command, args []string) {
 
 	// Step 6: Organize files (skip in update mode or if move_to_folder is disabled)
 	organizedCount := 0
-	if !updateMode && cfg.Output.MoveToFolder {
+	if !updateMode && deps.Config.Output.MoveToFolder {
 		fmt.Println("\n📦 Organizing files...")
 
 		for _, match := range matches {
@@ -1219,23 +1173,15 @@ func runSort(cmd *cobra.Command, args []string) {
 			fmt.Println("\n✅ Sort complete!")
 		}
 	}
+
+	return nil
 }
 
-func runGenreAdd(cmd *cobra.Command, args []string) {
-	if err := loadConfig(); err != nil {
-		logging.Fatal(err)
-	}
-
-	db, err := database.New(cfg)
-	if err != nil {
-		logging.Fatalf("Failed to initialize database: %v", err)
-	}
-	defer db.Close()
-
+func runGenreAdd(cmd *cobra.Command, args []string, deps *Dependencies) error {
 	original := args[0]
 	replacement := args[1]
 
-	repo := database.NewGenreReplacementRepository(db)
+	repo := database.NewGenreReplacementRepository(deps.DB)
 
 	genreReplacement := &models.GenreReplacement{
 		Original:    original,
@@ -1243,33 +1189,25 @@ func runGenreAdd(cmd *cobra.Command, args []string) {
 	}
 
 	if err := repo.Upsert(genreReplacement); err != nil {
-		logging.Fatalf("Failed to add genre replacement: %v", err)
+		return fmt.Errorf("Failed to add genre replacement: %v", err)
 	}
 
 	fmt.Printf("✅ Genre replacement added: '%s' → '%s'\n", original, replacement)
+
+	return nil
 }
 
-func runGenreList(cmd *cobra.Command, args []string) {
-	if err := loadConfig(); err != nil {
-		logging.Fatal(err)
-	}
-
-	db, err := database.New(cfg)
-	if err != nil {
-		logging.Fatalf("Failed to initialize database: %v", err)
-	}
-	defer db.Close()
-
-	repo := database.NewGenreReplacementRepository(db)
+func runGenreList(cmd *cobra.Command, args []string, deps *Dependencies) error {
+	repo := database.NewGenreReplacementRepository(deps.DB)
 
 	replacements, err := repo.List()
 	if err != nil {
-		logging.Fatalf("Failed to list genre replacements: %v", err)
+		return fmt.Errorf("Failed to list genre replacements: %v", err)
 	}
 
 	if len(replacements) == 0 {
 		fmt.Println("No genre replacements configured")
-		return
+		return nil
 	}
 
 	fmt.Println("=== Genre Replacements ===")
@@ -1281,46 +1219,30 @@ func runGenreList(cmd *cobra.Command, args []string) {
 	}
 
 	fmt.Printf("\nTotal: %d replacements\n", len(replacements))
+
+	return nil
 }
 
-func runGenreRemove(cmd *cobra.Command, args []string) {
-	if err := loadConfig(); err != nil {
-		logging.Fatal(err)
-	}
-
-	db, err := database.New(cfg)
-	if err != nil {
-		logging.Fatalf("Failed to initialize database: %v", err)
-	}
-	defer db.Close()
-
+func runGenreRemove(cmd *cobra.Command, args []string, deps *Dependencies) error {
 	original := args[0]
 
-	repo := database.NewGenreReplacementRepository(db)
+	repo := database.NewGenreReplacementRepository(deps.DB)
 
 	if err := repo.Delete(original); err != nil {
-		logging.Fatalf("Failed to remove genre replacement: %v", err)
+		return fmt.Errorf("Failed to remove genre replacement: %v", err)
 	}
 
 	fmt.Printf("✅ Genre replacement removed: '%s'\n", original)
+
+	return nil
 }
 
 // Tag command handlers
-func runTagAdd(cmd *cobra.Command, args []string) {
-	if err := loadConfig(); err != nil {
-		logging.Fatal(err)
-	}
-
-	db, err := database.New(cfg)
-	if err != nil {
-		logging.Fatalf("Failed to initialize database: %v", err)
-	}
-	defer db.Close()
-
+func runTagAdd(cmd *cobra.Command, args []string, deps *Dependencies) error {
 	movieID := args[0]
 	tags := args[1:]
 
-	repo := database.NewMovieTagRepository(db)
+	repo := database.NewMovieTagRepository(deps.DB)
 
 	addedTags := []string{}
 	for _, tag := range tags {
@@ -1330,7 +1252,7 @@ func runTagAdd(cmd *cobra.Command, args []string) {
 				logging.Warnf("Tag '%s' already exists for %s, skipping", tag, movieID)
 				continue
 			}
-			logging.Fatalf("Failed to add tag '%s': %v", tag, err)
+			return fmt.Errorf("Failed to add tag '%s': %v", tag, err)
 		}
 		addedTags = append(addedTags, tag)
 	}
@@ -1342,32 +1264,24 @@ func runTagAdd(cmd *cobra.Command, args []string) {
 	} else {
 		fmt.Println("ℹ️  No new tags added (all already exist)")
 	}
+
+	return nil
 }
 
-func runTagList(cmd *cobra.Command, args []string) {
-	if err := loadConfig(); err != nil {
-		logging.Fatal(err)
-	}
-
-	db, err := database.New(cfg)
-	if err != nil {
-		logging.Fatalf("Failed to initialize database: %v", err)
-	}
-	defer db.Close()
-
-	repo := database.NewMovieTagRepository(db)
+func runTagList(cmd *cobra.Command, args []string, deps *Dependencies) error {
+	repo := database.NewMovieTagRepository(deps.DB)
 
 	// List tags for specific movie
 	if len(args) == 1 {
 		movieID := args[0]
 		tags, err := repo.GetTagsForMovie(movieID)
 		if err != nil {
-			logging.Fatalf("Failed to get tags: %v", err)
+			return fmt.Errorf("Failed to get tags: %v", err)
 		}
 
 		if len(tags) == 0 {
 			fmt.Printf("No tags for %s\n", movieID)
-			return
+			return nil
 		}
 
 		fmt.Printf("=== Tags for %s ===\n", movieID)
@@ -1375,18 +1289,18 @@ func runTagList(cmd *cobra.Command, args []string) {
 			fmt.Printf("  - %s\n", tag)
 		}
 		fmt.Printf("\nTotal: %d tags\n", len(tags))
-		return
+		return nil
 	}
 
 	// List all tag mappings
 	allTags, err := repo.ListAll()
 	if err != nil {
-		logging.Fatalf("Failed to list tags: %v", err)
+		return fmt.Errorf("Failed to list tags: %v", err)
 	}
 
 	if len(allTags) == 0 {
 		fmt.Println("No tag mappings configured")
-		return
+		return nil
 	}
 
 	fmt.Println("=== Movie Tag Mappings ===")
@@ -1398,61 +1312,45 @@ func runTagList(cmd *cobra.Command, args []string) {
 	}
 
 	fmt.Printf("\nTotal: %d movies tagged\n", len(allTags))
+
+	return nil
 }
 
-func runTagRemove(cmd *cobra.Command, args []string) {
-	if err := loadConfig(); err != nil {
-		logging.Fatal(err)
-	}
-
-	db, err := database.New(cfg)
-	if err != nil {
-		logging.Fatalf("Failed to initialize database: %v", err)
-	}
-	defer db.Close()
-
+func runTagRemove(cmd *cobra.Command, args []string, deps *Dependencies) error {
 	movieID := args[0]
-	repo := database.NewMovieTagRepository(db)
+	repo := database.NewMovieTagRepository(deps.DB)
 
 	// Remove specific tag
 	if len(args) == 2 {
 		tag := args[1]
 		if err := repo.RemoveTag(movieID, tag); err != nil {
-			logging.Fatalf("Failed to remove tag: %v", err)
+			return fmt.Errorf("Failed to remove tag: %v", err)
 		}
 		fmt.Printf("✅ Removed tag '%s' from %s\n", tag, movieID)
-		return
+		return nil
 	}
 
 	// Remove all tags
 	if err := repo.RemoveAllTags(movieID); err != nil {
-		logging.Fatalf("Failed to remove tags: %v", err)
+		return fmt.Errorf("Failed to remove tags: %v", err)
 	}
 	fmt.Printf("✅ Removed all tags from %s\n", movieID)
+
+	return nil
 }
 
-func runTagSearch(cmd *cobra.Command, args []string) {
-	if err := loadConfig(); err != nil {
-		logging.Fatal(err)
-	}
-
-	db, err := database.New(cfg)
-	if err != nil {
-		logging.Fatalf("Failed to initialize database: %v", err)
-	}
-	defer db.Close()
-
+func runTagSearch(cmd *cobra.Command, args []string, deps *Dependencies) error {
 	tag := args[0]
-	repo := database.NewMovieTagRepository(db)
+	repo := database.NewMovieTagRepository(deps.DB)
 
 	movieIDs, err := repo.GetMoviesWithTag(tag)
 	if err != nil {
-		logging.Fatalf("Failed to search: %v", err)
+		return fmt.Errorf("failed to search: %w", err)
 	}
 
 	if len(movieIDs) == 0 {
 		fmt.Printf("No movies found with tag '%s'\n", tag)
-		return
+		return nil
 	}
 
 	fmt.Printf("=== Movies with tag '%s' ===\n", tag)
@@ -1460,29 +1358,20 @@ func runTagSearch(cmd *cobra.Command, args []string) {
 		fmt.Printf("  - %s\n", id)
 	}
 	fmt.Printf("\nTotal: %d movies\n", len(movieIDs))
+	return nil
 }
 
-func runTagAllTags(cmd *cobra.Command, args []string) {
-	if err := loadConfig(); err != nil {
-		logging.Fatal(err)
-	}
-
-	db, err := database.New(cfg)
-	if err != nil {
-		logging.Fatalf("Failed to initialize database: %v", err)
-	}
-	defer db.Close()
-
-	repo := database.NewMovieTagRepository(db)
+func runTagAllTags(cmd *cobra.Command, args []string, deps *Dependencies) error {
+	repo := database.NewMovieTagRepository(deps.DB)
 
 	tags, err := repo.GetUniqueTagsList()
 	if err != nil {
-		logging.Fatalf("Failed to list tags: %v", err)
+		return fmt.Errorf("failed to list tags: %w", err)
 	}
 
 	if len(tags) == 0 {
 		fmt.Println("No tags in database")
-		return
+		return nil
 	}
 
 	fmt.Println("=== All Tags ===")
@@ -1497,20 +1386,11 @@ func runTagAllTags(cmd *cobra.Command, args []string) {
 		fmt.Printf("  - %-30s (%d movies)\n", tag, len(movies))
 	}
 	fmt.Printf("\nTotal: %d unique tags\n", len(tags))
+	return nil
 }
 
-func runHistoryList(cmd *cobra.Command, args []string) {
-	if err := loadConfig(); err != nil {
-		logging.Fatal(err)
-	}
-
-	db, err := database.New(cfg)
-	if err != nil {
-		logging.Fatalf("Failed to initialize database: %v", err)
-	}
-	defer db.Close()
-
-	logger := history.NewLogger(db)
+func runHistoryList(cmd *cobra.Command, args []string, deps *Dependencies) error {
+	logger := history.NewLogger(deps.DB)
 
 	// Get flags
 	limit, _ := cmd.Flags().GetInt("limit")
@@ -1518,6 +1398,7 @@ func runHistoryList(cmd *cobra.Command, args []string) {
 	status, _ := cmd.Flags().GetString("status")
 
 	var records []models.History
+	var err error
 
 	// Apply filters
 	if operation != "" {
@@ -1529,12 +1410,12 @@ func runHistoryList(cmd *cobra.Command, args []string) {
 	}
 
 	if err != nil {
-		logging.Fatalf("Failed to retrieve history: %v", err)
+		return fmt.Errorf("failed to retrieve history: %w", err)
 	}
 
 	if len(records) == 0 {
 		fmt.Println("No history records found")
-		return
+		return nil
 	}
 
 	fmt.Println("=== Operation History ===")
@@ -1582,24 +1463,16 @@ func runHistoryList(cmd *cobra.Command, args []string) {
 	}
 
 	fmt.Printf("\nShowing %d record(s)\n", len(records))
+
+	return nil
 }
 
-func runHistoryStats(cmd *cobra.Command, args []string) {
-	if err := loadConfig(); err != nil {
-		logging.Fatal(err)
-	}
-
-	db, err := database.New(cfg)
-	if err != nil {
-		logging.Fatalf("Failed to initialize database: %v", err)
-	}
-	defer db.Close()
-
-	logger := history.NewLogger(db)
+func runHistoryStats(cmd *cobra.Command, args []string, deps *Dependencies) error {
+	logger := history.NewLogger(deps.DB)
 
 	stats, err := logger.GetStats()
 	if err != nil {
-		logging.Fatalf("Failed to retrieve stats: %v", err)
+		return fmt.Errorf("failed to retrieve stats: %w", err)
 	}
 
 	fmt.Println("=== History Statistics ===")
@@ -1615,31 +1488,23 @@ func runHistoryStats(cmd *cobra.Command, args []string) {
 	fmt.Printf("  📦 Organize: %d (%.1f%%)\n", stats.Organize, percentage(stats.Organize, stats.Total))
 	fmt.Printf("  📥 Download: %d (%.1f%%)\n", stats.Download, percentage(stats.Download, stats.Total))
 	fmt.Printf("  📝 NFO:      %d (%.1f%%)\n", stats.NFO, percentage(stats.NFO, stats.Total))
+
+	return nil
 }
 
-func runHistoryMovie(cmd *cobra.Command, args []string) {
+func runHistoryMovie(cmd *cobra.Command, args []string, deps *Dependencies) error {
 	movieID := args[0]
 
-	if err := loadConfig(); err != nil {
-		logging.Fatal(err)
-	}
-
-	db, err := database.New(cfg)
-	if err != nil {
-		logging.Fatalf("Failed to initialize database: %v", err)
-	}
-	defer db.Close()
-
-	logger := history.NewLogger(db)
+	logger := history.NewLogger(deps.DB)
 
 	records, err := logger.GetByMovieID(movieID)
 	if err != nil {
-		logging.Fatalf("Failed to retrieve history: %v", err)
+		return fmt.Errorf("failed to retrieve history: %w", err)
 	}
 
 	if len(records) == 0 {
 		fmt.Printf("No history found for movie: %s\n", movieID)
-		return
+		return nil
 	}
 
 	fmt.Printf("=== History for %s ===\n\n", movieID)
@@ -1678,38 +1543,30 @@ func runHistoryMovie(cmd *cobra.Command, args []string) {
 	}
 
 	fmt.Printf("Total: %d operation(s)\n", len(records))
+
+	return nil
 }
 
-func runHistoryClean(cmd *cobra.Command, args []string) {
-	if err := loadConfig(); err != nil {
-		logging.Fatal(err)
-	}
-
-	db, err := database.New(cfg)
-	if err != nil {
-		logging.Fatalf("Failed to initialize database: %v", err)
-	}
-	defer db.Close()
-
-	logger := history.NewLogger(db)
+func runHistoryClean(cmd *cobra.Command, args []string, deps *Dependencies) error {
+	logger := history.NewLogger(deps.DB)
 
 	days, _ := cmd.Flags().GetInt("days")
 
 	// Get count before deletion
 	totalBefore, err := logger.GetRecent(0) // Get all
 	if err != nil {
-		logging.Fatalf("Failed to count records: %v", err)
+		return fmt.Errorf("failed to count records: %w", err)
 	}
 
 	// Perform cleanup
 	if err := logger.CleanupOldRecords(time.Duration(days) * 24 * time.Hour); err != nil {
-		logging.Fatalf("Failed to clean up history: %v", err)
+		return fmt.Errorf("failed to clean up history: %w", err)
 	}
 
 	// Get count after deletion
 	totalAfter, err := logger.GetRecent(0)
 	if err != nil {
-		logging.Fatalf("Failed to count records: %v", err)
+		return fmt.Errorf("failed to count records: %w", err)
 	}
 
 	deleted := len(totalBefore) - len(totalAfter)
@@ -1720,6 +1577,8 @@ func runHistoryClean(cmd *cobra.Command, args []string) {
 		fmt.Printf("✅ Cleaned up %d record(s) older than %d days\n", deleted, days)
 		fmt.Printf("Remaining: %d record(s)\n", len(totalAfter))
 	}
+
+	return nil
 }
 
 func percentage(part, total int64) float64 {
@@ -1727,4 +1586,58 @@ func percentage(part, total int64) float64 {
 		return 0
 	}
 	return float64(part) / float64(total) * 100
+}
+
+// Wrapper functions that handle dependency initialization
+
+// runWithDeps is a higher-order function that wraps any run* function with
+// dependency injection. It handles config loading, dependency creation,
+// cleanup, and error handling in one place.
+//
+// This wrapper uses Cobra's RunE to properly propagate errors and ensure
+// resources are cleaned up even on error paths.
+//
+// Usage:
+//
+//	scrapeCmd := &cobra.Command{
+//	    Use:  "scrape [id]",
+//	    RunE: runWithDeps(runScrape),
+//	}
+func runWithDeps(fn func(*cobra.Command, []string, *Dependencies) error) func(*cobra.Command, []string) error {
+	return func(cmd *cobra.Command, args []string) error {
+		if err := loadConfig(); err != nil {
+			return fmt.Errorf("failed to load config: %w", err)
+		}
+
+		deps, err := NewDependencies(cfg)
+		if err != nil {
+			return fmt.Errorf("failed to initialize dependencies: %w", err)
+		}
+		defer func() {
+			if closeErr := deps.Close(); closeErr != nil {
+				logging.Warnf("Failed to close dependencies: %v", closeErr)
+			}
+		}()
+
+		return fn(cmd, args, deps)
+	}
+}
+
+// runWithConfig is a lightweight wrapper for commands that only need config
+// (no database or scrapers). Use this for diagnostic commands like 'info'
+// that should work even when the database is unavailable.
+//
+// Usage:
+//
+//	infoCmd := &cobra.Command{
+//	    Use:  "info",
+//	    RunE: runWithConfig(runInfo),
+//	}
+func runWithConfig(fn func(*cobra.Command, []string, *config.Config) error) func(*cobra.Command, []string) error {
+	return func(cmd *cobra.Command, args []string) error {
+		if err := loadConfig(); err != nil {
+			return fmt.Errorf("failed to load config: %w", err)
+		}
+		return fn(cmd, args, cfg)
+	}
 }

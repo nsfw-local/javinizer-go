@@ -44,9 +44,10 @@ configs/config.yaml
 
 # Test files
 /test-videos/
-cli
+/cli
+/javinizer
 
 # Coverage files
-coverage.out
+*.out
 coverage.html
 *.coverprofile
