@@ -1,0 +1,121 @@
+# ==============================================================================
+# Stage 1: Build Frontend
+# ==============================================================================
+FROM node:20-alpine AS frontend-builder
+
+WORKDIR /frontend
+
+# Copy package files and install dependencies
+COPY web/frontend/package*.json ./
+RUN npm ci --production=false
+
+# Copy frontend source and build
+COPY web/frontend/ ./
+RUN npm run build
+
+# Output: /frontend/build/ contains production static files (via adapter-static)
+
+# ==============================================================================
+# Stage 2: Build Go Binary
+# ==============================================================================
+FROM golang:1.25-alpine AS go-builder
+
+WORKDIR /build
+
+# Install build dependencies
+RUN apk add --no-cache \
+    git \
+    ca-certificates \
+    build-base \
+    sqlite-dev
+
+# Copy go module files and download dependencies (cached layer)
+COPY go.mod go.sum ./
+RUN go mod download
+
+# Copy application source
+COPY . .
+
+# Copy built frontend from stage 1
+# SvelteKit with adapter-static outputs to build/
+COPY --from=frontend-builder /frontend/build ./web/dist
+
+# Build binary with optimizations and version injection
+# CGO_ENABLED=1 required for SQLite
+ARG VERSION=dev
+ARG COMMIT=unknown
+ARG BUILD_DATE=unknown
+
+RUN CGO_ENABLED=1 GOOS=linux \
+    CGO_CFLAGS="-D_LARGEFILE64_SOURCE" \
+    go build \
+    -tags sqlite_omit_load_extension \
+    -ldflags="-w -s \
+    -X github.com/javinizer/javinizer-go/internal/version.Version=${VERSION} \
+    -X github.com/javinizer/javinizer-go/internal/version.Commit=${COMMIT} \
+    -X github.com/javinizer/javinizer-go/internal/version.BuildDate=${BUILD_DATE}" \
+    -o javinizer \
+    ./cmd/cli
+
+# ==============================================================================
+# Stage 3: Runtime
+# ==============================================================================
+FROM alpine:3.21
+
+LABEL maintainer="javinizer@example.com" \
+      description="JAV metadata scraper and organizer" \
+      version="1.0.0"
+
+# Working directory is now /javinizer (app state location)
+WORKDIR /javinizer
+
+# Install runtime dependencies
+RUN apk add --no-cache \
+    ca-certificates \
+    tzdata \
+    sqlite \
+    wget
+
+# Create non-root user with consistent UID/GID
+RUN addgroup -g 1000 javinizer && \
+    adduser -u 1000 -G javinizer -s /bin/sh -D javinizer
+
+# Copy binary to /usr/local/bin for system-wide access
+COPY --from=go-builder /build/javinizer /usr/local/bin/javinizer
+
+# Copy frontend static files
+COPY --from=go-builder /build/web/dist /app/web/dist
+
+# Copy API documentation (Swagger/OpenAPI) to /app (avoids volume mount shadowing)
+COPY --from=go-builder /build/docs/swagger /app/docs/swagger
+
+# Copy default configuration
+COPY configs/config.yaml.example /javinizer/config.yaml
+
+# Configure server to bind to 0.0.0.0 for Docker (not localhost)
+RUN sed -i 's/host: localhost/host: 0.0.0.0/' /javinizer/config.yaml
+
+# Create directory structure for volumes
+RUN mkdir -p /javinizer/logs /javinizer/cache /data && \
+    chown -R javinizer:javinizer /javinizer /data /app
+
+# Environment variables
+ENV JAVINIZER_HOME=/javinizer \
+    JAVINIZER_CONFIG=/javinizer/config.yaml \
+    JAVINIZER_DB=/javinizer/javinizer.db \
+    JAVINIZER_LOG_DIR=/javinizer/logs \
+    JAVINIZER_DATA_DIR=/data \
+    PATH="/usr/local/bin:${PATH}"
+
+# Switch to non-root user
+USER javinizer
+
+# Expose API/web port
+EXPOSE 8080
+
+# Health check endpoint
+HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
+    CMD wget --no-verbose --tries=1 --spider http://localhost:8080/health || exit 1
+
+# Run API server
+CMD ["javinizer", "api"]

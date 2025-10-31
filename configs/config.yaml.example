@@ -3,6 +3,11 @@ server:
     port: 8080
 api:
     security:
+        # CORS allowed origins for API and WebSocket connections
+        # - Use ["*"] to allow all origins (development only - NOT secure for production)
+        # - Use specific origins like ["http://localhost:3000", "http://127.0.0.1:3000"] for stricter control
+        # - Empty array [] means same-origin only (secure but may block browser-based frontends)
+        allowed_origins: []  # Change to ["*"] for local development
         # Allowed directories for scanning/browsing (empty = no allowlist restriction)
         # Supports ~ for home directory expansion
         allowed_directories: []
@@ -13,11 +18,6 @@ api:
         max_files_per_scan: 10000
         # Timeout for scan operations (seconds)
         scan_timeout_seconds: 30
-        # Allowed origins for CORS and WebSocket connections
-        # Empty = same-origin only (most secure)
-        # "*" = allow all origins (use only for local development)
-        # Specific origins: ["http://localhost:3000", "http://localhost:8080"]
-        allowed_origins: []
 scrapers:
     user_agent: Javinizer (+https://github.com/javinizer/Javinizer)
     priority:

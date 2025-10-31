@@ -3,6 +3,8 @@
 .PHONY: fmt lint vet
 .PHONY: build-cli-linux build-cli-darwin build-cli-windows build-cli-all
 .PHONY: act-list act-test act-build act-lint act-docker act-cli-release act-ci act-dry act-help
+.PHONY: docker-build docker-build-no-cache docker-run docker-stop docker-clean docker-push docker-test docker-logs docker-help
+.PHONY: docker-compose-up docker-compose-down docker-compose-restart docker-compose-logs docker-compose-build
 
 # Version information (can be overridden)
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
@@ -207,3 +209,150 @@ act-help:
 	@echo "  act -j <job>           - Run specific job"
 	@echo "  act -v                 - Verbose output"
 	@echo "  act -n                 - Dry run"
+
+# ============================================================================
+# Docker Build and Deployment Targets
+# ============================================================================
+
+# Docker image configuration
+DOCKER_IMAGE := javinizer
+DOCKER_TAG := $(VERSION)
+DOCKER_REGISTRY ?= ghcr.io/javinizer
+DOCKER_FULL_IMAGE := $(DOCKER_IMAGE):$(DOCKER_TAG)
+DOCKER_CONTAINER_NAME := javinizer
+
+# Build Docker image with version injection
+docker-build:
+	@echo "Building Docker image $(DOCKER_FULL_IMAGE)..."
+	docker build \
+		--build-arg VERSION=$(VERSION) \
+		--build-arg COMMIT=$(COMMIT) \
+		--build-arg BUILD_DATE=$(BUILD_DATE) \
+		-t $(DOCKER_FULL_IMAGE) \
+		-t $(DOCKER_IMAGE):latest \
+		.
+	@echo "Docker image built successfully!"
+	@docker images $(DOCKER_IMAGE)
+
+# Build Docker image without cache (force clean build)
+docker-build-no-cache:
+	@echo "Building Docker image $(DOCKER_FULL_IMAGE) without cache..."
+	docker build --no-cache \
+		--build-arg VERSION=$(VERSION) \
+		--build-arg COMMIT=$(COMMIT) \
+		--build-arg BUILD_DATE=$(BUILD_DATE) \
+		-t $(DOCKER_FULL_IMAGE) \
+		-t $(DOCKER_IMAGE):latest \
+		.
+	@echo "Docker image built successfully!"
+	@docker images $(DOCKER_IMAGE)
+
+# Run Docker container (detached mode)
+docker-run:
+	@echo "Starting Docker container $(DOCKER_CONTAINER_NAME)..."
+	docker run -d \
+		--name $(DOCKER_CONTAINER_NAME) \
+		-p 8080:8080 \
+		-v $(PWD)/javinizer:/javinizer \
+		-v $(PWD)/data:/data \
+		$(DOCKER_FULL_IMAGE)
+	@echo "Container started! Access at http://localhost:8080"
+	@echo "Logs: docker logs -f $(DOCKER_CONTAINER_NAME)"
+
+# Stop and remove Docker container
+docker-stop:
+	@echo "Stopping Docker container $(DOCKER_CONTAINER_NAME)..."
+	-docker stop $(DOCKER_CONTAINER_NAME)
+	-docker rm $(DOCKER_CONTAINER_NAME)
+	@echo "Container stopped and removed"
+
+# View container logs
+docker-logs:
+	docker logs -f $(DOCKER_CONTAINER_NAME)
+
+# Run tests inside Docker container
+docker-test:
+	@echo "Running tests in Docker container..."
+	docker run --rm $(DOCKER_FULL_IMAGE) go test -v ./...
+
+# Clean Docker images and containers
+docker-clean:
+	@echo "Cleaning Docker images and containers..."
+	-docker stop $(DOCKER_CONTAINER_NAME) 2>/dev/null || true
+	-docker rm $(DOCKER_CONTAINER_NAME) 2>/dev/null || true
+	-docker rmi $(DOCKER_IMAGE):latest 2>/dev/null || true
+	-docker rmi $(DOCKER_FULL_IMAGE) 2>/dev/null || true
+	@echo "Docker cleanup complete"
+
+# Push Docker image to registry (requires login)
+docker-push:
+	@echo "Pushing Docker image to $(DOCKER_REGISTRY)..."
+	docker tag $(DOCKER_FULL_IMAGE) $(DOCKER_REGISTRY)/$(DOCKER_FULL_IMAGE)
+	docker tag $(DOCKER_IMAGE):latest $(DOCKER_REGISTRY)/$(DOCKER_IMAGE):latest
+	docker push $(DOCKER_REGISTRY)/$(DOCKER_FULL_IMAGE)
+	docker push $(DOCKER_REGISTRY)/$(DOCKER_IMAGE):latest
+	@echo "Docker image pushed successfully!"
+
+# ============================================================================
+# Docker Compose Targets
+# ============================================================================
+
+# Start services with docker-compose
+docker-compose-up:
+	@echo "Starting services with docker-compose..."
+	docker-compose up -d
+	@echo "Services started! Access at http://localhost:8080"
+
+# Stop services
+docker-compose-down:
+	@echo "Stopping docker-compose services..."
+	docker-compose down
+
+# Restart services
+docker-compose-restart:
+	@echo "Restarting docker-compose services..."
+	docker-compose restart
+
+# View docker-compose logs
+docker-compose-logs:
+	docker-compose logs -f
+
+# Build docker-compose services
+docker-compose-build:
+	@echo "Building docker-compose services..."
+	docker-compose build
+
+# Help target for Docker commands
+docker-help:
+	@echo "Docker Build Targets:"
+	@echo ""
+	@echo "Build:"
+	@echo "  make docker-build              - Build Docker image with version injection"
+	@echo "  make docker-build-no-cache     - Build without cache (clean build)"
+	@echo ""
+	@echo "Run:"
+	@echo "  make docker-run                - Run container (detached, port 8080)"
+	@echo "  make docker-stop               - Stop and remove container"
+	@echo "  make docker-logs               - View container logs"
+	@echo "  make docker-test               - Run tests in container"
+	@echo ""
+	@echo "Cleanup:"
+	@echo "  make docker-clean              - Remove images and containers"
+	@echo ""
+	@echo "Registry:"
+	@echo "  make docker-push               - Push image to registry"
+	@echo ""
+	@echo "Docker Compose:"
+	@echo "  make docker-compose-up         - Start services"
+	@echo "  make docker-compose-down       - Stop services"
+	@echo "  make docker-compose-restart    - Restart services"
+	@echo "  make docker-compose-logs       - View logs"
+	@echo "  make docker-compose-build      - Build services"
+	@echo ""
+	@echo "Variables (can override):"
+	@echo "  VERSION=$(VERSION)"
+	@echo "  DOCKER_REGISTRY=$(DOCKER_REGISTRY)"
+	@echo ""
+	@echo "Examples:"
+	@echo "  make docker-build VERSION=1.0.0"
+	@echo "  make docker-push DOCKER_REGISTRY=ghcr.io/myorg"

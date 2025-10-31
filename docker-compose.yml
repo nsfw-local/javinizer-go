@@ -1,0 +1,71 @@
+version: '3.8'
+
+services:
+  javinizer:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: javinizer:latest
+    container_name: javinizer
+    restart: unless-stopped
+
+    ports:
+      - "8080:8080"
+
+    # SIMPLIFIED: Only 2 volumes
+    volumes:
+      # Application state (config, database, logs, cache)
+      - ./javinizer:/javinizer
+
+      # JAV files for sorting (read-write for organize operations)
+      - /path/to/your/jav-library:/data
+
+    # UPDATED environment variables
+    environment:
+      # Application home directory
+      - JAVINIZER_HOME=/javinizer
+
+      # Configuration file location
+      - JAVINIZER_CONFIG=/javinizer/config.yaml
+
+      # Database location
+      - JAVINIZER_DB=/javinizer/javinizer.db
+
+      # Log directory
+      - JAVINIZER_LOG_DIR=/javinizer/logs
+
+      # Data directory (JAV files)
+      - JAVINIZER_DATA_DIR=/data
+
+      # Timezone
+      - TZ=UTC
+
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+
+  # Optional: Development profile
+  javinizer-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    profiles: ["dev"]
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./javinizer:/javinizer
+      - /path/to/your/jav-library:/data
+      # Mount frontend source for live development
+      - ./web/frontend:/app/web/frontend
+    environment:
+      - JAVINIZER_DEV_MODE=true
+      - VITE_API_URL=http://localhost:8080
+      - JAVINIZER_HOME=/javinizer
+      - JAVINIZER_CONFIG=/javinizer/config.yaml
+      - JAVINIZER_DB=/javinizer/javinizer.db
+      - JAVINIZER_LOG_DIR=/javinizer/logs
+      - JAVINIZER_DATA_DIR=/data
+      - TZ=UTC

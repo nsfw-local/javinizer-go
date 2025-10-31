@@ -233,6 +233,11 @@ Example:
 }
 
 func loadConfig() error {
+	// Check for JAVINIZER_CONFIG environment variable (Docker override)
+	if envConfig := os.Getenv("JAVINIZER_CONFIG"); envConfig != "" {
+		cfgFile = envConfig
+	}
+
 	var err error
 	cfg, err = config.LoadOrCreate(cfgFile)
 	if err != nil {

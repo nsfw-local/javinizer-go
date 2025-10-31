@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"os"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
@@ -37,6 +39,19 @@ type ServerDependencies struct {
 	JobQueue    *worker.JobQueue
 }
 
+// resolveSwaggerPath returns the path to swagger.json, checking multiple locations
+// Returns Docker path first (/app/docs/swagger/swagger.json), then falls back to local dev path
+func resolveSwaggerPath() string {
+	// Try Docker path first (production deployment)
+	dockerPath := "/app/docs/swagger/swagger.json"
+	if _, err := os.Stat(dockerPath); err == nil {
+		return dockerPath
+	}
+
+	// Fall back to local development path
+	return "./docs/swagger/swagger.json"
+}
+
 // isSameOrigin checks if the origin matches the request host (same-origin)
 func isSameOrigin(origin string, r *http.Request) bool {
 	if origin == "" {
@@ -59,6 +74,60 @@ func isOriginAllowed(origin string, allowedOrigins []string) bool {
 	for _, allowed := range allowedOrigins {
 		if allowed == "*" || allowed == origin {
 			return true
+		}
+	}
+
+	return false
+}
+
+// acceptsHTML checks if the request Accept header includes text/html with q>0
+// Used to distinguish browser requests from API clients
+// Properly parses Accept header to respect quality values (q-values) per RFC 9110
+func acceptsHTML(c *gin.Context) bool {
+	accept := c.GetHeader("Accept")
+	if accept == "" {
+		return false
+	}
+
+	// Parse Accept header: split by comma and check each media type
+	parts := strings.Split(accept, ",")
+	for _, part := range parts {
+		part = strings.TrimSpace(strings.ToLower(part))
+
+		// Extract media type and parameters
+		segments := strings.Split(part, ";")
+		if len(segments) == 0 {
+			continue
+		}
+
+		mediaType := strings.TrimSpace(segments[0])
+
+		// Check if this is text/html
+		if mediaType == "text/html" {
+			// Parse parameters to find q-value
+			qValue := 1.0 // Default quality is 1.0 if not specified
+
+			for i := 1; i < len(segments); i++ {
+				param := strings.TrimSpace(segments[i])
+				if strings.HasPrefix(param, "q=") {
+					// Extract q-value
+					qStr := strings.TrimPrefix(param, "q=")
+					qStr = strings.TrimSpace(qStr)
+					// Simple parsing: check if it starts with "0" or "0."
+					if qStr == "0" || qStr == "0.0" || qStr == "0.00" || qStr == "0.000" {
+						qValue = 0.0
+						break
+					}
+					// Any other value means q > 0
+					break
+				}
+			}
+
+			// Only accept if q > 0
+			if qValue > 0 {
+				return true
+			}
+			// If q=0, continue checking other media types
 		}
 	}
 
@@ -140,7 +209,17 @@ func NewServer(deps *ServerDependencies) *gin.Engine {
 		}
 
 		c.Writer.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
-		c.Writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+
+		// Allow requested headers dynamically (echo back Access-Control-Request-Headers)
+		// This allows SPAs and API clients to use custom headers without CORS preflight failures
+		requestedHeaders := c.Request.Header.Get("Access-Control-Request-Headers")
+		if requestedHeaders != "" {
+			// Use requested headers from preflight
+			c.Writer.Header().Set("Access-Control-Allow-Headers", requestedHeaders)
+		} else {
+			// Default to common headers
+			c.Writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+		}
 
 		if c.Request.Method == "OPTIONS" {
 			c.AbortWithStatus(204)
@@ -150,7 +229,7 @@ func NewServer(deps *ServerDependencies) *gin.Engine {
 	})
 
 	// Serve OpenAPI spec directly for Scalar
-	router.StaticFile("/docs/openapi.json", "./docs/swagger/swagger.json")
+	router.StaticFile("/docs/openapi.json", resolveSwaggerPath())
 
 	// Scalar API documentation (modern, beautiful UI)
 	router.GET("/docs", serveScalarDocs)
@@ -164,7 +243,7 @@ func NewServer(deps *ServerDependencies) *gin.Engine {
 	// WebSocket endpoint for progress updates
 	router.GET("/ws/progress", handleWebSocket(wsHub))
 
-	// API v1 routes
+	// API v1 routes (define BEFORE static files to ensure API takes precedence)
 	v1 := router.Group("/api/v1")
 	{
 		// Movie endpoints
@@ -193,6 +272,32 @@ func NewServer(deps *ServerDependencies) *gin.Engine {
 		v1.POST("/batch/:id/movies/:movieId/preview", previewOrganize(deps.JobQueue, deps.Config))
 		v1.POST("/batch/:id/organize", organizeJob(deps.Matcher, deps.JobQueue, deps.DB, deps.Config))
 	}
+
+	// Serve frontend static files (for Docker deployment)
+	// Frontend should be built and placed in web/dist by the Dockerfile
+	// Define AFTER API routes so API takes precedence
+	router.Static("/_app", "/app/web/dist/_app") // SvelteKit assets
+	router.StaticFile("/favicon.ico", "/app/web/dist/favicon.ico")
+	router.StaticFile("/robots.txt", "/app/web/dist/robots.txt")
+
+	// Fallback: serve index.html for browser SPA routing only
+	// API requests to non-existent endpoints should return proper 404 JSON
+	router.NoRoute(func(c *gin.Context) {
+		// Only serve SPA for GET/HEAD requests that accept HTML (browser traffic)
+		// HEAD is treated like GET for monitoring tools and HTTP caches
+		method := c.Request.Method
+		if (method == http.MethodGet || method == http.MethodHead) && acceptsHTML(c) {
+			c.File("/app/web/dist/index.html")
+			return
+		}
+
+		// Return proper 404 JSON for API requests
+		c.JSON(http.StatusNotFound, gin.H{
+			"error":   "Not Found",
+			"message": "The requested resource does not exist",
+			"path":    c.Request.URL.Path,
+		})
+	})
 
 	return router
 }

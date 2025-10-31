@@ -1,0 +1,432 @@
+# Docker Deployment Guide
+
+This guide explains how to deploy Javinizer using Docker and Docker Compose.
+
+## Table of Contents
+
+- [Quick Start](#quick-start)
+- [Prerequisites](#prerequisites)
+- [Building the Image](#building-the-image)
+- [Running with Docker Compose](#running-with-docker-compose)
+- [Volume Structure](#volume-structure)
+- [Configuration](#configuration)
+- [Development Mode](#development-mode)
+- [Troubleshooting](#troubleshooting)
+
+---
+
+## Quick Start
+
+The fastest way to get Javinizer running:
+
+```bash
+# 1. Clone the repository
+git clone https://github.com/javinizer/javinizer-go.git
+cd javinizer-go
+
+# 2. Build the Docker image
+docker build -t javinizer:latest .
+
+# 3. Run with Docker Compose
+docker-compose up -d
+
+# 4. Access the web UI
+open http://localhost:8080
+```
+
+---
+
+## Prerequisites
+
+- **Docker**: 20.10+ ([Install Docker](https://docs.docker.com/get-docker/))
+- **Docker Compose**: 2.0+ (included with Docker Desktop)
+- **Disk Space**: ~500MB for image + your JAV library
+
+---
+
+## Building the Image
+
+### Local Build
+
+Build the image locally with version information:
+
+```bash
+docker build \
+  --build-arg VERSION=$(git describe --tags --always) \
+  --build-arg COMMIT=$(git rev-parse --short HEAD) \
+  --build-arg BUILD_DATE=$(date -u '+%Y-%m-%d_%H:%M:%S') \
+  -t javinizer:latest \
+  .
+```
+
+### Build Process
+
+The Dockerfile uses a multi-stage build:
+
+1. **Stage 1 (frontend-builder)**: Builds the SvelteKit frontend with Node.js 20
+2. **Stage 2 (go-builder)**: Compiles the Go binary with SQLite support
+3. **Stage 3 (runtime)**: Creates a minimal Alpine runtime image (~80MB)
+
+**Build time**: ~2-3 minutes on modern hardware
+
+---
+
+## Running with Docker Compose
+
+### Basic Usage
+
+The `docker-compose.yml` file provides a production-ready setup:
+
+```bash
+# Start the container
+docker-compose up -d
+
+# View logs
+docker-compose logs -f
+
+# Stop the container
+docker-compose down
+
+# Restart the container
+docker-compose restart
+```
+
+### Updating the Application
+
+```bash
+# Pull latest changes
+git pull
+
+# Rebuild the image
+docker-compose build
+
+# Restart with new image
+docker-compose up -d
+```
+
+---
+
+## Volume Structure
+
+Javinizer uses a **2-volume architecture**:
+
+### Volume 1: Application State (`/javinizer`)
+
+Contains all application data:
+- `config.yaml` - Configuration file
+- `javinizer.db` - SQLite database (cached metadata)
+- `logs/` - Application logs
+- `cache/` - Temporary cache files
+
+**Host mount**: `./javinizer:/javinizer`
+
+### Volume 2: Media Files (`/data`)
+
+Your JAV library for scanning and organizing:
+- Read-write access required for organize operations
+- Can be any directory on your host
+
+**Host mount**: `/path/to/your/jav-library:/data`
+
+### Example Directory Structure
+
+```
+/Users/you/
+├── javinizer-go/          # Project root
+│   └── javinizer/         # Application state (created by Docker)
+│       ├── config.yaml
+│       ├── javinizer.db
+│       └── logs/
+└── JAV/                   # Your media library
+    ├── IPX-123.mp4
+    └── ABW-456.mkv
+```
+
+**docker-compose.yml**:
+```yaml
+volumes:
+  - ./javinizer:/javinizer                    # Relative path
+  - /Users/you/JAV:/data                      # Absolute path
+```
+
+---
+
+## Configuration
+
+### Environment Variables
+
+Configure via environment variables in `docker-compose.yml`:
+
+```yaml
+environment:
+  # Application home directory
+  - JAVINIZER_HOME=/javinizer
+
+  # Configuration file location
+  - JAVINIZER_CONFIG=/javinizer/config.yaml
+
+  # Database location
+  - JAVINIZER_DB=/javinizer/javinizer.db
+
+  # Log directory
+  - JAVINIZER_LOG_DIR=/javinizer/logs
+
+  # Data directory (JAV files)
+  - JAVINIZER_DATA_DIR=/data
+
+  # Timezone (affects log timestamps)
+  - TZ=America/New_York
+```
+
+### Configuration File
+
+Edit `./javinizer/config.yaml` on the host:
+
+```yaml
+server:
+  host: "0.0.0.0"
+  port: 8080
+
+scrapers:
+  priority: ["r18dev", "dmm"]
+
+  # Proxy configuration (optional)
+  proxy:
+    enabled: true
+    url: "http://proxy.example.com:8080"
+
+output:
+  organize_directory: "/data/organized"
+  folder_template: "<ID> [<STUDIO>] - <TITLE> (<YEAR>)"
+```
+
+**Changes take effect** after restarting the container:
+```bash
+docker-compose restart
+```
+
+### Port Mapping
+
+To use a different port, edit `docker-compose.yml`:
+
+```yaml
+ports:
+  - "9090:8080"  # Access at http://localhost:9090
+```
+
+---
+
+## Development Mode
+
+For frontend development with live reload:
+
+```bash
+# Start development container
+docker-compose --profile dev up
+
+# Changes to web/frontend/ will trigger hot reload
+```
+
+This mounts the frontend source directory into the container for live development.
+
+---
+
+## Troubleshooting
+
+### Container Won't Start
+
+Check logs:
+```bash
+docker-compose logs
+```
+
+Common issues:
+- **Port 8080 in use**: Change port mapping in `docker-compose.yml`
+- **Permission denied**: Ensure the `./javinizer` directory is writable
+- **Volume mount failed**: Check that your JAV library path exists
+
+### Health Check Failing
+
+The health check endpoint is `/health`. Test manually:
+```bash
+curl http://localhost:8080/health
+```
+
+### Database Locked
+
+If SQLite database is locked:
+```bash
+# Stop container
+docker-compose down
+
+# Remove lock file
+rm ./javinizer/javinizer.db-shm ./javinizer/javinizer.db-wal
+
+# Restart
+docker-compose up -d
+```
+
+### Viewing Container Internals
+
+```bash
+# Enter the running container
+docker-compose exec javinizer sh
+
+# Check binary version
+javinizer --version
+
+# Check file permissions
+ls -la /javinizer
+
+# Check running processes
+ps aux
+```
+
+### Reset Application State
+
+To start fresh (⚠️ **deletes all cached metadata**):
+```bash
+# Stop container
+docker-compose down
+
+# Remove application state
+rm -rf ./javinizer
+
+# Restart (will create fresh state)
+docker-compose up -d
+```
+
+---
+
+## Docker Commands Reference
+
+### Image Management
+
+```bash
+# List images
+docker images javinizer
+
+# Remove old images
+docker rmi javinizer:old-tag
+
+# Prune unused images
+docker image prune
+```
+
+### Container Management
+
+```bash
+# List running containers
+docker ps
+
+# View container resource usage
+docker stats javinizer
+
+# View container filesystem changes
+docker diff javinizer
+
+# Export container filesystem
+docker export javinizer > javinizer-backup.tar
+```
+
+### Logs and Debugging
+
+```bash
+# Follow logs in real-time
+docker-compose logs -f --tail=100
+
+# View logs for specific timeframe
+docker-compose logs --since 30m
+
+# View resource usage
+docker-compose stats
+
+# Inspect container
+docker inspect javinizer
+```
+
+---
+
+## Security Considerations
+
+### Running as Non-Root User
+
+The container runs as user `javinizer` (UID 1000) for security:
+```dockerfile
+USER javinizer
+```
+
+If you encounter permission issues with host volumes, ensure your host user has matching permissions.
+
+### Network Security
+
+The default configuration binds to `0.0.0.0:8080` (all interfaces). For production:
+
+1. **Use a reverse proxy** (nginx, Caddy) with HTTPS
+2. **Restrict binding** to localhost:
+   ```yaml
+   ports:
+     - "127.0.0.1:8080:8080"
+   ```
+3. **Add authentication** (currently not built-in)
+
+---
+
+## Production Deployment
+
+### Recommended Setup
+
+```yaml
+version: '3.8'
+
+services:
+  javinizer:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: javinizer:latest
+    container_name: javinizer
+    restart: unless-stopped
+
+    ports:
+      - "127.0.0.1:8080:8080"  # Localhost only
+
+    volumes:
+      - ./javinizer:/javinizer
+      - /mnt/media/jav:/data  # Read-write for organize operations
+
+    environment:
+      - TZ=UTC
+      - JAVINIZER_LOG_LEVEL=info  # Reduce log verbosity
+
+    healthcheck:
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 1G
+        reservations:
+          cpus: '0.5'
+          memory: 256M
+```
+
+---
+
+## Next Steps
+
+- [Configuration Guide](./03-configuration.md) - Detailed configuration options
+- [CLI Usage](./02-usage.md) - Command-line interface reference
+- [API Documentation](http://localhost:8080/docs) - REST API reference (when running)
+
+---
+
+## Support
+
+- **Issues**: [GitHub Issues](https://github.com/javinizer/javinizer-go/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/javinizer/javinizer-go/discussions)
