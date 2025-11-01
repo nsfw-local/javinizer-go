@@ -471,6 +471,34 @@ func TestPreviewOrganize(t *testing.T) {
 			},
 			expectedStatus: 404,
 		},
+		{
+			name: "preview with resolved content ID (ABP-071 → ABP-071DOD)",
+			setupJob: func(jq *worker.JobQueue) (string, string) {
+				job := jq.CreateJob([]string{"/path/to/ABP-071.mp4"})
+				result := &worker.FileResult{
+					FilePath: "/path/to/ABP-071.mp4",
+					MovieID:  "ABP-071", // Original matched ID from filename
+					Status:   worker.JobStatusCompleted,
+					Data: &models.Movie{
+						ID:    "ABP-071DOD", // Resolved content ID from DMM
+						Title: "Test Movie with Resolved Content ID",
+					},
+					StartedAt: time.Now(),
+				}
+				job.UpdateFileResult("/path/to/ABP-071.mp4", result)
+				return job.ID, "ABP-071DOD" // Frontend passes resolved content ID
+			},
+			requestBody: OrganizePreviewRequest{
+				Destination: "/output",
+				CopyOnly:    false,
+			},
+			expectedStatus: 200,
+			validateFn: func(t *testing.T, resp *OrganizePreviewResponse) {
+				assert.Equal(t, "ABP-071DOD", resp.FolderName)
+				assert.Equal(t, "ABP-071DOD", resp.FileName)
+				assert.Contains(t, resp.FullPath, "ABP-071DOD")
+			},
+		},
 	}
 
 	for _, tt := range tests {
