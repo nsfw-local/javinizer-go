@@ -143,15 +143,20 @@ func (s *Scraper) ResolveContentID(id string) (string, error) {
 	}
 
 	// Extract content-id and URL from various DMM link types
-	var foundContentID string
-	var foundURL string
+	// Collect ALL candidates to choose the best one (shortest ID preferred)
+	type candidate struct {
+		contentID string
+		url       string
+		length    int
+	}
+	candidates := make([]candidate, 0)
 	cleanSearchID := regexp.MustCompile(`^([a-z]+)0*(\d+.*)$`).ReplaceAllString(contentID, "$1$2")
 
 	logging.Debugf("DMM: Searching for matches to searchQuery=%s, cleanSearchID=%s or contentID=%s", searchQuery, cleanSearchID, contentID)
 
 	doc.Find("a").Each(func(i int, sel *goquery.Selection) {
 		href, exists := sel.Attr("href")
-		if !exists || foundContentID != "" {
+		if !exists {
 			return
 		}
 
@@ -187,21 +192,41 @@ func (s *Scraper) ResolveContentID(id string) (string, error) {
 
 			// Match against our search ID (with zeros, without zeros, and normalized)
 			if cleanURLCID == searchQuery || cleanURLCID == cleanSearchID || cleanURLCID == contentID {
-				foundContentID = urlCID
 				// Build full URL if it's a relative path
+				fullURL := ""
 				if strings.HasPrefix(href, "/") {
-					foundURL = "https://www.dmm.co.jp" + href
+					fullURL = "https://www.dmm.co.jp" + href
 				} else if strings.HasPrefix(href, "http") {
-					foundURL = href
+					fullURL = href
 				}
-				logging.Debugf("DMM: ✓ Resolved %s to content-id: %s, URL: %s", id, urlCID, foundURL)
+
+				candidates = append(candidates, candidate{
+					contentID: urlCID,
+					url:       fullURL,
+					length:    len(urlCID),
+				})
+				logging.Debugf("DMM: ✓ Found candidate %s (length: %d), URL: %s", urlCID, len(urlCID), fullURL)
 			}
 		}
 	})
 
-	if foundContentID == "" {
+	if len(candidates) == 0 {
 		return "", fmt.Errorf("no matching content-id found in DMM search results")
 	}
+
+	// Select best candidate: prefer shorter content IDs (e.g., "abp071" over "abp071dod")
+	// Sort by length (ascending) and pick the first one
+	foundContentID := candidates[0].contentID
+	minLength := candidates[0].length
+
+	for _, c := range candidates[1:] {
+		if c.length < minLength {
+			minLength = c.length
+			foundContentID = c.contentID
+		}
+	}
+
+	logging.Debugf("DMM: Selected shortest candidate: %s (length: %d) from %d total candidates", foundContentID, minLength, len(candidates))
 
 	// 4. Cache the mapping for future lookups
 	mapping := &models.ContentIDMapping{
