@@ -260,6 +260,18 @@ func previewOrganize(jobQueue *worker.JobQueue, cfg *config.Config) gin.HandlerF
 			}
 		}
 
+		// If not found by MovieID, try searching by the actual movie.ID (in case of content ID resolution)
+		if movie == nil {
+			for _, result := range status.Results {
+				if result.Data != nil {
+					if m, ok := result.Data.(*models.Movie); ok && m.ID == movieID {
+						movie = m
+						break
+					}
+				}
+			}
+		}
+
 		if movie == nil {
 			c.JSON(404, ErrorResponse{Error: fmt.Sprintf("Movie %s not found in job", movieID)})
 			return
