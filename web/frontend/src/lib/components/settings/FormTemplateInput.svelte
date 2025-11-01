@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { generateUUID } from '$lib/utils/uuid';
+
 	interface Props {
 		label: string;
 		description?: string;
@@ -18,7 +20,7 @@
 		onchange,
 		disabled = false,
 		showTagList = false,
-		id = `template-${crypto.randomUUID()}`
+		id = `template-${generateUUID()}`
 	}: Props = $props();
 
 	const TEMPLATE_TAGS = [

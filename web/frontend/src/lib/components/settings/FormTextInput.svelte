@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { generateUUID } from '$lib/utils/uuid';
+
 	interface Props {
 		label: string;
 		description?: string;
@@ -18,7 +20,7 @@
 		onchange,
 		disabled = false,
 		pattern,
-		id = `text-${crypto.randomUUID()}`
+		id = `text-${generateUUID()}`
 	}: Props = $props();
 
 	function handleInput(event: Event) {

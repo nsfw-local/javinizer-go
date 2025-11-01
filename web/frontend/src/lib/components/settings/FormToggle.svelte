@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { generateUUID } from '$lib/utils/uuid';
+
 	interface Props {
 		label: string;
 		description?: string;
@@ -14,7 +16,7 @@
 		checked = $bindable(false),
 		onchange,
 		disabled = false,
-		id = `toggle-${crypto.randomUUID()}`
+		id = `toggle-${generateUUID()}`
 	}: Props = $props();
 
 	function handleChange(event: Event) {
