@@ -1,7 +1,18 @@
 import { writable } from 'svelte/store';
+import { browser } from '$app/environment';
 import type { ProgressMessage } from '$lib/api/types';
 
-const WS_URL = import.meta.env.VITE_WS_URL || 'ws://localhost:8080/ws/progress';
+// Build WebSocket URL dynamically from browser location
+// This works for both local dev (localhost:8080) and Docker (any host)
+// Converts http -> ws and https -> wss automatically
+function getWebSocketURL(): string {
+	if (!browser) {
+		// During SSR, return a placeholder (won't be used)
+		return 'ws://localhost:8080/ws/progress';
+	}
+	// Replace http/https with ws/wss and append the WebSocket path
+	return location.origin.replace(/^http/, 'ws') + '/ws/progress';
+}
 
 interface WebSocketState {
 	connected: boolean;
@@ -19,15 +30,22 @@ function createWebSocketStore() {
 	let reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
 
 	function connect() {
+		if (!browser) {
+			console.warn('WebSocket connection attempted during SSR, skipping');
+			return;
+		}
+
 		if (ws?.readyState === WebSocket.OPEN) {
 			return;
 		}
 
+		const wsUrl = getWebSocketURL();
+
 		try {
-			ws = new WebSocket(WS_URL);
+			ws = new WebSocket(wsUrl);
 
 			ws.onopen = () => {
-				console.log('WebSocket connected');
+				console.log('WebSocket connected to', wsUrl);
 				update((state) => ({ ...state, connected: true, error: undefined }));
 			};
 

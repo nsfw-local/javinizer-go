@@ -113,7 +113,7 @@
 	// Load all actresses on modal open
 	async function loadAllActresses() {
 		try {
-			const response = await fetch(`http://localhost:8080/api/v1/actresses/search?q=`);
+			const response = await fetch(`/api/v1/actresses/search?q=`);
 			if (response.ok) {
 				allActresses = await response.json();
 			}

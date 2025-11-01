@@ -93,7 +93,7 @@
 						Settings
 					</a>
 					<a
-						href="http://localhost:8080/docs"
+						href="/docs"
 						target="_blank"
 						class="px-4 py-2 border rounded hover:bg-accent transition-colors text-center"
 					>

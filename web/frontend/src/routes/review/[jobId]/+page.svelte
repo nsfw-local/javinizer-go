@@ -85,7 +85,7 @@
 
 	async function fetchConfig() {
 		try {
-			const response = await fetch('http://localhost:8080/api/v1/config');
+			const response = await fetch('/api/v1/config');
 			config = await response.json();
 		} catch (e) {
 			console.error('Failed to fetch config:', e);

@@ -16,13 +16,24 @@ import type {
 	AvailableScrapersResponse
 } from './types';
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080';
+// Build API base URL dynamically from browser location
+// In production (Docker/deployed), frontend and backend are same-origin, so we use ''
+// In dev mode with Vite proxy, we also use '' (proxy handles forwarding to backend)
+// VITE_API_URL can override this for custom setups
+function getAPIBaseURL(): string {
+	// Allow explicit override via build-time env var (for special cases)
+	if (import.meta.env.VITE_API_URL) {
+		return import.meta.env.VITE_API_URL;
+	}
+	// Use empty string for same-origin requests (works with Vite proxy in dev and same-origin in production)
+	return '';
+}
 
 class APIClient {
 	private baseURL: string;
 
-	constructor(baseURL: string = API_BASE_URL) {
-		this.baseURL = baseURL;
+	constructor(baseURL?: string) {
+		this.baseURL = baseURL ?? getAPIBaseURL();
 	}
 
 	public async request<T>(endpoint: string, options?: RequestInit): Promise<T> {
