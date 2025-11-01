@@ -114,7 +114,6 @@ ENV JAVINIZER_HOME=/javinizer \
     JAVINIZER_CONFIG=/javinizer/config.yaml \
     JAVINIZER_DB=/javinizer/javinizer.db \
     JAVINIZER_LOG_DIR=/javinizer/logs \
-    JAVINIZER_DATA_DIR=/media \
     PATH="/usr/local/bin:${PATH}"
 
 # Switch to non-root user

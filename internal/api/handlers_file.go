@@ -99,19 +99,29 @@ func scanDirectory(mat *matcher.Matcher, cfg *config.Config) gin.HandlerFunc {
 
 // getCurrentWorkingDirectory godoc
 // @Summary Get current working directory
-// @Description Returns the server's current working directory
+// @Description Returns the server's default browse directory (first allowed directory if configured, otherwise current working directory)
 // @Tags web
 // @Produce json
 // @Success 200 {object} map[string]string
 // @Router /api/v1/cwd [get]
-func getCurrentWorkingDirectory() gin.HandlerFunc {
+func getCurrentWorkingDirectory(cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		cwd, err := os.Getwd()
-		if err != nil {
-			c.JSON(500, ErrorResponse{Error: err.Error()})
-			return
+		var defaultPath string
+
+		// Prefer first allowed directory if configured (for Docker environments)
+		if len(cfg.API.Security.AllowedDirectories) > 0 {
+			defaultPath = cfg.API.Security.AllowedDirectories[0]
+		} else {
+			// Fall back to current working directory
+			cwd, err := os.Getwd()
+			if err != nil {
+				c.JSON(500, ErrorResponse{Error: err.Error()})
+				return
+			}
+			defaultPath = cwd
 		}
-		c.JSON(200, gin.H{"path": cwd})
+
+		c.JSON(200, gin.H{"path": defaultPath})
 	}
 }
 

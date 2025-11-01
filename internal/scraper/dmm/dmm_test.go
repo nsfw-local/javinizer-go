@@ -1192,3 +1192,290 @@ func TestNormalizeID_EdgeCases(t *testing.T) {
 		})
 	}
 }
+
+// TestExtractCandidateURLs_Priorities verifies URL priority assignment
+func TestExtractCandidateURLs_Priorities(t *testing.T) {
+	tests := []struct {
+		name             string
+		html             string
+		contentID        string
+		expectedPriority int
+		expectedURL      string
+		description      string
+	}{
+		{
+			name: "Monthly standard has highest priority",
+			html: `
+				<a href="https://www.dmm.co.jp/monthly/standard/-/detail/=/cid=61mdb087/">Monthly Standard</a>
+				<a href="https://www.dmm.co.jp/mono/dvd/-/detail/=/cid=mdb087/">Physical DVD</a>
+			`,
+			contentID:        "61mdb087",
+			expectedPriority: 5,
+			expectedURL:      "https://www.dmm.co.jp/monthly/standard/-/detail/=/cid=61mdb087/",
+			description:      "/monthly/standard/ should have priority 5 (highest)",
+		},
+		{
+			name: "Monthly premium has second priority",
+			html: `
+				<a href="https://www.dmm.co.jp/monthly/premium/-/detail/=/cid=61mdb087/">Monthly Premium</a>
+				<a href="https://www.dmm.co.jp/mono/dvd/-/detail/=/cid=mdb087/">Physical DVD</a>
+			`,
+			contentID:        "61mdb087",
+			expectedPriority: 4,
+			expectedURL:      "https://www.dmm.co.jp/monthly/premium/-/detail/=/cid=61mdb087/",
+			description:      "/monthly/premium/ should have priority 4",
+		},
+		{
+			name: "Physical DVD has third priority",
+			html: `
+				<a href="https://www.dmm.co.jp/mono/dvd/-/detail/=/cid=sone860/">Physical DVD</a>
+				<a href="https://www.dmm.co.jp/digital/videoa/-/detail/=/cid=4sone860/">Digital Video</a>
+			`,
+			contentID:        "4sone860",
+			expectedPriority: 3,
+			expectedURL:      "https://www.dmm.co.jp/mono/dvd/-/detail/=/cid=sone860/",
+			description:      "/mono/dvd/ should have priority 3",
+		},
+		{
+			name: "Digital video has fourth priority",
+			html: `
+				<a href="https://www.dmm.co.jp/digital/videoa/-/detail/=/cid=mdb087/">Digital Video</a>
+				<a href="https://video.dmm.co.jp/av/content/?id=61mdb087">Streaming</a>
+			`,
+			contentID:        "61mdb087",
+			expectedPriority: 2,
+			expectedURL:      "https://www.dmm.co.jp/digital/videoa/-/detail/=/cid=mdb087/",
+			description:      "/digital/videoa/ should have priority 2",
+		},
+		{
+			name: "Streaming video has fifth priority",
+			html: `
+				<a href="https://video.dmm.co.jp/av/content/?id=61mdb087">Streaming</a>
+			`,
+			contentID:        "61mdb087",
+			expectedPriority: 1,
+			expectedURL:      "https://video.dmm.co.jp/av/content/?id=61mdb087",
+			description:      "video.dmm.co.jp should have priority 1",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := &config.Config{
+				Scrapers: config.ScrapersConfig{
+					DMM: config.DMMConfig{
+						Enabled:        true,
+						EnableHeadless: true, // Enable to include video.dmm.co.jp URLs
+					},
+				},
+			}
+			scraper := New(cfg, nil)
+
+			doc, err := parseHTMLString(fmt.Sprintf("<html><body>%s</body></html>", tt.html))
+			require.NoError(t, err)
+
+			candidates := scraper.extractCandidateURLs(doc, tt.contentID)
+			require.NotEmpty(t, candidates, "Should extract at least one candidate")
+
+			// Find the candidate with highest priority
+			var best urlCandidate
+			for _, c := range candidates {
+				if c.priority > best.priority {
+					best = c
+				}
+			}
+
+			assert.Equal(t, tt.expectedPriority, best.priority, tt.description)
+			assert.Equal(t, tt.expectedURL, best.url)
+		})
+	}
+}
+
+// TestExtractCandidateURLs_BaseIDMatching verifies base ID extraction and matching
+func TestExtractCandidateURLs_BaseIDMatching(t *testing.T) {
+	tests := []struct {
+		name        string
+		html        string
+		contentID   string
+		shouldMatch bool
+		description string
+	}{
+		{
+			name: "Matches base ID without prefix",
+			html: `
+				<a href="https://www.dmm.co.jp/mono/dvd/-/detail/=/cid=sone860/">Product</a>
+			`,
+			contentID:   "4sone860",
+			shouldMatch: true,
+			description: "Should match base ID 'sone860' from content ID '4sone860'",
+		},
+		{
+			name: "Matches content ID with prefix",
+			html: `
+				<a href="https://www.dmm.co.jp/monthly/standard/-/detail/=/cid=61mdb087/">Product</a>
+			`,
+			contentID:   "61mdb087",
+			shouldMatch: true,
+			description: "Should match content ID '61mdb087'",
+		},
+		{
+			name: "Does not match unrelated ID",
+			html: `
+				<a href="https://www.dmm.co.jp/mono/dvd/-/detail/=/cid=xyz123/">Product</a>
+			`,
+			contentID:   "abc456",
+			shouldMatch: false,
+			description: "Should not match unrelated IDs",
+		},
+		{
+			name: "Matches base ID when URL uses base format",
+			html: `
+				<a href="https://www.dmm.co.jp/digital/videoa/-/detail/=/cid=ipx00535/">Product</a>
+			`,
+			contentID:   "ipx00535",
+			shouldMatch: true,
+			description: "Should match exact content ID 'ipx00535'",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := &config.Config{
+				Scrapers: config.ScrapersConfig{
+					DMM: config.DMMConfig{
+						Enabled: true,
+					},
+				},
+			}
+			scraper := New(cfg, nil)
+
+			doc, err := parseHTMLString(fmt.Sprintf("<html><body>%s</body></html>", tt.html))
+			require.NoError(t, err)
+
+			candidates := scraper.extractCandidateURLs(doc, tt.contentID)
+
+			if tt.shouldMatch {
+				assert.NotEmpty(t, candidates, tt.description)
+			} else {
+				assert.Empty(t, candidates, tt.description)
+			}
+		})
+	}
+}
+
+// TestExtractCandidateURLs_ExcludePatterns verifies excluded URL patterns
+func TestExtractCandidateURLs_ExcludePatterns(t *testing.T) {
+	tests := []struct {
+		name             string
+		html             string
+		contentID        string
+		enableHeadless   bool
+		shouldBeExcluded bool
+		description      string
+	}{
+		{
+			name: "Rental pages excluded",
+			html: `
+				<a href="https://www.dmm.co.jp/rental/-/detail/=/cid=mdb087/">Rental</a>
+			`,
+			contentID:        "mdb087",
+			enableHeadless:   false,
+			shouldBeExcluded: true,
+			description:      "/rental/ URLs should be excluded",
+		},
+		{
+			name: "Streaming excluded when headless disabled",
+			html: `
+				<a href="https://video.dmm.co.jp/av/content/?id=mdb087">Streaming</a>
+			`,
+			contentID:        "mdb087",
+			enableHeadless:   false,
+			shouldBeExcluded: true,
+			description:      "video.dmm.co.jp should be excluded when headless is disabled",
+		},
+		{
+			name: "Streaming included when headless enabled",
+			html: `
+				<a href="https://video.dmm.co.jp/av/content/?id=mdb087">Streaming</a>
+			`,
+			contentID:        "mdb087",
+			enableHeadless:   true,
+			shouldBeExcluded: false,
+			description:      "video.dmm.co.jp should be included when headless is enabled",
+		},
+		{
+			name: "Monthly standard not excluded",
+			html: `
+				<a href="https://www.dmm.co.jp/monthly/standard/-/detail/=/cid=61mdb087/">Monthly</a>
+			`,
+			contentID:        "61mdb087",
+			enableHeadless:   false,
+			shouldBeExcluded: false,
+			description:      "/monthly/standard/ should not be excluded",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := &config.Config{
+				Scrapers: config.ScrapersConfig{
+					DMM: config.DMMConfig{
+						Enabled:        true,
+						EnableHeadless: tt.enableHeadless,
+					},
+				},
+			}
+			scraper := New(cfg, nil)
+
+			doc, err := parseHTMLString(fmt.Sprintf("<html><body>%s</body></html>", tt.html))
+			require.NoError(t, err)
+
+			candidates := scraper.extractCandidateURLs(doc, tt.contentID)
+
+			if tt.shouldBeExcluded {
+				assert.Empty(t, candidates, tt.description)
+			} else {
+				assert.NotEmpty(t, candidates, tt.description)
+			}
+		})
+	}
+}
+
+// TestExtractCandidateURLs_PriorityOrder verifies correct priority ordering
+func TestExtractCandidateURLs_PriorityOrder(t *testing.T) {
+	html := `
+		<a href="https://video.dmm.co.jp/av/content/?id=61mdb087">Streaming (Priority 1)</a>
+		<a href="https://www.dmm.co.jp/digital/videoa/-/detail/=/cid=mdb087/">Digital Video (Priority 2)</a>
+		<a href="https://www.dmm.co.jp/mono/dvd/-/detail/=/cid=mdb087/">Physical DVD (Priority 3)</a>
+		<a href="https://www.dmm.co.jp/monthly/premium/-/detail/=/cid=61mdb087/">Monthly Premium (Priority 4)</a>
+		<a href="https://www.dmm.co.jp/monthly/standard/-/detail/=/cid=61mdb087/">Monthly Standard (Priority 5)</a>
+	`
+
+	cfg := &config.Config{
+		Scrapers: config.ScrapersConfig{
+			DMM: config.DMMConfig{
+				Enabled:        true,
+				EnableHeadless: true,
+			},
+		},
+	}
+	scraper := New(cfg, nil)
+
+	doc, err := parseHTMLString(fmt.Sprintf("<html><body>%s</body></html>", html))
+	require.NoError(t, err)
+
+	candidates := scraper.extractCandidateURLs(doc, "61mdb087")
+	require.Len(t, candidates, 5, "Should extract all 5 URL types")
+
+	// Verify priorities are assigned correctly
+	priorityMap := make(map[int]string)
+	for _, c := range candidates {
+		priorityMap[c.priority] = c.url
+	}
+
+	assert.Contains(t, priorityMap[5], "/monthly/standard/", "Priority 5 should be monthly standard")
+	assert.Contains(t, priorityMap[4], "/monthly/premium/", "Priority 4 should be monthly premium")
+	assert.Contains(t, priorityMap[3], "/mono/dvd/", "Priority 3 should be physical DVD")
+	assert.Contains(t, priorityMap[2], "/digital/videoa/", "Priority 2 should be digital video")
+	assert.Contains(t, priorityMap[1], "video.dmm.co.jp", "Priority 1 should be streaming")
+}

@@ -36,9 +36,6 @@ services:
       # Log directory
       - JAVINIZER_LOG_DIR=/javinizer/logs
 
-      # Media directory (JAV files)
-      - JAVINIZER_DATA_DIR=/media
-
       # Timezone
       - TZ=${TZ:-UTC}
 
@@ -73,5 +70,4 @@ services:
       - JAVINIZER_CONFIG=/javinizer/config.yaml
       - JAVINIZER_DB=/javinizer/javinizer.db
       - JAVINIZER_LOG_DIR=/javinizer/logs
-      - JAVINIZER_DATA_DIR=/media
       - TZ=${TZ:-UTC}

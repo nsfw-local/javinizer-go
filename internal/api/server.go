@@ -260,7 +260,7 @@ func NewServer(deps *ServerDependencies) *gin.Engine {
 		v1.GET("/scrapers", getAvailableScrapers(deps.Registry))
 
 		// File endpoints
-		v1.GET("/cwd", getCurrentWorkingDirectory())
+		v1.GET("/cwd", getCurrentWorkingDirectory(deps.Config))
 		v1.POST("/scan", scanDirectory(deps.Matcher, deps.Config))
 		v1.POST("/browse", browseDirectory(deps.Config))
 

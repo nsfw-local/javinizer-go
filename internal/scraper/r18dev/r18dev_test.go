@@ -341,6 +341,57 @@ func TestScraper_Search_EmptyArrays(t *testing.T) {
 	assert.Empty(t, result.ScreenshotURL)
 }
 
+func TestStripDMMPrefix(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{
+			name:     "DMM content ID with single digit prefix",
+			input:    "4sone860",
+			expected: "sone860",
+		},
+		{
+			name:     "DMM content ID with three digit prefix",
+			input:    "118abw001",
+			expected: "abw001",
+		},
+		{
+			name:     "DMM content ID with hyphenated ID",
+			input:    "4sone-860",
+			expected: "sone-860",
+		},
+		{
+			name:     "Standard JAV ID without DMM prefix",
+			input:    "SONE-860",
+			expected: "SONE-860",
+		},
+		{
+			name:     "Lowercase ID without DMM prefix",
+			input:    "ipx-535",
+			expected: "ipx-535",
+		},
+		{
+			name:     "Already normalized without DMM prefix",
+			input:    "sone860",
+			expected: "sone860",
+		},
+		{
+			name:     "Empty string",
+			input:    "",
+			expected: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := stripDMMPrefix(tt.input)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
 func TestNormalizeID(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -381,6 +432,16 @@ func TestNormalizeID(t *testing.T) {
 			name:     "With suffix",
 			input:    "IPX-535Z",
 			expected: "ipx535z",
+		},
+		{
+			name:     "DMM content ID with prefix",
+			input:    "4sone860",
+			expected: "sone860",
+		},
+		{
+			name:     "DMM content ID with long prefix",
+			input:    "118abw001",
+			expected: "abw001",
 		},
 	}
 

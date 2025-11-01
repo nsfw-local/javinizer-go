@@ -313,6 +313,10 @@ func (s *Scraper) parseResponse(data *R18Response, sourceURL string) (*models.Sc
 func normalizeID(id string) string {
 	// R18.dev expects IDs in format like "ipx00535" or "ABP00420"
 	// Convert "IPX-535" to "ipx00535" and remove all Unicode whitespace (spaces, tabs, non-breaking spaces, etc.)
+
+	// First, strip DMM content ID prefix if present (e.g., "4sone860" -> "sone860")
+	id = stripDMMPrefix(id)
+
 	id = strings.ToLower(id)
 	id = strings.ReplaceAll(id, "-", "")
 
@@ -325,6 +329,25 @@ func normalizeID(id string) string {
 		return r
 	}, id)
 
+	return id
+}
+
+// stripDMMPrefix removes DMM content ID prefix (leading digits)
+// Example: "4sone860" -> "sone860", "118abw001" -> "abw001", "sone-860" -> "sone-860" (unchanged)
+func stripDMMPrefix(id string) string {
+	// DMM content IDs have leading digits before the series code
+	// Use regex to detect and remove them
+	re := regexp.MustCompile(`^(\d+)([a-zA-Z].*)$`)
+	matches := re.FindStringSubmatch(id)
+
+	if len(matches) == 3 {
+		// matches[1] = leading digits (DMM prefix)
+		// matches[2] = rest of ID (series + number)
+		logging.Debugf("R18: Stripped DMM prefix '%s' from ID '%s' -> '%s'", matches[1], id, matches[2])
+		return matches[2]
+	}
+
+	// No DMM prefix found, return as-is
 	return id
 }
 

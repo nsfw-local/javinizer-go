@@ -230,33 +230,120 @@ func (s *Scraper) GetURL(id string) (string, error) {
 		return "", fmt.Errorf("movie not found on DMM: %w", err)
 	}
 
-	// The URL is embedded in the search results - extract it from the href we found
-	// We need to search again to get the URL (TODO: refactor to return both from ResolveContentID)
-	searchQuery := strings.ToLower(strings.ReplaceAll(id, "-", ""))
-	searchURLFormatted := fmt.Sprintf(searchURL, searchQuery)
+	// Try multiple search queries to find product pages
+	// Extract base ID by stripping leading digits from content ID (e.g., "4sone860" -> "sone860")
+	baseID := normalizeID(contentID)
 
-	resp, err := s.client.R().Get(searchURLFormatted)
-	if err != nil || resp.StatusCode() != 200 {
-		return "", fmt.Errorf("DMM search unavailable")
+	searchQueries := []string{
+		strings.ToLower(strings.ReplaceAll(baseID, "-", "")), // Base ID without hyphen (e.g., "sone860")
+		strings.ToLower(baseID),                              // Base ID with hyphen if present
+		strings.ToLower(strings.ReplaceAll(id, "-", "")),     // Original passed ID without hyphen
+		strings.ToLower(id),                                  // Original passed ID as-is
+		strings.ToLower(contentID),                           // Content ID (e.g., "4sone860")
 	}
 
-	doc, err := goquery.NewDocumentFromReader(strings.NewReader(resp.String()))
-	if err != nil {
-		return "", fmt.Errorf("failed to parse DMM search results")
+	// Remove duplicates
+	uniqueQueries := make([]string, 0, len(searchQueries))
+	seen := make(map[string]bool)
+	for _, q := range searchQueries {
+		if !seen[q] && q != "" {
+			seen[q] = true
+			uniqueQueries = append(uniqueQueries, q)
+		}
 	}
 
-	// Collect all URLs that match our content-ID and prioritize them
-	type urlCandidate struct {
-		url      string
-		priority int
+	// Collect all candidate URLs from all search queries
+	allCandidates := make([]urlCandidate, 0)
+
+	for _, searchQuery := range uniqueQueries {
+		searchURLFormatted := fmt.Sprintf(searchURL, searchQuery)
+		logging.Debugf("DMM: Trying search query: %s", searchQuery)
+
+		resp, err := s.client.R().Get(searchURLFormatted)
+		if err != nil || resp.StatusCode() != 200 {
+			logging.Debugf("DMM: Search failed for query '%s'", searchQuery)
+			continue
+		}
+
+		doc, err := goquery.NewDocumentFromReader(strings.NewReader(resp.String()))
+		if err != nil {
+			logging.Debugf("DMM: Failed to parse search results for query '%s'", searchQuery)
+			continue
+		}
+
+		candidates := s.extractCandidateURLs(doc, contentID)
+		allCandidates = append(allCandidates, candidates...)
 	}
 
+	if len(allCandidates) == 0 {
+		return "", fmt.Errorf("no scrapable URL found for movie on DMM")
+	}
+
+	// Sort by priority (highest first)
+	sort.Slice(allCandidates, func(i, j int) bool {
+		return allCandidates[i].priority > allCandidates[j].priority
+	})
+
+	// If the best candidate has low priority (search results), try direct URLs as fallback
+	// Direct URLs often work even when not linked from search results
+	if allCandidates[0].priority < 2 {
+		// Strip leading digits from content ID to get base ID (e.g., "4sone860" -> "sone860")
+		baseID := regexp.MustCompile(`^\d+`).ReplaceAllString(contentID, "")
+		baseID = strings.ToLower(baseID) // Ensure lowercase
+
+		directURLs := []string{
+			fmt.Sprintf(physicalURL, baseID),    // /mono/dvd/ with base ID - priority 3
+			fmt.Sprintf(digitalURL, baseID),     // /digital/videoa/ with base ID - priority 2
+			fmt.Sprintf(physicalURL, contentID), // /mono/dvd/ with content ID - priority 3
+			fmt.Sprintf(digitalURL, contentID),  // /digital/videoa/ with content ID - priority 2
+		}
+
+		logging.Debugf("DMM: Best candidate has low priority (%d), trying direct URLs for %s", allCandidates[0].priority, baseID)
+
+		for _, directURL := range directURLs {
+			// Quick GET request to check if URL exists (HEAD doesn't follow redirects reliably)
+			resp, err := s.client.R().
+				SetDoNotParseResponse(true). // Don't parse body, just check status
+				Get(directURL)
+			if err == nil && (resp.StatusCode() == 200 || resp.StatusCode() == 302) {
+				// Determine priority based on URL pattern
+				priority := 0
+				if strings.Contains(directURL, "/mono/dvd/") {
+					priority = 3
+				} else if strings.Contains(directURL, "/digital/videoa/") {
+					priority = 2
+				}
+
+				logging.Debugf("DMM: ✓ Found direct URL (priority %d): %s", priority, directURL)
+				allCandidates = append(allCandidates, urlCandidate{url: directURL, priority: priority})
+
+				// Re-sort after adding direct URLs
+				sort.Slice(allCandidates, func(i, j int) bool {
+					return allCandidates[i].priority > allCandidates[j].priority
+				})
+				break // Found a working direct URL, stop trying
+			}
+		}
+	}
+
+	foundURL := allCandidates[0].url
+	logging.Debugf("DMM: Selected URL for %s (priority %d): %s", id, allCandidates[0].priority, foundURL)
+	return foundURL, nil
+}
+
+// urlCandidate represents a URL with its priority
+type urlCandidate struct {
+	url      string
+	priority int
+}
+
+// extractCandidateURLs extracts and prioritizes URLs from search results
+func (s *Scraper) extractCandidateURLs(doc *goquery.Document, contentID string) []urlCandidate {
 	var candidates []urlCandidate
 
 	// URL patterns to exclude (unsupported page structures)
 	excludePatterns := []string{
-		"/monthly/", // Monthly subscription pages have different structure
-		"/rental/",  // Rental pages
+		"/rental/", // Rental pages
 	}
 
 	// Only exclude video.dmm.co.jp if headless browser is disabled
@@ -268,9 +355,18 @@ func (s *Scraper) GetURL(id string) (string, error) {
 	}
 
 	// Priority order (higher = better):
-	// 1. /digital/videoa/ or /digital/videoc/ (digital video DVD on www.dmm.co.jp)
-	// 2. /mono/dvd/ (physical DVD pages)
-	// 3. video.dmm.co.jp (digital streaming video pages)
+	// 1. /monthly/standard/ (monthly standard subscription - most accessible)
+	// 2. /monthly/premium/ (monthly premium subscription)
+	// 3. /digital/videoa/ or /digital/videoc/ (digital video DVD on www.dmm.co.jp)
+	// 4. /mono/dvd/ (physical DVD pages)
+	// 5. video.dmm.co.jp (digital streaming video pages)
+
+	// Extract base ID from content ID (e.g., "4sone860" -> "sone860", "61mdb087" -> "mdb087")
+	// Strip leading digits to get base ID, keep lowercase for URL matching
+	baseID := regexp.MustCompile(`^\d+`).ReplaceAllString(contentID, "")
+	if baseID == "" {
+		baseID = contentID // No leading digits, use as-is
+	}
 
 	doc.Find("a").Each(func(i int, sel *goquery.Selection) {
 		href, exists := sel.Attr("href")
@@ -278,8 +374,10 @@ func (s *Scraper) GetURL(id string) (string, error) {
 			return
 		}
 
-		// Check if this link contains our content-ID
-		if !strings.Contains(href, contentID) {
+		// Check if this link contains our content-ID or base ID
+		// DMM product pages can use different ID formats (e.g., sone860, 4sone860, tksone860)
+		containsID := strings.Contains(href, contentID) || strings.Contains(href, baseID)
+		if !containsID {
 			return
 		}
 
@@ -308,30 +406,23 @@ func (s *Scraper) GetURL(id string) (string, error) {
 
 		// Assign priority
 		priority := 0
-		if strings.Contains(fullURL, "/digital/videoa/") || strings.Contains(fullURL, "/digital/videoc/") {
-			priority = 3 // Highest priority: digital video DVD
+		if strings.Contains(fullURL, "/monthly/standard/") {
+			priority = 5 // Highest priority: monthly standard subscription (most accessible)
+		} else if strings.Contains(fullURL, "/monthly/premium/") {
+			priority = 4 // Monthly premium subscription
 		} else if strings.Contains(fullURL, "/mono/dvd/") {
-			priority = 2 // Second: physical DVD
+			priority = 3 // Physical DVD pages
+		} else if strings.Contains(fullURL, "/digital/videoa/") || strings.Contains(fullURL, "/digital/videoc/") {
+			priority = 2 // Digital video DVD
 		} else if strings.Contains(fullURL, "video.dmm.co.jp") {
-			priority = 1 // Third: digital streaming video
+			priority = 1 // Digital streaming video
 		}
 
 		candidates = append(candidates, urlCandidate{url: fullURL, priority: priority})
 		logging.Debugf("DMM: Found candidate URL (priority %d): %s", priority, fullURL)
 	})
 
-	if len(candidates) == 0 {
-		return "", fmt.Errorf("no scrapable URL found for movie on DMM")
-	}
-
-	// Sort by priority (highest first)
-	sort.Slice(candidates, func(i, j int) bool {
-		return candidates[i].priority > candidates[j].priority
-	})
-
-	foundURL := candidates[0].url
-	logging.Debugf("DMM: Selected URL for %s (priority %d): %s", id, candidates[0].priority, foundURL)
-	return foundURL, nil
+	return candidates
 }
 
 // Search searches for and scrapes metadata for a given movie ID

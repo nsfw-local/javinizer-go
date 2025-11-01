@@ -237,12 +237,11 @@ environment:
   # Log directory
   - JAVINIZER_LOG_DIR=/javinizer/logs
 
-  # Media directory (JAV files)
-  - JAVINIZER_DATA_DIR=/media
-
   # Timezone (affects log timestamps)
   - TZ=America/New_York
 ```
+
+**Note**: The media directory mounted at `/media` is automatically detected and added to allowed directories. No additional configuration needed.
 
 ### Configuration File
 

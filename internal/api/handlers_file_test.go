@@ -245,22 +245,54 @@ func TestScanDirectory_PathTraversalPrevention(t *testing.T) {
 }
 
 func TestGetCurrentWorkingDirectory(t *testing.T) {
-	router := gin.New()
-	router.GET("/cwd", getCurrentWorkingDirectory())
+	t.Run("returns os.Getwd when no allowed directories configured", func(t *testing.T) {
+		cfg := config.DefaultConfig()
+		cfg.API.Security.AllowedDirectories = []string{} // No allowed directories
 
-	req := httptest.NewRequest("GET", "/cwd", nil)
-	w := httptest.NewRecorder()
+		router := gin.New()
+		router.GET("/cwd", getCurrentWorkingDirectory(cfg))
 
-	router.ServeHTTP(w, req)
+		req := httptest.NewRequest("GET", "/cwd", nil)
+		w := httptest.NewRecorder()
 
-	assert.Equal(t, 200, w.Code)
+		router.ServeHTTP(w, req)
 
-	var response map[string]string
-	err := json.Unmarshal(w.Body.Bytes(), &response)
-	require.NoError(t, err)
+		assert.Equal(t, 200, w.Code)
 
-	assert.Contains(t, response, "path")
-	assert.NotEmpty(t, response["path"])
+		var response map[string]string
+		err := json.Unmarshal(w.Body.Bytes(), &response)
+		require.NoError(t, err)
+
+		assert.Contains(t, response, "path")
+		assert.NotEmpty(t, response["path"])
+
+		// Should return actual working directory
+		expectedCwd, _ := os.Getwd()
+		assert.Equal(t, expectedCwd, response["path"])
+	})
+
+	t.Run("returns first allowed directory when configured", func(t *testing.T) {
+		cfg := config.DefaultConfig()
+		cfg.API.Security.AllowedDirectories = []string{"/media", "/data"}
+
+		router := gin.New()
+		router.GET("/cwd", getCurrentWorkingDirectory(cfg))
+
+		req := httptest.NewRequest("GET", "/cwd", nil)
+		w := httptest.NewRecorder()
+
+		router.ServeHTTP(w, req)
+
+		assert.Equal(t, 200, w.Code)
+
+		var response map[string]string
+		err := json.Unmarshal(w.Body.Bytes(), &response)
+		require.NoError(t, err)
+
+		assert.Contains(t, response, "path")
+		// Should return first allowed directory
+		assert.Equal(t, "/media", response["path"])
+	})
 }
 
 func TestBrowseDirectory(t *testing.T) {

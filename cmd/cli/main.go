@@ -273,9 +273,6 @@ func loadConfig() error {
 	if os.Getenv("JAVINIZER_LOG_DIR") != "" {
 		logging.Debugf("Log output overridden by JAVINIZER_LOG_DIR: %s", cfg.Logging.Output)
 	}
-	if os.Getenv("JAVINIZER_DATA_DIR") != "" {
-		logging.Debugf("Allowed directories set by JAVINIZER_DATA_DIR: %v", cfg.API.Security.AllowedDirectories)
-	}
 	if os.Getenv("JAVINIZER_HOME") != "" {
 		logging.Debugf("JAVINIZER_HOME is set to: %s (reserved for future use)", os.Getenv("JAVINIZER_HOME"))
 	}
@@ -344,12 +341,14 @@ func applyEnvironmentOverrides(cfg *config.Config) {
 		cfg.Logging.Output = strings.Join(newOutputs, ",")
 	}
 
-	// JAVINIZER_DATA_DIR - Set as default allowed directory if not explicitly configured
-	// This is useful for Docker where media is mounted at a specific path (e.g., /media)
-	// Only apply if allowed_directories is empty (user hasn't explicitly configured it)
-	if envDataDir := os.Getenv("JAVINIZER_DATA_DIR"); envDataDir != "" {
-		if len(cfg.API.Security.AllowedDirectories) == 0 {
-			cfg.API.Security.AllowedDirectories = []string{envDataDir}
+	// Docker auto-detection: If allowed_directories is empty and /media exists,
+	// automatically use /media as the default allowed directory.
+	// This makes Docker deployments work out-of-the-box since MEDIA_PATH is always
+	// mounted to /media in the container.
+	if len(cfg.API.Security.AllowedDirectories) == 0 {
+		if _, err := os.Stat("/media"); err == nil {
+			cfg.API.Security.AllowedDirectories = []string{"/media"}
+			logging.Debugf("Auto-detected Docker environment, setting allowed directories to [/media]")
 		}
 	}
 
