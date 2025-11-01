@@ -86,6 +86,7 @@ RUN addgroup -g ${GROUP_ID} javinizer && \
 
 # Copy binary to /usr/local/bin for system-wide access
 COPY --from=go-builder /build/javinizer /usr/local/bin/javinizer
+RUN chmod +x /usr/local/bin/javinizer
 
 # Copy frontend static files
 COPY --from=go-builder /build/web/dist /app/web/dist
