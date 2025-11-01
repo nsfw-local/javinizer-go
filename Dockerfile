@@ -97,8 +97,9 @@ COPY --from=go-builder /build/docs/swagger /app/docs/swagger
 # Copy default configuration to /app (not /javinizer, to avoid volume shadowing)
 COPY configs/config.yaml.example /app/config/config.yaml.default
 
-# Configure server to bind to 0.0.0.0 for Docker (not localhost)
-RUN sed -i 's/^\([[:space:]]*\)host: localhost/\1host: 0.0.0.0/' /app/config/config.yaml.default
+# Configure for Docker environment
+RUN sed -i 's/^\([[:space:]]*\)host: localhost/\1host: 0.0.0.0/' /app/config/config.yaml.default && \
+    sed -i 's/^\([[:space:]]*\)allowed_directories: \[\]/\1allowed_directories: ["\/media"]/' /app/config/config.yaml.default
 
 # Copy entrypoint script
 COPY scripts/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
