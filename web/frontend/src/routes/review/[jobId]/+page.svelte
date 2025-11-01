@@ -484,26 +484,34 @@
 							</div>
 
 							{#if preview}
+								{@const pathParts = preview.full_path
+									.replace(destinationPath + '/', '')
+									.split('/')
+									.filter(p => p && !p.includes('.mp4'))}
+								{@const fileIndent = pathParts.length * 4}
 								<div class="mt-3 p-3 bg-accent/50 rounded border border-dashed">
 									<p class="text-xs font-medium mb-2 text-muted-foreground">Preview:</p>
 									<div class="font-mono text-xs space-y-1">
 										<div class="text-muted-foreground">📁 {destinationPath}/</div>
-										<div class="ml-4 text-muted-foreground">
-											📁 {preview.folder_name}/
-										</div>
-										<div class="ml-8">🎬 {preview.file_name}.mp4</div>
-										<div class="ml-8">📄 {preview.file_name}.nfo</div>
-										<div class="ml-8">🖼️ {preview.file_name}-poster.jpg</div>
-										<div class="ml-8">🖼️ {preview.file_name}-fanart.jpg</div>
+										{#each pathParts as part, index}
+											<div class="text-muted-foreground" style="margin-left: {(index + 1) * 4}px">
+												📁 {part}/
+											</div>
+										{/each}
+										<div style="margin-left: {fileIndent + 4}px">🎬 {preview.file_name}.mp4</div>
+										<div style="margin-left: {fileIndent + 4}px">📄 {preview.file_name}.nfo</div>
+										<div style="margin-left: {fileIndent + 4}px">🖼️ {preview.file_name}-poster.jpg</div>
+										<div style="margin-left: {fileIndent + 4}px">🖼️ {preview.file_name}-fanart.jpg</div>
 										{#if preview.screenshots && preview.screenshots.length > 0}
-											<div class="ml-8 text-muted-foreground">📁 extrafanart/</div>
+											<div class="text-muted-foreground" style="margin-left: {fileIndent + 4}px">📁 extrafanart/</div>
 											{#each (showAllPreviewScreenshots ? preview.screenshots : preview.screenshots.slice(0, 3)) as screenshot}
-												<div class="ml-12">🖼️ {screenshot}</div>
+												<div style="margin-left: {fileIndent + 8}px">🖼️ {screenshot}</div>
 											{/each}
 											{#if preview.screenshots.length > 3 && !showAllPreviewScreenshots}
 												<button
 													onclick={() => (showAllPreviewScreenshots = true)}
-													class="ml-12 text-muted-foreground hover:text-primary transition-colors cursor-pointer text-left"
+													class="text-muted-foreground hover:text-primary transition-colors cursor-pointer text-left"
+													style="margin-left: {fileIndent + 8}px"
 												>
 													... and {preview.screenshots.length - 3} more
 												</button>
@@ -511,7 +519,8 @@
 											{#if showAllPreviewScreenshots && preview.screenshots.length > 3}
 												<button
 													onclick={() => (showAllPreviewScreenshots = false)}
-													class="ml-12 text-muted-foreground hover:text-primary transition-colors cursor-pointer text-left"
+													class="text-muted-foreground hover:text-primary transition-colors cursor-pointer text-left"
+													style="margin-left: {fileIndent + 8}px"
 												>
 													Show less
 												</button>
