@@ -304,9 +304,13 @@ func (s *Scraper) GetURL(id string) (string, error) {
 		return "", fmt.Errorf("no scrapable URL found for movie on DMM")
 	}
 
-	// Sort by priority (highest first)
+	// Sort by priority (highest first), then by content ID length (shortest first)
 	sort.Slice(allCandidates, func(i, j int) bool {
-		return allCandidates[i].priority > allCandidates[j].priority
+		if allCandidates[i].priority != allCandidates[j].priority {
+			return allCandidates[i].priority > allCandidates[j].priority
+		}
+		// If priorities are equal, prefer shorter content IDs (e.g., "abp071" over "abp071dod")
+		return allCandidates[i].idLength < allCandidates[j].idLength
 	})
 
 	// If the best candidate has low priority (search results), try direct URLs as fallback
@@ -339,12 +343,22 @@ func (s *Scraper) GetURL(id string) (string, error) {
 					priority = 2
 				}
 
-				logging.Debugf("DMM: ✓ Found direct URL (priority %d): %s", priority, directURL)
-				allCandidates = append(allCandidates, urlCandidate{url: directURL, priority: priority})
+				extractedID := extractContentIDFromURL(directURL)
+				idLen := len(extractedID)
+				logging.Debugf("DMM: ✓ Found direct URL (priority %d, ID: %s, len: %d): %s", priority, extractedID, idLen, directURL)
+				allCandidates = append(allCandidates, urlCandidate{
+					url:       directURL,
+					priority:  priority,
+					contentID: extractedID,
+					idLength:  idLen,
+				})
 
-				// Re-sort after adding direct URLs
+				// Re-sort after adding direct URLs (by priority, then by ID length)
 				sort.Slice(allCandidates, func(i, j int) bool {
-					return allCandidates[i].priority > allCandidates[j].priority
+					if allCandidates[i].priority != allCandidates[j].priority {
+						return allCandidates[i].priority > allCandidates[j].priority
+					}
+					return allCandidates[i].idLength < allCandidates[j].idLength
 				})
 				break // Found a working direct URL, stop trying
 			}
@@ -358,8 +372,10 @@ func (s *Scraper) GetURL(id string) (string, error) {
 
 // urlCandidate represents a URL with its priority
 type urlCandidate struct {
-	url      string
-	priority int
+	url       string
+	priority  int
+	contentID string // extracted content ID from URL for length comparison
+	idLength  int    // length of content ID (shorter is better)
 }
 
 // extractCandidateURLs extracts and prioritizes URLs from search results
@@ -443,8 +459,17 @@ func (s *Scraper) extractCandidateURLs(doc *goquery.Document, contentID string) 
 			priority = 1 // Digital streaming video
 		}
 
-		candidates = append(candidates, urlCandidate{url: fullURL, priority: priority})
-		logging.Debugf("DMM: Found candidate URL (priority %d): %s", priority, fullURL)
+		// Extract content ID from URL for comparison
+		extractedID := extractContentIDFromURL(fullURL)
+		idLen := len(extractedID)
+
+		candidates = append(candidates, urlCandidate{
+			url:       fullURL,
+			priority:  priority,
+			contentID: extractedID,
+			idLength:  idLen,
+		})
+		logging.Debugf("DMM: Found candidate URL (priority %d, ID: %s, len: %d): %s", priority, extractedID, idLen, fullURL)
 	})
 
 	return candidates
