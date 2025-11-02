@@ -852,11 +852,43 @@ func (s *Scraper) extractActresses(doc *goquery.Document) []models.ActressInfo {
 			return
 		}
 
+		// Extract thumbnail URL - look for img tag within the link or in parent/sibling elements
+		thumbURL := ""
+
+		// Try to find img within the link
+		if img := sel.Find("img").First(); img.Length() > 0 {
+			if src, exists := img.Attr("src"); exists {
+				thumbURL = src
+			} else if src, exists := img.Attr("data-src"); exists {
+				// Some sites use lazy loading
+				thumbURL = src
+			}
+		}
+
+		// If no img in link, check parent's sibling or parent element
+		if thumbURL == "" {
+			parent := sel.Parent()
+			if img := parent.Find("img").First(); img.Length() > 0 {
+				if src, exists := img.Attr("src"); exists {
+					thumbURL = src
+				} else if src, exists := img.Attr("data-src"); exists {
+					thumbURL = src
+				}
+			}
+		}
+
+		// If still no thumbnail found, construct URL from actress ID
+		// DMM actress thumbnails follow pattern: https://pics.dmm.co.jp/digital/video/actress/{actress_id}/{actress_id}.jpg
+		if thumbURL == "" && actressID > 0 {
+			thumbURL = fmt.Sprintf("https://pics.dmm.co.jp/digital/video/actress/%d/%d.jpg", actressID, actressID)
+		}
+
 		// Determine if name is Japanese (using Unicode properties for Go 1.25+ compatibility)
 		isJapanese := regexp.MustCompile(`\p{Hiragana}|\p{Katakana}|\p{Han}`).MatchString(actressName)
 
 		actress := models.ActressInfo{
-			DMMID: actressID,
+			DMMID:    actressID,
+			ThumbURL: thumbURL,
 		}
 
 		if isJapanese {
@@ -873,6 +905,7 @@ func (s *Scraper) extractActresses(doc *goquery.Document) []models.ActressInfo {
 		}
 
 		actresses = append(actresses, actress)
+		logging.Debugf("DMM: Actress extracted - Name: %s, ThumbURL: %s, ID: %d", actress.FullName(), actress.ThumbURL, actress.DMMID)
 	})
 
 	return actresses

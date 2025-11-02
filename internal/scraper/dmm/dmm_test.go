@@ -519,6 +519,12 @@ func TestExtractActresses(t *testing.T) {
 			expectedCount: 1,
 			checkNames:    []string{"Actress"}, // Only real actress retained (FirstName="Actress"), UI elements filtered
 		},
+		{
+			name:          "With thumbnail images",
+			html:          `<a href="?actress=111"><img src="https://pics.dmm.co.jp/actress/111/thumb.jpg">山田 花子</a><a href="?actress=222"><img src="https://pics.dmm.co.jp/actress/222/thumb.jpg">田中 美咲</a>`,
+			expectedCount: 2,
+			checkNames:    []string{"山田 花子", "田中 美咲"},
+		},
 	}
 
 	for _, tt := range tests {
