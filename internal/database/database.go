@@ -104,7 +104,41 @@ func (r *MovieRepository) Upsert(movie *models.Movie) error {
 		if err := r.ensureActressesExist(movie.Actresses); err != nil {
 			return err
 		}
-		return r.db.Create(movie).Error
+
+		// Save translations separately to avoid UNIQUE constraint violations
+		translations := movie.Translations
+		movie.Translations = nil
+
+		// Create the movie record (without translations)
+		if err := r.db.Create(movie).Error; err != nil {
+			return err
+		}
+
+		// Create associations
+		if len(movie.Genres) > 0 {
+			if err := r.db.Model(movie).Association("Genres").Replace(movie.Genres); err != nil {
+				return err
+			}
+		}
+		if len(movie.Actresses) > 0 {
+			if err := r.db.Model(movie).Association("Actresses").Replace(movie.Actresses); err != nil {
+				return err
+			}
+		}
+
+		// Upsert translations individually to avoid UNIQUE constraint violations
+		translationRepo := NewMovieTranslationRepository(r.db)
+		for i := range translations {
+			translations[i].MovieID = movie.ID
+			if err := translationRepo.Upsert(&translations[i]); err != nil {
+				return err
+			}
+		}
+
+		// Restore translations to movie object
+		movie.Translations = translations
+
+		return nil
 	}
 
 	// Movie exists, update it
