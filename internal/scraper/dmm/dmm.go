@@ -877,11 +877,9 @@ func (s *Scraper) extractActresses(doc *goquery.Document) []models.ActressInfo {
 			}
 		}
 
-		// If still no thumbnail found, construct URL from actress ID
-		// DMM actress thumbnails follow pattern: https://pics.dmm.co.jp/digital/video/actress/{actress_id}/{actress_id}.jpg
-		if thumbURL == "" && actressID > 0 {
-			thumbURL = fmt.Sprintf("https://pics.dmm.co.jp/digital/video/actress/%d/%d.jpg", actressID, actressID)
-		}
+		// Note: We don't construct fallback URLs because DMM actress thumbnails use romaji names
+		// (e.g., https://pics.dmm.co.jp/mono/actjpgs/sirakami_emika.jpg), but DMM pages only
+		// provide Japanese names. The aggregator will use r18dev's ThumbURL when available.
 
 		// Determine if name is Japanese (using Unicode properties for Go 1.25+ compatibility)
 		isJapanese := regexp.MustCompile(`\p{Hiragana}|\p{Katakana}|\p{Han}`).MatchString(actressName)
