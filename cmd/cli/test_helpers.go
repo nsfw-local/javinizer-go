@@ -580,8 +580,8 @@ func createTestDirectoryStructure(t *testing.T) (string, map[string]string) {
 	subdir1 := filepath.Join(rootDir, "subdir1")
 	subdir2 := filepath.Join(rootDir, "subdir2")
 
-	require.NoError(t, os.MkdirAll(subdir1, 0755))
-	require.NoError(t, os.MkdirAll(subdir2, 0755))
+	require.NoError(t, os.MkdirAll(subdir1, 0777))
+	require.NoError(t, os.MkdirAll(subdir2, 0777))
 
 	// Create files in different locations
 	files := map[string]string{

@@ -70,7 +70,7 @@ func InitLogger(cfg *Config) error {
 		} else {
 			// It's a file path - create directory if needed
 			dir := filepath.Dir(output)
-			if err := os.MkdirAll(dir, 0755); err != nil {
+			if err := os.MkdirAll(dir, 0777); err != nil {
 				return fmt.Errorf("failed to create log directory %q: %w", dir, err)
 			}
 

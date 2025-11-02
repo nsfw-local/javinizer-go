@@ -391,7 +391,7 @@ func Save(cfg *Config, path string) error {
 	}
 
 	dir := filepath.Dir(path)
-	if err := os.MkdirAll(dir, 0755); err != nil {
+	if err := os.MkdirAll(dir, 0777); err != nil {
 		return fmt.Errorf("failed to create config directory: %w", err)
 	}
 

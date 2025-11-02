@@ -371,7 +371,7 @@ func (g *Generator) formatActressNameFromInfo(firstName, lastName, japaneseName 
 func (g *Generator) WriteNFO(nfo *Movie, path string) error {
 	// Ensure output directory exists
 	dir := filepath.Dir(path)
-	if err := os.MkdirAll(dir, 0755); err != nil {
+	if err := os.MkdirAll(dir, 0777); err != nil {
 		return fmt.Errorf("failed to create output directory: %w", err)
 	}
 

@@ -360,7 +360,7 @@ func (o *Organizer) Execute(plan *OrganizePlan, dryRun bool) (*OrganizeResult, e
 	} else {
 		// Normal move: create target directory and move file
 		// Create target directory
-		if err := os.MkdirAll(plan.TargetDir, 0755); err != nil {
+		if err := os.MkdirAll(plan.TargetDir, 0777); err != nil {
 			result.Error = fmt.Errorf("failed to create directory: %w", err)
 			return result, result.Error
 		}
@@ -535,7 +535,7 @@ func (o *Organizer) Copy(plan *OrganizePlan, dryRun bool) (*OrganizeResult, erro
 	}
 
 	// Create target directory
-	if err := os.MkdirAll(plan.TargetDir, 0755); err != nil {
+	if err := os.MkdirAll(plan.TargetDir, 0777); err != nil {
 		result.Error = fmt.Errorf("failed to create directory: %w", err)
 		return result, result.Error
 	}

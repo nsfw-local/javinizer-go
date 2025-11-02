@@ -74,7 +74,7 @@ func runAPI(hostFlag string, portFlag int) {
 
 	// Ensure data directory exists
 	dataDir := filepath.Dir(cfg.Database.DSN)
-	if err := os.MkdirAll(dataDir, 0755); err != nil {
+	if err := os.MkdirAll(dataDir, 0777); err != nil {
 		log.Fatalf("Failed to create data directory: %v", err)
 	}
 

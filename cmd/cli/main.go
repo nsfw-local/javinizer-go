@@ -526,7 +526,7 @@ func runInit(cmd *cobra.Command, args []string, deps *Dependencies) error {
 
 	// Create data directory
 	dataDir := filepath.Dir(deps.Config.Database.DSN)
-	if err := os.MkdirAll(dataDir, 0755); err != nil {
+	if err := os.MkdirAll(dataDir, 0777); err != nil {
 		return fmt.Errorf("failed to create data directory: %w", err)
 	}
 	fmt.Printf("✅ Created data directory: %s\n", dataDir)

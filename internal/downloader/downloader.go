@@ -365,7 +365,7 @@ func (d *Downloader) download(url, destPath string, mediaType MediaType) (*Downl
 
 	// Create destination directory
 	destDir := filepath.Dir(destPath)
-	if err := os.MkdirAll(destDir, 0755); err != nil {
+	if err := os.MkdirAll(destDir, 0777); err != nil {
 		result.Error = fmt.Errorf("failed to create directory: %w", err)
 		result.Duration = time.Since(startTime)
 		return result, result.Error
