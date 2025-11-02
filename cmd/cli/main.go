@@ -676,6 +676,8 @@ func printMovie(movie *models.Movie, results []*models.ScraperResult) {
 	// Actresses - show detailed information
 	if len(movie.Actresses) > 0 {
 		actressHeader := fmt.Sprintf("Actresses (%d)", len(movie.Actresses))
+		rows = append(rows, []string{actressHeader, ""})
+
 		for i, actress := range movie.Actresses {
 			// Build actress name with Japanese
 			name := actress.FullName()
@@ -683,21 +685,16 @@ func printMovie(movie *models.Movie, results []*models.ScraperResult) {
 				name += fmt.Sprintf(" (%s)", actress.JapaneseName)
 			}
 
-			// First actress goes in the header row
-			if i == 0 {
-				rows = append(rows, []string{actressHeader, name})
-			} else {
-				rows = append(rows, []string{"", name})
-			}
-
-			// Add DMM ID if available
+			// Build actress info line with number and DMM ID
+			actressLine := fmt.Sprintf("  [%d] %s", i+1, name)
 			if actress.DMMID > 0 {
-				rows = append(rows, []string{"", fmt.Sprintf("  DMM ID: %d", actress.DMMID)})
+				actressLine += fmt.Sprintf(" - ID: %d", actress.DMMID)
 			}
+			rows = append(rows, []string{"", actressLine})
 
-			// Add thumbnail URL if available
+			// Add thumbnail URL on separate line if available
 			if actress.ThumbURL != "" {
-				rows = append(rows, []string{"", fmt.Sprintf("  Thumb: %s", actress.ThumbURL)})
+				rows = append(rows, []string{"", fmt.Sprintf("      Thumb: %s", actress.ThumbURL)})
 			}
 		}
 	}

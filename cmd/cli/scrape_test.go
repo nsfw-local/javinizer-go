@@ -310,10 +310,13 @@ func TestRunScrape_MultipleActresses(t *testing.T) {
 		assert.Contains(t, stdout, "Actress Second")
 		assert.Contains(t, stdout, "Actress Third")
 
-		// All actresses should be displayed with detailed info
-		assert.Contains(t, stdout, "DMM ID: 1")
-		assert.Contains(t, stdout, "DMM ID: 2")
-		assert.Contains(t, stdout, "DMM ID: 3")
+		// All actresses should be displayed with numbered format and DMM IDs
+		assert.Contains(t, stdout, "[1]")
+		assert.Contains(t, stdout, "[2]")
+		assert.Contains(t, stdout, "[3]")
+		assert.Contains(t, stdout, "ID: 1")
+		assert.Contains(t, stdout, "ID: 2")
+		assert.Contains(t, stdout, "ID: 3")
 		assert.Contains(t, stdout, "Actress Fourth")
 		assert.Contains(t, stdout, "Actress Fifth")
 	})
