@@ -1117,8 +1117,8 @@ func (s *Scraper) tryActressThumbURLs(firstName, lastName string, dmmID int) str
 		lastLower := strings.ToLower(lastName)
 
 		candidates = append(candidates,
-			fmt.Sprintf("https://pics.dmm.co.jp/mono/actjpgs/%s_%s.jpg", lastLower, firstLower),  // lastname_firstname (most common)
-			fmt.Sprintf("https://pics.dmm.co.jp/mono/actjpgs/%s_%s.jpg", firstLower, lastLower),  // firstname_lastname
+			fmt.Sprintf("https://pics.dmm.co.jp/mono/actjpgs/%s_%s.jpg", lastLower, firstLower), // lastname_firstname (most common)
+			fmt.Sprintf("https://pics.dmm.co.jp/mono/actjpgs/%s_%s.jpg", firstLower, lastLower), // firstname_lastname
 		)
 	}
 

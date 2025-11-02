@@ -187,8 +187,8 @@ func TestExtractRomajiVariants(t *testing.T) {
 			name:   "short name",
 			romaji: "aimi",
 			expected: []string{
-				"ai_mi",   // split at 2
-				"aimi",    // unsplit fallback
+				"ai_mi", // split at 2
+				"aimi",  // unsplit fallback
 			},
 		},
 	}
@@ -254,7 +254,7 @@ func TestTryActressThumbURLs_VariantGeneration(t *testing.T) {
 			name:      "no names provided",
 			firstName: "",
 			lastName:  "",
-			dmmID:     1092662, // With DMM ID, would fetch actress page (not tested here)
+			dmmID:     1092662,    // With DMM ID, would fetch actress page (not tested here)
 			wantURLs:  []string{}, // Would be populated by actress page fetch
 		},
 	}
