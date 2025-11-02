@@ -673,22 +673,33 @@ func printMovie(movie *models.Movie, results []*models.ScraperResult) {
 		rows = append(rows, []string{"Rating", fmt.Sprintf("%.1f/10 (%d votes)", movie.RatingScore, movie.RatingVotes)})
 	}
 
-	// Actresses
+	// Actresses - show detailed information
 	if len(movie.Actresses) > 0 {
-		actressNames := []string{}
+		actressHeader := fmt.Sprintf("Actresses (%d)", len(movie.Actresses))
 		for i, actress := range movie.Actresses {
+			// Build actress name with Japanese
 			name := actress.FullName()
 			if actress.JapaneseName != "" {
 				name += fmt.Sprintf(" (%s)", actress.JapaneseName)
 			}
-			if i < 3 || len(movie.Actresses) <= 4 {
-				actressNames = append(actressNames, name)
-			} else if i == 3 {
-				actressNames = append(actressNames, fmt.Sprintf("... and %d more", len(movie.Actresses)-3))
-				break
+
+			// First actress goes in the header row
+			if i == 0 {
+				rows = append(rows, []string{actressHeader, name})
+			} else {
+				rows = append(rows, []string{"", name})
+			}
+
+			// Add DMM ID if available
+			if actress.DMMID > 0 {
+				rows = append(rows, []string{"", fmt.Sprintf("  DMM ID: %d", actress.DMMID)})
+			}
+
+			// Add thumbnail URL if available
+			if actress.ThumbURL != "" {
+				rows = append(rows, []string{"", fmt.Sprintf("  Thumb: %s", actress.ThumbURL)})
 			}
 		}
-		rows = append(rows, []string{"Actresses", strings.Join(actressNames, ", ")})
 	}
 
 	// Genres

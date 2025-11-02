@@ -308,11 +308,14 @@ func TestRunScrape_MultipleActresses(t *testing.T) {
 		assert.Contains(t, stdout, "Actresses")
 		assert.Contains(t, stdout, "Actress First") // LastName FirstName format
 		assert.Contains(t, stdout, "Actress Second")
+		assert.Contains(t, stdout, "Actress Third")
 
-		// If more than 4 actresses, should show "and X more"
-		if len(movie.Actresses) > 4 {
-			assert.Contains(t, stdout, "and 2 more")
-		}
+		// All actresses should be displayed with detailed info
+		assert.Contains(t, stdout, "DMM ID: 1")
+		assert.Contains(t, stdout, "DMM ID: 2")
+		assert.Contains(t, stdout, "DMM ID: 3")
+		assert.Contains(t, stdout, "Actress Fourth")
+		assert.Contains(t, stdout, "Actress Fifth")
 	})
 }
 
