@@ -98,6 +98,7 @@ export interface Movie {
 	actresses?: Actress[];
 	cover_url?: string;
 	poster_url?: string;
+	should_crop_poster?: boolean;
 	screenshot_urls?: string[];
 	trailer_url?: string;
 	original_file_name?: string;

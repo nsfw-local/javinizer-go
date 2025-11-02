@@ -356,6 +356,15 @@ func (a *Aggregator) Aggregate(results []*models.ScraperResult) (*models.Movie, 
 		return r.CoverURL
 	})
 
+	// Set ShouldCropPoster based on the same source as PosterURL
+	// This ensures the cropping flag matches the actual poster being used
+	for _, source := range a.resolvedPriorities["PosterURL"] {
+		if result, exists := resultsBySource[source]; exists && result.PosterURL != "" {
+			movie.ShouldCropPoster = result.ShouldCropPoster
+			break
+		}
+	}
+
 	movie.TrailerURL = a.getFieldByPriority(resultsBySource, a.resolvedPriorities["TrailerURL"], func(r *models.ScraperResult) string {
 		return r.TrailerURL
 	})

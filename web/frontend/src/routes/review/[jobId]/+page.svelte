@@ -447,19 +447,33 @@
 					<!-- Poster Image -->
 					{#if showPosterPanel}
 						<Card class="p-4">
-							<h3 class="font-semibold mb-3 text-sm">Poster (Cropped)</h3>
+							<h3 class="font-semibold mb-3 text-sm">
+								Poster{currentMovie.should_crop_poster ? ' (Cropped)' : ''}
+							</h3>
 							{#if currentMovie.poster_url}
-								<!-- Crop to show only right 47.2% of image (removes promotional text on left) -->
 								<div class="w-full aspect-2/3 overflow-hidden rounded border relative">
-									<img
-										src={currentMovie.poster_url}
-										alt="Poster"
-										class="absolute h-full"
-										style="right: 0; width: auto; min-width: 211.8%; object-fit: cover; object-position: right center;"
-										onerror={(e) => {
-											(e.currentTarget as HTMLImageElement).src = 'https://via.placeholder.com/300x450?text=No+Poster';
-										}}
-									/>
+									{#if currentMovie.should_crop_poster}
+										<!-- Crop to show only right 47.2% of image (removes promotional text on left) -->
+										<img
+											src={currentMovie.poster_url}
+											alt="Poster"
+											class="absolute h-full"
+											style="right: 0; width: auto; min-width: 211.8%; object-fit: cover; object-position: right center;"
+											onerror={(e) => {
+												(e.currentTarget as HTMLImageElement).src = 'https://via.placeholder.com/300x450?text=No+Poster';
+											}}
+										/>
+									{:else}
+										<!-- Use poster directly without cropping -->
+										<img
+											src={currentMovie.poster_url}
+											alt="Poster"
+											class="w-full h-full object-contain"
+											onerror={(e) => {
+												(e.currentTarget as HTMLImageElement).src = 'https://via.placeholder.com/300x450?text=No+Poster';
+											}}
+										/>
+									{/if}
 								</div>
 							{:else}
 								<div class="w-full aspect-2/3 bg-accent rounded border flex items-center justify-center text-muted-foreground">

@@ -632,11 +632,12 @@ func (s *Scraper) parseHTML(doc *goquery.Document, sourceURL string) (*models.Sc
 	// If the awsimgsrc poster is too low quality, we'll use the cover for cropping
 	if result.CoverURL != "" {
 		posterURL, shouldCrop := imageutil.GetOptimalPosterURL(result.CoverURL, s.client.GetClient())
+		result.ShouldCropPoster = shouldCrop
 		if shouldCrop {
-			// Use cover for both, poster will be cropped during organization
+			// Use cover for both, poster will be cropped during organization/display
 			result.PosterURL = result.CoverURL
 		} else {
-			// Use the high-quality awsimgsrc poster directly
+			// Use the high-quality awsimgsrc poster directly (no cropping needed)
 			result.PosterURL = posterURL
 		}
 	}

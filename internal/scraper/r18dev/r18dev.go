@@ -321,11 +321,12 @@ func (s *Scraper) parseResponse(data *R18Response, sourceURL string) (*models.Sc
 		// Try to get a high-quality poster from awsimgsrc
 		// If the awsimgsrc poster is too low quality, we'll use the cover for cropping
 		posterURL, shouldCrop := imageutil.GetOptimalPosterURL(coverImageURL, s.client.GetClient())
+		result.ShouldCropPoster = shouldCrop
 		if shouldCrop {
-			// Use cover for both, poster will be cropped during organization
+			// Use cover for both, poster will be cropped during organization/display
 			result.PosterURL = coverImageURL
 		} else {
-			// Use the high-quality awsimgsrc poster directly
+			// Use the high-quality awsimgsrc poster directly (no cropping needed)
 			result.PosterURL = posterURL
 		}
 	}
