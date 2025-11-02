@@ -134,23 +134,35 @@ func TestNormalizeContentID(t *testing.T) {
 		input    string
 		expected string
 	}{
-		{"standard ID", "ABP-420", "abp00420"},
+		// Standard JAV IDs (with hyphen in original, always get padding)
+		{"standard ID with hyphen", "ABP-420", "abp00420"},
 		{"with hyphen", "IPX-535", "ipx00535"},
 		{"already lowercase", "ipx-535", "ipx00535"},
-		{"no hyphen", "ABP420", "abp00420"},
 		{"with suffix", "IPX-535Z", "ipx00535z"},
-		{"T28 format", "T28-123", "t28123"},
+		{"T28 format", "T28-123", "t28123"}, // T28-123 → t28123 (28123 is already 5 digits, no padding needed)
 		{"leading zeros", "MDB-087", "mdb00087"},
 		{"3 digit number", "ABC-001", "abc00001"},
-		// Amateur IDs (no zero-padding)
-		{"amateur oreco", "oreco183", "oreco183"},
-		{"amateur ORECO uppercase", "ORECO183", "oreco183"},
-		{"amateur luxu", "luxu456", "luxu456"},
-		{"amateur siro", "siro789", "siro789"},
-		{"amateur cap (3 letters)", "cap123", "cap123"},
-		{"amateur CAP uppercase", "CAP123", "cap123"},
-		{"amateur ntk (3 letters)", "ntk456", "ntk456"},
-		{"amateur ara (3 letters)", "ara789", "ara789"},
+
+		// IDs without hyphen - conservative heuristic applies
+		// Heuristic: NO hyphen + 4-6 letter prefix + 3-4 digit number = no padding (likely amateur)
+		// 3-letter prefixes now GET padding (conservative: most standard studios are 2-3 letters)
+		{"no hyphen 3 letter prefix gets padding", "ABP420", "abp00420"}, // 3 letters, gets padding (standard studio)
+		{"amateur oreco", "oreco183", "oreco183"},                        // 5 letters + 3 digits, no hyphen = no padding
+		{"amateur ORECO uppercase", "ORECO183", "oreco183"},              // 5 letters + 3 digits, no hyphen = no padding
+		{"amateur luxu", "luxu456", "luxu456"},                           // 4 letters + 3 digits, no hyphen = no padding
+		{"amateur siro", "siro789", "siro789"},                           // 4 letters + 3 digits, no hyphen = no padding
+		{"amateur maan", "maan321", "maan321"},                           // 4 letters + 3 digits, no hyphen = no padding
+		{"3 letter cap gets padding", "cap123", "cap00123"},              // 3 letters, gets padding (conservative)
+		{"3 letter CAP uppercase gets padding", "CAP123", "cap00123"},    // 3 letters, gets padding (conservative)
+		{"3 letter ntk gets padding", "ntk456", "ntk00456"},              // 3 letters, gets padding (conservative)
+		{"3 letter ara gets padding", "ara789", "ara00789"},              // 3 letters, gets padding (conservative)
+		{"4 digit amateur", "oreco1234", "oreco1234"},                    // 5 letters + 4 digits, no hyphen = no padding
+
+		// Edge cases
+		{"6 letter prefix no hyphen", "abcdef123", "abcdef123"},        // 6 letters + 3 digits, no hyphen = no padding
+		{"short number gets padding", "abc12", "abc00012"},             // 3 letters + 2 digits (< 3 digits) = padding
+		{"7 letter prefix gets padding", "abcdefg123", "abcdefg00123"}, // 7 letters (> 6) = padding
+		{"5 digit number gets padding", "abc12345", "abc12345"},        // 5 digits, already padded length
 	}
 
 	for _, tt := range tests {
@@ -168,20 +180,31 @@ func TestNormalizeID(t *testing.T) {
 		input    string
 		expected string
 	}{
-		{"content ID", "abp00420", "ABP-420"},
+		// Standard content IDs (5 digits after prefix = get hyphen)
+		{"content ID with 5 digits", "abp00420", "ABP-420"},
 		{"with leading zeros", "ipx00535", "IPX-535"},
 		{"with suffix", "ipx00535z", "IPX-535Z"},
-		{"T28 format", "t28123", "T-28123"}, // normalizeID adds hyphen after letter prefix
+		{"T28 format with many digits", "t28123", "T-28123"}, // t + 28123 (5 digits), becomes T-28123
 		{"short number", "mdb00087", "MDB-087"},
-		// Amateur IDs (no hyphen insertion)
-		{"amateur oreco", "oreco183", "ORECO183"},
-		{"amateur ORECO uppercase", "ORECO183", "ORECO183"},
-		{"amateur luxu", "luxu456", "LUXU456"},
-		{"amateur siro", "siro789", "SIRO789"},
-		{"amateur cap (3 letters)", "cap123", "CAP123"},
-		{"amateur CAP uppercase", "CAP123", "CAP123"},
-		{"amateur ntk (3 letters)", "ntk456", "NTK456"},
-		{"amateur ara (3 letters)", "ara789", "ARA789"},
+
+		// Amateur-like IDs (4-6 letter prefix + 3-4 digit number = no hyphen)
+		// Conservative heuristic: Only 4-6 letters treated as amateur
+		{"amateur oreco", "oreco183", "ORECO183"},                     // 5 letters + 3 digits = no hyphen
+		{"amateur ORECO uppercase", "ORECO183", "ORECO183"},           // 5 letters + 3 digits = no hyphen
+		{"amateur luxu", "luxu456", "LUXU456"},                        // 4 letters + 3 digits = no hyphen
+		{"amateur siro", "siro789", "SIRO789"},                        // 4 letters + 3 digits = no hyphen
+		{"amateur maan", "maan321", "MAAN321"},                        // 4 letters + 3 digits = no hyphen
+		{"3 letter cap gets hyphen", "cap00123", "CAP-123"},           // 3 letters + 5 digits = hyphen inserted
+		{"3 letter CAP uppercase gets hyphen", "CAP00123", "CAP-123"}, // 3 letters + 5 digits = hyphen
+		{"3 letter ntk gets hyphen", "ntk00456", "NTK-456"},           // 3 letters + 5 digits = hyphen
+		{"3 letter ara gets hyphen", "ara00789", "ARA-789"},           // 3 letters + 5 digits = hyphen
+		{"4 digit amateur", "oreco1234", "ORECO1234"},                 // 5 letters + 4 digits = no hyphen
+		{"6 letter prefix", "abcdef123", "ABCDEF123"},                 // 6 letters + 3 digits = no hyphen
+
+		// Edge cases: Outside heuristic range
+		{"5 digit number gets hyphen", "abc12345", "ABC-12345"},        // 5 digits = hyphen inserted but all 5 shown
+		{"2 digit number gets hyphen", "abc00012", "ABC-012"},          // 12 with leading zeros removed = 012
+		{"7 letter prefix gets hyphen", "abcdefg00123", "ABCDEFG-123"}, // 7 letters = hyphen
 	}
 
 	for _, tt := range tests {
@@ -1177,11 +1200,13 @@ func TestNormalizeContentID_EdgeCases(t *testing.T) {
 		{"Empty string", "", ""},
 		{"Only letters", "ABC", "abc"},
 		{"Only numbers", "123", "123"},
-		{"Single character prefix", "A-1", "a00001"},
-		{"Long prefix", "ABCDEF-123", "abcdef00123"},
-		{"Multiple hyphens", "A-B-C-123", "abc00123"},
-		{"Special suffix", "IPX-535-HD", "ipx00535hd"},
-		{"Uppercase with suffix", "ABC-001Z", "abc00001z"},
+		{"Single character prefix with hyphen", "A-1", "a00001"},      // Had hyphen = padding
+		{"Long prefix with hyphen", "ABCDEF-123", "abcdef00123"},      // Had hyphen = padding
+		{"Multiple hyphens", "A-B-C-123", "abc00123"},                 // Had hyphen = padding
+		{"Special suffix with hyphen", "IPX-535-HD", "ipx00535hd"},    // Had hyphen = padding
+		{"Uppercase with suffix and hyphen", "ABC-001Z", "abc00001z"}, // Had hyphen = padding
+		{"Long prefix no hyphen", "ABCDEF123", "abcdef123"},           // No hyphen, 6+3 = no padding (amateur)
+		{"Short prefix no hyphen", "ABC123", "abc00123"},              // No hyphen, 3+3 = padding (standard, conservative)
 	}
 
 	for _, tt := range tests {
@@ -1203,9 +1228,9 @@ func TestNormalizeID_EdgeCases(t *testing.T) {
 		{"Only letters lowercase", "abc", "ABC"},
 		{"Only letters uppercase", "ABC", "ABC"},
 		{"Only numbers", "12345", "12345"},
-		{"Mixed case", "AbCdEf00123", "ABCDEF00123"}, // normalizeID uppercases but doesn't add hyphen to random input
-		{"Leading digit prefix", "1abc00123", "ABC-123"},
-		{"Multiple leading digits", "999xyz00456", "XYZ-456"},
+		{"Mixed case 6 letters + 5 digits", "AbCdEf00123", "ABCDEF-123"}, // 6 letters + 5 digits (>4) = hyphen
+		{"Leading digit prefix", "1abc00123", "ABC-123"},                 // 3 letters + 5 digits (>4) = hyphen
+		{"Multiple leading digits", "999xyz00456", "XYZ-456"},            // 3 letters + 5 digits (>4) = hyphen
 	}
 
 	for _, tt := range tests {

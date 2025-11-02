@@ -35,11 +35,18 @@ func NewMatcher(cfg *config.MatchingConfig) (*Matcher, error) {
 	// Compile built-in pattern (covers most JAV IDs)
 	// Matches:
 	//   - Standard JAV: ABC-123, ABC-123Z, ABC-123E, T28-123, etc.
-	//   - Amateur videos: Specific prefixes like oreco, luxu, siro, gana, ara, maan, etc.
-	//     Common amateur series from Prestige, Luxury TV, Shiroto TV, Nampa TV
-	// Pattern combines both formats with OR (|) operator
-	// Amateur pattern uses vetted prefix list to avoid false positives (e.g., scene001, video1080)
-	builtinPattern := `(?i)((?:(?:oreco|luxu|siro|gana|ara|maan|simm|scute|hmhi|blor|nnpj|suke|ntk|cap|apak|sweet|nonn)\d{3,4})|(?:(?:[A-Za-z]+|T28)-\d+(?:[ZE])?))`
+	//   - Potential amateur: 3-6 letters + 3-4 digits (no hyphen, word boundary)
+	//
+	// Strategy: Be lenient in the matcher - catch potential matches generically.
+	// Amateur detection happens later during DMM search via heuristics and caching.
+	// False positives (like "video1080") will fail gracefully during search (no results).
+	// This allows new amateur series to work automatically without code changes.
+	//
+	// Pattern combines both formats with OR (|) operator:
+	//   1. No-hyphen format: word boundary + 3-6 letters + 3-4 digits + word boundary
+	//      (prevents partial matches like "PPV1234" from "FC2PPV123456")
+	//   2. Hyphen format: letters + hyphen + digits (standard JAV)
+	builtinPattern := `(?i)((?:\b[A-Za-z]{3,6}\d{3,4}\b)|(?:(?:[A-Za-z]+|T28)-\d+(?:[ZE])?))`
 	compiled, err := regexp.Compile(builtinPattern)
 	if err != nil {
 		return nil, err

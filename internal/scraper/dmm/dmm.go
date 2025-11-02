@@ -911,24 +911,29 @@ func (s *Scraper) extractTrailerURL(doc *goquery.Document, sourceURL string) str
 // normalizeContentID converts movie ID to DMM content ID format
 // Example: "ABP-420" -> "abp00420"
 // Amateur IDs like "oreco183", "cap123" are returned as-is (no padding)
+//
+// Strategy: Use heuristics to detect amateur vs standard IDs, avoiding hardcoded prefix lists.
+// Conservative heuristic: Only skip padding if ID has BOTH:
+// 1. No hyphen in original (amateur IDs don't use hyphens)
+// 2. 4-6 letter prefix (standard studios are usually 2-3 letters like IPX, ABP)
+// 3. 3-4 digit number
+//
+// This ensures standard studio IDs like "ABP420" (3 letters) still get padding → "abp00420"
+// while amateur IDs like "oreco183" (5 letters) don't → "oreco183"
+// The cache will correct any edge case misidentifications after the first successful search.
 func normalizeContentID(id string) string {
 	// Convert to lowercase
-	id = strings.ToLower(id)
+	idLower := strings.ToLower(id)
 
-	// Check if this is an amateur ID (3-6 letters + 3-4 digits, no hyphen)
-	// Amateur IDs use specific prefixes: oreco, luxu, siro, gana, ara, maan, simm, scute, etc.
-	// These should be passed through without modification (no zero-padding)
-	amateurPattern := regexp.MustCompile(`^(?:oreco|luxu|siro|gana|ara|maan|simm|scute|hmhi|blor|nnpj|suke|ntk|cap|apak|sweet|nonn)\d{3,4}$`)
-	if amateurPattern.MatchString(id) {
-		return id // Return amateur IDs as-is
-	}
+	// Check if original ID had a hyphen (standard JAV format)
+	hadHyphen := strings.Contains(idLower, "-")
 
-	// Remove hyphens
-	id = strings.ReplaceAll(id, "-", "")
+	// Remove hyphens for processing
+	idNoHyphen := strings.ReplaceAll(idLower, "-", "")
 
-	// Extract prefix and number
+	// Extract components: optional leading digits, letters, numbers, optional suffix
 	re := regexp.MustCompile(`^(\d*)([a-z]+)(\d+)(.*)$`)
-	matches := re.FindStringSubmatch(id)
+	matches := re.FindStringSubmatch(idNoHyphen)
 
 	if len(matches) > 3 {
 		prefix := matches[2]
@@ -938,39 +943,55 @@ func normalizeContentID(id string) string {
 			suffix = matches[4]
 		}
 
-		// Pad number with zeros (DMM uses 5-digit padding)
-		paddedNumber := fmt.Sprintf("%05s", number)
+		// Conservative heuristic for amateur detection:
+		// - No hyphen in original ID (amateur IDs rarely use hyphens)
+		// - 4-6 letter prefix (standard studios are 2-3 letters: IPX, ABP, SSIS)
+		// - 3-4 digit number
+		// Examples that match: oreco183 (5+3), luxu456 (4+3), maan789 (4+3)
+		// Examples that DON'T match: abp420 (3+3), cap123 (3+3) → these get padding
+		if !hadHyphen && len(prefix) >= 4 && len(prefix) <= 6 && len(number) >= 3 && len(number) <= 4 {
+			// Likely amateur - return as-is without padding
+			return prefix + number + suffix
+		}
 
+		// Standard JAV ID or ambiguous - apply zero-padding to be safe
+		// Cache will correct if this was actually an amateur ID
+		paddedNumber := fmt.Sprintf("%05s", number)
 		return prefix + paddedNumber + suffix
 	}
 
-	return id
+	return idNoHyphen
 }
 
 // normalizeID converts content ID back to standard ID format
 // Example: "abp00420" -> "ABP-420"
 // Amateur IDs like "oreco183", "cap123" are returned in uppercase without modification
+//
+// Strategy: Use same conservative heuristic as normalizeContentID to detect amateur IDs.
+// Heuristic: If contentID matches 4-6 letters + 3-4 digits pattern, treat as amateur (no hyphen).
+// Otherwise, insert hyphen for standard JAV format.
 func normalizeID(contentID string) string {
-	// Check if this is an amateur ID (3-6 letters + 3-4 digits, no hyphen)
-	// Amateur IDs use specific prefixes: oreco, luxu, siro, gana, ara, maan, simm, scute, etc.
-	// These should be returned in uppercase without hyphen insertion
-	amateurPattern := regexp.MustCompile(`^(?i)(?:oreco|luxu|siro|gana|ara|maan|simm|scute|hmhi|blor|nnpj|suke|ntk|cap|apak|sweet|nonn)\d{3,4}$`)
-	if amateurPattern.MatchString(contentID) {
-		return strings.ToUpper(contentID) // Return amateur IDs in uppercase
-	}
-
 	re := regexp.MustCompile(`^(\d*)([a-z]+)(\d+)(.*)$`)
-	matches := re.FindStringSubmatch(contentID)
+	matches := re.FindStringSubmatch(strings.ToLower(contentID))
 
 	if len(matches) > 3 {
-		prefix := strings.ToUpper(matches[2])
+		prefix := matches[2]
 		number := matches[3]
 		suffix := ""
 		if len(matches) > 4 {
 			suffix = strings.ToUpper(matches[4])
 		}
 
-		// Remove leading zeros
+		// Conservative heuristic: If prefix is 4-6 chars and number is 3-4 digits, treat as amateur
+		// Amateur IDs: oreco183 (5+3), luxu456 (4+3), maan789 (4+3)
+		// Standard IDs get hyphen: ipx00535 (3+5) -> IPX-535, cap00123 (3+5) -> CAP-123
+		if len(prefix) >= 4 && len(prefix) <= 6 && len(number) >= 3 && len(number) <= 4 {
+			// Likely amateur - return in uppercase without hyphen
+			return strings.ToUpper(prefix + number + suffix)
+		}
+
+		// Standard JAV ID or ambiguous: insert hyphen
+		prefix = strings.ToUpper(prefix)
 		numberInt, _ := strconv.Atoi(number)
 		paddedNumber := fmt.Sprintf("%03d", numberInt)
 
