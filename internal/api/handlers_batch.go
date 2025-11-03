@@ -148,12 +148,14 @@ func updateBatchMovie(deps *ServerDependencies) gin.HandlerFunc {
 		}
 
 		// If not found by MovieID, try searching by the actual movie.ID (in case of content ID resolution)
+		usedFallback := false
 		if foundResult == nil {
 			for filePath, result := range status.Results {
 				if result.Data != nil {
 					if m, ok := result.Data.(*models.Movie); ok && m.ID == movieID {
 						foundFilePath = filePath
 						foundResult = result
+						usedFallback = true
 						break
 					}
 				}
@@ -167,6 +169,12 @@ func updateBatchMovie(deps *ServerDependencies) gin.HandlerFunc {
 
 		// Update the movie data in the file result
 		foundResult.Data = req.Movie
+
+		// If we used the fallback search, also sync the MovieID to keep job state consistent
+		if usedFallback {
+			foundResult.MovieID = req.Movie.ID
+		}
+
 		job.UpdateFileResult(foundFilePath, foundResult)
 
 		// Also update in database if it exists
