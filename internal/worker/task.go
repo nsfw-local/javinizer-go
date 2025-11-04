@@ -9,11 +9,12 @@ import (
 type TaskType string
 
 const (
-	TaskTypeScan     TaskType = "scan"
-	TaskTypeScrape   TaskType = "scrape"
-	TaskTypeDownload TaskType = "download"
-	TaskTypeOrganize TaskType = "organize"
-	TaskTypeNFO      TaskType = "nfo"
+	TaskTypeScan        TaskType = "scan"
+	TaskTypeScrape      TaskType = "scrape"
+	TaskTypeBatchScrape TaskType = "batch_scrape"
+	TaskTypeDownload    TaskType = "download"
+	TaskTypeOrganize    TaskType = "organize"
+	TaskTypeNFO         TaskType = "nfo"
 )
 
 // TaskStatus represents the status of a task

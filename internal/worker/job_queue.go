@@ -170,6 +170,14 @@ func (job *BatchJob) Cancel() {
 	job.MarkCancelled()
 }
 
+// GetProgress returns the current progress percentage (thread-safe).
+// This is a lightweight accessor that avoids copying the entire job state.
+func (job *BatchJob) GetProgress() float64 {
+	job.mu.RLock()
+	defer job.mu.RUnlock()
+	return job.Progress
+}
+
 // GetStatus returns a thread-safe copy of the job status
 func (job *BatchJob) GetStatus() *BatchJob {
 	job.mu.RLock()

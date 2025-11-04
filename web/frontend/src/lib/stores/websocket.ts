@@ -17,13 +17,15 @@ function getWebSocketURL(): string {
 interface WebSocketState {
 	connected: boolean;
 	messages: ProgressMessage[];
+	messagesByFile: Record<string, Record<string, ProgressMessage>>; // Latest message per file per job (job_id -> file_path -> message)
 	error?: string;
 }
 
 function createWebSocketStore() {
 	const { subscribe, set, update } = writable<WebSocketState>({
 		connected: false,
-		messages: []
+		messages: [],
+		messagesByFile: {}
 	});
 
 	let ws: WebSocket | null = null;
@@ -68,10 +70,21 @@ function createWebSocketStore() {
 			ws.onmessage = (event) => {
 				try {
 					const message: ProgressMessage = JSON.parse(event.data);
-					update((state) => ({
-						...state,
-						messages: [...state.messages, message]
-					}));
+					update((state) => {
+						const newMessagesByFile = { ...state.messagesByFile };
+						if (message.file_path && message.job_id) {
+							// Deduplicate by keeping only the latest message per file per job
+							if (!newMessagesByFile[message.job_id]) {
+								newMessagesByFile[message.job_id] = {};
+							}
+							newMessagesByFile[message.job_id][message.file_path] = message;
+						}
+						return {
+							...state,
+							messages: [...state.messages, message],
+							messagesByFile: newMessagesByFile
+						};
+					});
 				} catch (error) {
 					console.error('Failed to parse WebSocket message:', error);
 				}
@@ -93,11 +106,11 @@ function createWebSocketStore() {
 			ws = null;
 		}
 
-		set({ connected: false, messages: [] });
+		set({ connected: false, messages: [], messagesByFile: {} });
 	}
 
 	function clearMessages() {
-		update((state) => ({ ...state, messages: [] }));
+		update((state) => ({ ...state, messages: [], messagesByFile: {} }));
 	}
 
 	return {

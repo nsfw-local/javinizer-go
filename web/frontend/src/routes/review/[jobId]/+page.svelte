@@ -458,7 +458,7 @@
 							<div
 								class="bg-blue-600 h-2 rounded-full transition-all duration-300"
 								style="width: {organizeProgress}%"
-							/>
+							></div>
 						</div>
 					</div>
 
@@ -468,9 +468,9 @@
 							{#each Array.from(fileStatuses.entries()) as [filePath, status]}
 								<div class="flex items-start gap-2 text-sm p-2 rounded {status.status === 'failed' ? 'bg-red-50' : 'bg-green-50'}">
 									{#if status.status === 'failed'}
-										<AlertCircle class="h-4 w-4 text-red-600 flex-shrink-0 mt-0.5" />
+										<AlertCircle class="h-4 w-4 text-red-600 shrink-0 mt-0.5" />
 									{:else}
-										<Check class="h-4 w-4 text-green-600 flex-shrink-0 mt-0.5" />
+										<Check class="h-4 w-4 text-green-600 shrink-0 mt-0.5" />
 									{/if}
 									<div class="flex-1 min-w-0">
 										<div class="font-medium truncate">{filePath.split(/[\\/]/).pop()}</div>
@@ -493,7 +493,7 @@
 				{#if failures.length > 0}
 					<Card class="p-6 border-orange-500">
 						<div class="flex items-start gap-3">
-							<AlertCircle class="h-6 w-6 text-orange-600 flex-shrink-0" />
+							<AlertCircle class="h-6 w-6 text-orange-600 shrink-0" />
 							<div class="flex-1">
 								<h3 class="font-semibold mb-2">Organization Completed with Errors</h3>
 								<p class="text-sm text-muted-foreground mb-4">

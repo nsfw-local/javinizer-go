@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"github.com/javinizer/javinizer-go/internal/aggregator"
@@ -17,29 +16,55 @@ import (
 	"github.com/javinizer/javinizer-go/internal/nfo"
 	"github.com/javinizer/javinizer-go/internal/organizer"
 	"github.com/javinizer/javinizer-go/internal/scanner"
-	"github.com/javinizer/javinizer-go/internal/scraper/dmm"
 	"github.com/javinizer/javinizer-go/internal/template"
 	ws "github.com/javinizer/javinizer-go/internal/websocket"
 	"github.com/javinizer/javinizer-go/internal/worker"
 )
 
 // processBatchJob processes a batch scraping job (metadata only, no file organization)
+// using concurrent worker pool for improved performance.
 func processBatchJob(job *worker.BatchJob, registry *models.ScraperRegistry, agg *aggregator.Aggregator, movieRepo *database.MovieRepository, mat *matcher.Matcher, strict, force bool, destination string, cfg *config.Config, selectedScrapers []string) {
+	// Setup context for cancellation
 	ctx, cancel := context.WithCancel(context.Background())
 	job.CancelFunc = cancel
 	defer cancel()
 
 	job.MarkStarted()
 
-	// Determine scraper list
+	// Determine scraper list (custom scrapers override defaults)
 	scrapersToUse := cfg.Scrapers.Priority
 	if len(selectedScrapers) > 0 {
 		scrapersToUse = selectedScrapers
 		logging.Infof("Batch job using custom scrapers: %v", scrapersToUse)
 	}
 
-	usingCustomScrapers := len(selectedScrapers) > 0
+	// Create progress adapter for WebSocket broadcasting
+	adapter := NewProgressAdapter(job.ID, job, nil) // nil = use global wsHub
 
+	// Create progress tracker that feeds the adapter
+	progressTracker := worker.NewProgressTracker(adapter.GetChannel())
+
+	// Start adapter in background
+	adapter.Start()
+	defer adapter.Stop()
+
+	// Get max workers from config
+	maxWorkers := cfg.Performance.MaxWorkers
+	if maxWorkers <= 0 {
+		maxWorkers = 5 // default
+	}
+
+	// Get timeout from config (worker_timeout is in seconds)
+	timeout := time.Duration(cfg.Performance.WorkerTimeout) * time.Second
+	if timeout <= 0 {
+		timeout = 5 * time.Minute // default
+	}
+
+	// Create worker pool with job context (enables cancellation)
+	pool := worker.NewPoolWithContext(ctx, maxWorkers, timeout, progressTracker)
+	defer pool.Stop()
+
+	// Submit tasks to pool
 	for i, filePath := range job.Files {
 		// Check if context is cancelled
 		select {
@@ -49,200 +74,47 @@ func processBatchJob(job *worker.BatchJob, registry *models.ScraperRegistry, agg
 		default:
 		}
 
-		// Get movie ID from filename
-		fileInfo := scanner.FileInfo{
-			Path:      filePath,
-			Name:      filepath.Base(filePath),
-			Extension: filepath.Ext(filePath),
-			Dir:       filepath.Dir(filePath),
-		}
-		matchResults := mat.Match([]scanner.FileInfo{fileInfo})
-		if len(matchResults) == 0 {
+		// Create unique task ID
+		taskID := fmt.Sprintf("batch-scrape-%s-%d", job.ID, i)
+
+		// Register with adapter for WebSocket mapping
+		adapter.RegisterTask(taskID, i, filePath)
+
+		// Create batch scrape task
+		task := worker.NewBatchScrapeTask(
+			taskID,
+			filePath,
+			i,
+			job,
+			registry,
+			agg,
+			movieRepo,
+			mat,
+			progressTracker,
+			force,
+			scrapersToUse,
+		)
+
+		// Submit to pool (blocks if pool is full)
+		if err := pool.Submit(task); err != nil {
+			logging.Errorf("Failed to submit task for %s: %v", filePath, err)
+			// Update job with failure
 			result := &worker.FileResult{
 				FilePath:  filePath,
 				Status:    worker.JobStatusFailed,
-				Error:     "Could not extract movie ID from filename",
+				Error:     fmt.Sprintf("Failed to submit task: %v", err),
 				StartedAt: time.Now(),
 			}
 			now := time.Now()
 			result.EndedAt = &now
 			job.UpdateFileResult(filePath, result)
-
-			// Broadcast progress
-			wsHub.BroadcastProgress(&ws.ProgressMessage{
-				JobID:     job.ID,
-				FileIndex: i,
-				FilePath:  filePath,
-				Status:    string(worker.JobStatusFailed),
-				Progress:  job.Progress,
-				Error:     result.Error,
-			})
-			continue
 		}
-
-		movieID := matchResults[0].ID
-		result := &worker.FileResult{
-			FilePath:  filePath,
-			MovieID:   movieID,
-			Status:    worker.JobStatusRunning,
-			StartedAt: time.Now(),
-		}
-		job.UpdateFileResult(filePath, result)
-
-		// Broadcast start
-		wsHub.BroadcastProgress(&ws.ProgressMessage{
-			JobID:     job.ID,
-			FileIndex: i,
-			FilePath:  filePath,
-			Status:    "running",
-			Progress:  job.Progress,
-			Message:   fmt.Sprintf("Scraping %s", movieID),
-		})
-
-		// Skip cache if custom scrapers
-		if !usingCustomScrapers && !force {
-			existing, err := movieRepo.FindByID(movieID)
-			if err == nil && existing != nil {
-				result.Status = worker.JobStatusCompleted
-				result.Data = existing
-				now := time.Now()
-				result.EndedAt = &now
-				job.UpdateFileResult(filePath, result)
-
-				wsHub.BroadcastProgress(&ws.ProgressMessage{
-					JobID:     job.ID,
-					FileIndex: i,
-					FilePath:  filePath,
-					Status:    "completed",
-					Progress:  job.Progress,
-					Message:   "Found in cache",
-				})
-				continue
-			}
-		} else if usingCustomScrapers || force {
-			// Clear cache if using custom scrapers or force
-			if err := movieRepo.Delete(movieID); err != nil {
-				logging.Debugf("Failed to delete %s from cache: %v", movieID, err)
-			}
-		}
-		// Phase 1: Content-ID Resolution using DMM
-		var resolvedID string
-		if dmmScraper, exists := registry.Get("dmm"); exists {
-			if dmmScraperTyped, ok := dmmScraper.(*dmm.Scraper); ok {
-				contentID, err := dmmScraperTyped.ResolveContentID(movieID)
-				if err != nil {
-					logging.Debugf("[%s] DMM content-ID resolution failed: %v, will use original ID", movieID, err)
-					resolvedID = movieID // Fallback to original ID
-				} else {
-					resolvedID = contentID
-					logging.Debugf("[%s] Resolved content-ID: %s", movieID, resolvedID)
-				}
-			} else {
-				logging.Debugf("[%s] DMM scraper type assertion failed, using original ID", movieID)
-				resolvedID = movieID
-			}
-		} else {
-			logging.Debugf("[%s] DMM scraper not available, using original ID", movieID)
-			resolvedID = movieID
-		}
-
-		// Phase 2: Scrape from sources
-
-		results := []*models.ScraperResult{}
-		errors := []string{}
-
-		for _, scraper := range registry.GetByPriority(scrapersToUse) {
-			logging.Debugf("[%s] Querying scraper: %s", movieID, scraper.Name())
-			scraperResult, err := scraper.Search(resolvedID)
-			if err != nil {
-				logging.Debugf("[%s] Scraper %s failed: %v", movieID, scraper.Name(), err)
-				// If scraping with resolved ID fails, try with original ID before giving up
-				if resolvedID != movieID {
-					logging.Debugf("[%s] Retrying scraper %s with original ID: %s", movieID, scraper.Name(), movieID)
-					scraperResult, err = scraper.Search(movieID)
-					if err != nil {
-						logging.Debugf("[%s] Scraper %s failed with original ID: %v", movieID, scraper.Name(), err)
-						errors = append(errors, fmt.Sprintf("%s: %v", scraper.Name(), err))
-						continue
-					}
-				} else {
-					errors = append(errors, fmt.Sprintf("%s: %v", scraper.Name(), err))
-					continue
-				}
-			}
-			logging.Debugf("[%s] Scraper %s returned: Title=%s, Language=%s, Actresses=%d, Genres=%d",
-				movieID, scraper.Name(), scraperResult.Title, scraperResult.Language, len(scraperResult.Actresses), len(scraperResult.Genres))
-			results = append(results, scraperResult)
-		}
-
-		if len(results) == 0 {
-			result.Status = worker.JobStatusFailed
-			result.Error = fmt.Sprintf("Movie not found: %s", strings.Join(errors, "; "))
-			now := time.Now()
-			result.EndedAt = &now
-			job.UpdateFileResult(filePath, result)
-
-			wsHub.BroadcastProgress(&ws.ProgressMessage{
-				JobID:     job.ID,
-				FileIndex: i,
-				FilePath:  filePath,
-				Status:    "failed",
-				Progress:  job.Progress,
-				Error:     result.Error,
-			})
-			continue
-		}
-
-		// Aggregate results
-		movie, err := agg.Aggregate(results)
-		if err != nil {
-			result.Status = worker.JobStatusFailed
-			result.Error = err.Error()
-			now := time.Now()
-			result.EndedAt = &now
-			job.UpdateFileResult(filePath, result)
-
-			wsHub.BroadcastProgress(&ws.ProgressMessage{
-				JobID:     job.ID,
-				FileIndex: i,
-				FilePath:  filePath,
-				Status:    "failed",
-				Progress:  job.Progress,
-				Error:     err.Error(),
-			})
-			continue
-		}
-
-		movie.OriginalFileName = filepath.Base(filePath)
-
-		// Save to database
-		if err := movieRepo.Upsert(movie); err != nil {
-			logging.Errorf("Failed to save movie to database: %v", err)
-		}
-
-		// Reload movie from database to get associations (actresses, genres)
-		reloadedMovie, err := movieRepo.FindByID(movie.ID)
-		if err != nil {
-			logging.Errorf("Failed to reload movie from database: %v", err)
-			reloadedMovie = movie // Fallback to original if reload fails
-		}
-
-		result.Status = worker.JobStatusCompleted
-		result.Data = reloadedMovie
-		now := time.Now()
-		result.EndedAt = &now
-		job.UpdateFileResult(filePath, result)
-
-		wsHub.BroadcastProgress(&ws.ProgressMessage{
-			JobID:     job.ID,
-			FileIndex: i,
-			FilePath:  filePath,
-			Status:    "completed",
-			Progress:  job.Progress,
-			Message:   fmt.Sprintf("Scraped %s successfully", movieID),
-		})
 	}
 
+	// Wait for all tasks to complete
+	pool.Wait()
+
+	// Mark job as completed
 	job.MarkCompleted()
 
 	// Broadcast final completion

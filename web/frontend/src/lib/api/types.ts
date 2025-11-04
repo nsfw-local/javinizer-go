@@ -73,6 +73,7 @@ export interface BatchJobResponse {
 	failed: number;
 	progress: number;
 	results: Record<string, FileResult>;
+	files?: string[]; // List of all file paths in the job
 	started_at: string;
 	completed_at?: string;
 }

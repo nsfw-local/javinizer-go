@@ -24,7 +24,13 @@ type Pool struct {
 
 // New creates a new worker pool
 func NewPool(maxWorkers int, timeout time.Duration, progress *ProgressTracker) *Pool {
-	ctx, cancel := context.WithCancel(context.Background())
+	return NewPoolWithContext(context.Background(), maxWorkers, timeout, progress)
+}
+
+// NewPoolWithContext creates a new worker pool with a parent context
+// The pool will be cancelled when the parent context is cancelled
+func NewPoolWithContext(parentCtx context.Context, maxWorkers int, timeout time.Duration, progress *ProgressTracker) *Pool {
+	ctx, cancel := context.WithCancel(parentCtx)
 
 	return &Pool{
 		sem:        semaphore.NewWeighted(int64(maxWorkers)),
