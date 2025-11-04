@@ -37,7 +37,7 @@
 			<!-- Title & ID -->
 			<div>
 				<div class="text-xs text-muted-foreground mb-1">{movie.id}</div>
-				<h3 class="font-semibold text-lg truncate">{movie.title}</h3>
+				<h3 class="font-semibold text-lg truncate">{movie.display_name || movie.title}</h3>
 				{#if movie.original_title && movie.original_title !== movie.title}
 					<p class="text-sm text-muted-foreground truncate">{movie.original_title}</p>
 				{/if}
