@@ -29,7 +29,7 @@ import (
 func processBatchJob(job *worker.BatchJob, registry *models.ScraperRegistry, agg *aggregator.Aggregator, movieRepo *database.MovieRepository, mat *matcher.Matcher, strict, force, updateMode bool, destination string, cfg *config.Config, selectedScrapers []string, db *database.DB) {
 	// Setup context for cancellation
 	ctx, cancel := context.WithCancel(context.Background())
-	job.CancelFunc = cancel
+	job.SetCancelFunc(cancel)
 	defer cancel()
 
 	job.MarkStarted()
@@ -96,6 +96,9 @@ func processBatchJob(job *worker.BatchJob, registry *models.ScraperRegistry, agg
 			progressTracker,
 			force,
 			scrapersToUse,
+			nil,                    // httpClient - will be created in the task
+			cfg.Scrapers.UserAgent, // userAgent
+			cfg.Scrapers.Referer,   // referer
 		)
 
 		// Submit to pool (blocks if pool is full)
@@ -204,7 +207,7 @@ func downloadMediaFiles(dl *downloader.Downloader, movie *models.Movie, destDir 
 func processUpdateJob(job *worker.BatchJob, cfg *config.Config, db *database.DB) {
 	// Setup context for cancellation (mirrors processBatchJob pattern)
 	ctx, cancel := context.WithCancel(context.Background())
-	job.CancelFunc = cancel
+	job.SetCancelFunc(cancel)
 	defer cancel()
 
 	processUpdateMode(job, cfg, db, ctx)

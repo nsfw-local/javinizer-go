@@ -2,10 +2,12 @@ package worker
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/javinizer/javinizer-go/internal/models"
 )
 
 // JobStatus represents the status of a job
@@ -21,13 +23,14 @@ const (
 
 // FileResult represents the result of processing a single file
 type FileResult struct {
-	FilePath  string      `json:"file_path"`
-	MovieID   string      `json:"movie_id"`
-	Status    JobStatus   `json:"status"`
-	Error     string      `json:"error,omitempty"`
-	Data      interface{} `json:"data,omitempty"`
-	StartedAt time.Time   `json:"started_at"`
-	EndedAt   *time.Time  `json:"ended_at,omitempty"`
+	FilePath    string      `json:"file_path"`
+	MovieID     string      `json:"movie_id"`
+	Status      JobStatus   `json:"status"`
+	Error       string      `json:"error,omitempty"`
+	PosterError *string     `json:"poster_error,omitempty"` // Optional error from poster generation
+	Data        interface{} `json:"data,omitempty"`
+	StartedAt   time.Time   `json:"started_at"`
+	EndedAt     *time.Time  `json:"ended_at,omitempty"`
 }
 
 // BatchJob represents a batch processing job
@@ -77,11 +80,28 @@ func (jq *JobQueue) CreateJob(files []string) *BatchJob {
 	return job
 }
 
-// GetJob retrieves a job by ID
+// GetJob retrieves a thread-safe copy of a job by ID
+// Returns a deep copy to prevent external mutations of internal state
 func (jq *JobQueue) GetJob(id string) (*BatchJob, bool) {
 	jq.mu.RLock()
-	defer jq.mu.RUnlock()
 	job, ok := jq.jobs[id]
+	jq.mu.RUnlock()
+
+	if !ok {
+		return nil, false
+	}
+
+	// Return a safe copy using GetStatus
+	return job.GetStatus(), true
+}
+
+// GetJobPointer retrieves the actual job pointer for internal mutations
+// WARNING: This exposes the internal job - use only when mutations are required
+// Callers must respect the job's internal mutex (job.mu) when modifying state
+func (jq *JobQueue) GetJobPointer(id string) (*BatchJob, bool) {
+	jq.mu.RLock()
+	job, ok := jq.jobs[id]
+	jq.mu.RUnlock()
 	return job, ok
 }
 
@@ -92,14 +112,21 @@ func (jq *JobQueue) DeleteJob(id string) {
 	delete(jq.jobs, id)
 }
 
-// ListJobs returns all jobs
+// ListJobs returns thread-safe copies of all jobs
+// Returns deep copies to prevent external mutations of internal state
 func (jq *JobQueue) ListJobs() []*BatchJob {
 	jq.mu.RLock()
-	defer jq.mu.RUnlock()
-
-	jobs := make([]*BatchJob, 0, len(jq.jobs))
+	// Create a snapshot of job pointers while holding the lock
+	jobSnapshots := make([]*BatchJob, 0, len(jq.jobs))
 	for _, job := range jq.jobs {
-		jobs = append(jobs, job)
+		jobSnapshots = append(jobSnapshots, job)
+	}
+	jq.mu.RUnlock()
+
+	// Create safe copies of each job (releases lock before expensive copying)
+	jobs := make([]*BatchJob, 0, len(jobSnapshots))
+	for _, job := range jobSnapshots {
+		jobs = append(jobs, job.GetStatus())
 	}
 	return jobs
 }
@@ -123,7 +150,67 @@ func (job *BatchJob) UpdateFileResult(filePath string, result *FileResult) {
 	}
 	job.Completed = completed
 	job.Failed = failed
-	job.Progress = float64(completed+failed) / float64(job.TotalFiles) * 100
+
+	// Guard against division by zero
+	if job.TotalFiles == 0 {
+		job.Progress = 100 // Empty job is considered complete
+	} else {
+		job.Progress = float64(completed+failed) / float64(job.TotalFiles) * 100
+	}
+}
+
+// AtomicUpdateFileResult performs an atomic read-modify-write on a FileResult
+// The updateFn receives a deep copy of the current FileResult and must return the updated version
+// This prevents lost-update races by ensuring all modifications happen under the job's lock
+func (job *BatchJob) AtomicUpdateFileResult(filePath string, updateFn func(*FileResult) (*FileResult, error)) error {
+	job.mu.Lock()
+	defer job.mu.Unlock()
+
+	current, exists := job.Results[filePath]
+	if !exists || current == nil {
+		return fmt.Errorf("file result not found: %s", filePath)
+	}
+
+	// Deep copy current to prevent updateFn from accidentally mutating shared state
+	copied := *current
+	if current.EndedAt != nil {
+		t := *current.EndedAt
+		copied.EndedAt = &t
+	}
+	if current.PosterError != nil {
+		s := *current.PosterError
+		copied.PosterError = &s
+	}
+
+	// Apply the update function
+	updated, err := updateFn(&copied)
+	if err != nil {
+		return err
+	}
+
+	// Write back the updated result
+	job.Results[filePath] = updated
+
+	// Recalculate counters (same logic as UpdateFileResult)
+	completed := 0
+	failed := 0
+	for _, r := range job.Results {
+		if r.Status == JobStatusCompleted {
+			completed++
+		} else if r.Status == JobStatusFailed {
+			failed++
+		}
+	}
+	job.Completed = completed
+	job.Failed = failed
+
+	if job.TotalFiles == 0 {
+		job.Progress = 100
+	} else {
+		job.Progress = float64(completed+failed) / float64(job.TotalFiles) * 100
+	}
+
+	return nil
 }
 
 // MarkStarted marks the job as started
@@ -162,10 +249,21 @@ func (job *BatchJob) MarkCancelled() {
 	job.CompletedAt = &now
 }
 
+// SetCancelFunc sets the cancel function for the job (thread-safe)
+func (job *BatchJob) SetCancelFunc(cancelFunc context.CancelFunc) {
+	job.mu.Lock()
+	defer job.mu.Unlock()
+	job.CancelFunc = cancelFunc
+}
+
 // Cancel cancels the job
 func (job *BatchJob) Cancel() {
-	if job.CancelFunc != nil {
-		job.CancelFunc()
+	job.mu.Lock()
+	cancelFunc := job.CancelFunc
+	job.mu.Unlock()
+
+	if cancelFunc != nil {
+		cancelFunc()
 	}
 	job.MarkCancelled()
 }
@@ -183,11 +281,61 @@ func (job *BatchJob) GetStatus() *BatchJob {
 	job.mu.RLock()
 	defer job.mu.RUnlock()
 
-	// Create a copy to avoid race conditions
-	results := make(map[string]*FileResult)
+	// Create a deep copy to avoid race conditions
+	// Shallow copy would expose internal pointers and allow concurrent mutations
+	results := make(map[string]*FileResult, len(job.Results))
 	for k, v := range job.Results {
-		results[k] = v
+		if v == nil {
+			results[k] = nil
+			continue
+		}
+		// Deep copy the FileResult struct
+		copyResult := *v
+
+		// Deep copy pointer fields to prevent shared state
+		if v.EndedAt != nil {
+			t := *v.EndedAt
+			copyResult.EndedAt = &t
+		}
+		if v.PosterError != nil {
+			s := *v.PosterError
+			copyResult.PosterError = &s
+		}
+
+		// Deep copy the Data payload if it's a *models.Movie to prevent shared mutable state
+		if v.Data != nil {
+			if m, ok := v.Data.(*models.Movie); ok {
+				mCopy := *m
+
+				// Deep copy nested slices to prevent concurrent modifications
+				if m.Actresses != nil {
+					mCopy.Actresses = make([]models.Actress, len(m.Actresses))
+					copy(mCopy.Actresses, m.Actresses)
+				}
+				if m.Genres != nil {
+					mCopy.Genres = make([]models.Genre, len(m.Genres))
+					copy(mCopy.Genres, m.Genres)
+				}
+				if m.Screenshots != nil {
+					mCopy.Screenshots = make([]string, len(m.Screenshots))
+					copy(mCopy.Screenshots, m.Screenshots)
+				}
+				if m.Translations != nil {
+					mCopy.Translations = make([]models.MovieTranslation, len(m.Translations))
+					copy(mCopy.Translations, m.Translations)
+				}
+
+				copyResult.Data = &mCopy
+			}
+			// For unknown types, keep the original pointer (can't easily deep-copy arbitrary types)
+		}
+
+		results[k] = &copyResult
 	}
+
+	// Deep copy the Files slice to avoid exposing the internal slice
+	files := make([]string, len(job.Files))
+	copy(files, job.Files)
 
 	completedAt := job.CompletedAt
 	if completedAt != nil {
@@ -201,7 +349,7 @@ func (job *BatchJob) GetStatus() *BatchJob {
 		TotalFiles:  job.TotalFiles,
 		Completed:   job.Completed,
 		Failed:      job.Failed,
-		Files:       job.Files,
+		Files:       files,
 		Results:     results,
 		Progress:    job.Progress,
 		StartedAt:   job.StartedAt,

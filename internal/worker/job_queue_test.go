@@ -1,6 +1,7 @@
 package worker
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
@@ -358,7 +359,7 @@ func TestBatchJob_GetStatus(t *testing.T) {
 		assert.Len(t, status.Results, 1)
 	})
 
-	t.Run("Shallow copy of FileResults - map is independent but FileResults are shared", func(t *testing.T) {
+	t.Run("Deep copy of FileResults - map and FileResults are independent", func(t *testing.T) {
 		jq := NewJobQueue()
 		files := []string{"file1.mp4", "file2.mkv"}
 		job := jq.CreateJob(files)
@@ -375,17 +376,23 @@ func TestBatchJob_GetStatus(t *testing.T) {
 		// Get status copy
 		status := job.GetStatus()
 
-		// Verify FileResult objects are shared (shallow copy)
-		// This is the current behavior and is acceptable since FileResults are read-only after creation
-		assert.Same(t, job.Results["file1.mp4"], status.Results["file1.mp4"],
-			"FileResult pointers should be shared (shallow copy)")
+		// Verify FileResult objects are NOT shared (deep copy)
+		// FileResults should be independent to prevent concurrent mutations
+		assert.NotSame(t, job.Results["file1.mp4"], status.Results["file1.mp4"],
+			"FileResult pointers should be different (deep copy)")
 
-		// Modifying a FileResult will affect both (documenting current behavior)
+		// Verify fields are equal but independent
+		assert.Equal(t, job.Results["file1.mp4"].MovieID, status.Results["file1.mp4"].MovieID,
+			"FileResult fields should be equal")
+
+		// Modifying a FileResult in the copy should NOT affect original
 		status.Results["file1.mp4"].MovieID = "MODIFIED-999"
-		assert.Equal(t, "MODIFIED-999", job.Results["file1.mp4"].MovieID,
-			"FileResults are shared, so modifications affect original")
+		assert.Equal(t, "IPX-123", job.Results["file1.mp4"].MovieID,
+			"Original FileResult should remain unchanged (deep copy)")
+		assert.Equal(t, "MODIFIED-999", status.Results["file1.mp4"].MovieID,
+			"Copy FileResult should be modified")
 
-		// But adding new entries to the copy's map doesn't affect original
+		// Adding new entries to the copy's map doesn't affect original
 		status.Results["file2.mkv"] = &FileResult{
 			FilePath:  "file2.mkv",
 			Status:    JobStatusCompleted,
@@ -429,4 +436,148 @@ func TestBatchJob_GetStatus(t *testing.T) {
 		assert.Empty(t, status.Results)
 		assert.NotNil(t, status.Results)
 	})
+}
+
+// TestConcurrent_GetStatusAndUpdateFileResult validates thread-safe snapshot access
+// This test catches race conditions where handlers read job state while workers update it
+func TestConcurrent_GetStatusAndUpdateFileResult(t *testing.T) {
+	jq := NewJobQueue()
+	job := jq.CreateJob([]string{"file1.mp4", "file2.mkv", "file3.avi"})
+
+	now := time.Now()
+	// Initialize with a file result
+	job.UpdateFileResult("file1.mp4", &FileResult{
+		FilePath:  "file1.mp4",
+		MovieID:   "IPX-100",
+		Status:    JobStatusRunning,
+		StartedAt: now,
+	})
+
+	// Simulate worker updating job results concurrently
+	done := make(chan struct{})
+	go func() {
+		for i := 0; i < 1000; i++ {
+			// Rapidly update multiple file results
+			job.UpdateFileResult("file1.mp4", &FileResult{
+				FilePath:  "file1.mp4",
+				MovieID:   "IPX-" + fmt.Sprintf("%d", i),
+				Status:    JobStatusRunning,
+				StartedAt: now,
+			})
+			job.UpdateFileResult("file2.mkv", &FileResult{
+				FilePath:  "file2.mkv",
+				MovieID:   "IPX-" + fmt.Sprintf("%d", i+1000),
+				Status:    JobStatusCompleted,
+				StartedAt: now,
+			})
+		}
+		close(done)
+	}()
+
+	// Simulate handler reading job state concurrently (the safe pattern)
+	for i := 0; i < 1000; i++ {
+		// GetStatus() returns a thread-safe snapshot
+		status := job.GetStatus()
+
+		// Iterate over results (safe because it's a copy)
+		for filePath, result := range status.Results {
+			// Verify basic invariants
+			assert.NotEmpty(t, filePath)
+			if result != nil {
+				assert.NotEmpty(t, result.FilePath)
+			}
+		}
+	}
+
+	<-done
+}
+
+// TestConcurrent_DirectMapAccessIsUnsafe demonstrates the race condition
+// This test would fail with -race if we directly accessed job.Results without GetStatus()
+// Run with: go test -race -run TestConcurrent_DirectMapAccessIsUnsafe
+func TestConcurrent_DirectMapAccessIsUnsafe(t *testing.T) {
+	t.Skip("This test demonstrates unsafe pattern - skip to avoid race detector failures")
+
+	jq := NewJobQueue()
+	job := jq.CreateJob([]string{"file1.mp4"})
+
+	now := time.Now()
+	job.UpdateFileResult("file1.mp4", &FileResult{
+		FilePath:  "file1.mp4",
+		MovieID:   "IPX-1",
+		Status:    JobStatusRunning,
+		StartedAt: now,
+	})
+
+	done := make(chan struct{})
+	go func() {
+		for i := 0; i < 1000; i++ {
+			job.UpdateFileResult("file1.mp4", &FileResult{
+				FilePath:  "file1.mp4",
+				MovieID:   fmt.Sprintf("IPX-%d", i),
+				Status:    JobStatusRunning,
+				StartedAt: now,
+			})
+		}
+		close(done)
+	}()
+
+	// UNSAFE: Direct map access without GetStatus() - WOULD FAIL WITH -race
+	for i := 0; i < 1000; i++ {
+		// This would cause: fatal error: concurrent map iteration and map write
+		for filePath := range job.Results {
+			_ = filePath
+		}
+	}
+
+	<-done
+}
+
+// TestBatchJob_PointerFieldIndependence validates that pointer fields are deep copied
+// This ensures modifying pointer fields in the snapshot doesn't affect the live job
+func TestBatchJob_PointerFieldIndependence(t *testing.T) {
+	jq := NewJobQueue()
+	job := jq.CreateJob([]string{"file1.mp4"})
+
+	// Create FileResult with pointer fields
+	originalTime := time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC)
+	originalError := "poster download failed"
+	job.UpdateFileResult("file1.mp4", &FileResult{
+		FilePath:    "file1.mp4",
+		MovieID:     "IPX-100",
+		Status:      JobStatusCompleted,
+		StartedAt:   time.Now(),
+		EndedAt:     &originalTime,
+		PosterError: &originalError,
+	})
+
+	// Get snapshot
+	snapshot := job.GetStatus()
+
+	// Verify initial values in snapshot
+	assert.NotNil(t, snapshot.Results["file1.mp4"])
+	assert.NotNil(t, snapshot.Results["file1.mp4"].EndedAt)
+	assert.NotNil(t, snapshot.Results["file1.mp4"].PosterError)
+	assert.Equal(t, originalTime, *snapshot.Results["file1.mp4"].EndedAt)
+	assert.Equal(t, originalError, *snapshot.Results["file1.mp4"].PosterError)
+
+	// Modify pointer fields in the snapshot
+	newTime := time.Date(2025, 1, 1, 12, 0, 0, 0, time.UTC)
+	newError := "different error"
+	snapshot.Results["file1.mp4"].EndedAt = &newTime
+	snapshot.Results["file1.mp4"].PosterError = &newError
+
+	// Get fresh snapshot to verify original is unchanged
+	freshSnapshot := job.GetStatus()
+	assert.NotNil(t, freshSnapshot.Results["file1.mp4"])
+	assert.NotNil(t, freshSnapshot.Results["file1.mp4"].EndedAt)
+	assert.NotNil(t, freshSnapshot.Results["file1.mp4"].PosterError)
+
+	// Verify original values are preserved (not affected by first snapshot modifications)
+	assert.Equal(t, originalTime, *freshSnapshot.Results["file1.mp4"].EndedAt, "EndedAt should not be affected by snapshot modification")
+	assert.Equal(t, originalError, *freshSnapshot.Results["file1.mp4"].PosterError, "PosterError should not be affected by snapshot modification")
+
+	// Verify modified snapshot has new values
+	assert.Equal(t, newTime, *snapshot.Results["file1.mp4"].EndedAt)
+	assert.Equal(t, newError, *snapshot.Results["file1.mp4"].PosterError)
 }

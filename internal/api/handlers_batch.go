@@ -126,7 +126,8 @@ func cancelBatchJob(deps *ServerDependencies) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		jobID := c.Param("id")
 
-		job, ok := deps.JobQueue.GetJob(jobID)
+		// Use GetJobPointer to get the real job (not a snapshot) so Cancel() works
+		job, ok := deps.JobQueue.GetJobPointer(jobID)
 		if !ok {
 			c.JSON(404, ErrorResponse{Error: "Job not found"})
 			return
@@ -162,14 +163,14 @@ func updateBatchMovie(deps *ServerDependencies) gin.HandlerFunc {
 			return
 		}
 
-		// Get the batch job
-		job, ok := deps.JobQueue.GetJob(jobID)
+		// Use GetJobPointer to get the real job (not a snapshot) for mutations
+		job, ok := deps.JobQueue.GetJobPointer(jobID)
 		if !ok {
 			c.JSON(404, ErrorResponse{Error: "Job not found"})
 			return
 		}
 
-		// Find the file result with this movie ID
+		// Get a snapshot to search for the file
 		status := job.GetStatus()
 		var foundFilePath string
 		var foundResult *worker.FileResult
@@ -206,16 +207,20 @@ func updateBatchMovie(deps *ServerDependencies) gin.HandlerFunc {
 			// Don't fail the request if DB update fails
 		}
 
-		// Clone the FileResult to avoid mutating the shared pointer outside the job lock
-		updatedResult := *foundResult
+		// Use AtomicUpdateFileResult to safely update the movie data without race conditions
+		err := job.AtomicUpdateFileResult(foundFilePath, func(current *worker.FileResult) (*worker.FileResult, error) {
+			// Update the movie data
+			current.Data = req.Movie
+			// Always sync MovieID to keep job state consistent (handles both content ID resolution and user edits)
+			current.MovieID = req.Movie.ID
+			return current, nil
+		})
 
-		// Update the movie data
-		updatedResult.Data = req.Movie
-
-		// Always sync MovieID to keep job state consistent (handles both content ID resolution and user edits)
-		updatedResult.MovieID = req.Movie.ID
-
-		job.UpdateFileResult(foundFilePath, &updatedResult)
+		if err != nil {
+			logging.Errorf("Failed to update file result: %v", err)
+			c.JSON(500, ErrorResponse{Error: fmt.Sprintf("Failed to update job state: %v", err)})
+			return
+		}
 
 		c.JSON(200, MovieResponse{Movie: req.Movie})
 	}
@@ -243,7 +248,8 @@ func organizeJob(deps *ServerDependencies) gin.HandlerFunc {
 			return
 		}
 
-		job, ok := deps.JobQueue.GetJob(jobID)
+		// Use GetJobPointer to get the real job (not a snapshot) for mutations
+		job, ok := deps.JobQueue.GetJobPointer(jobID)
 		if !ok {
 			c.JSON(404, ErrorResponse{Error: "Job not found"})
 			return
@@ -277,7 +283,8 @@ func updateBatchJob(deps *ServerDependencies) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		jobID := c.Param("id")
 
-		job, ok := deps.JobQueue.GetJob(jobID)
+		// Use GetJobPointer to get the real job (not a snapshot) for mutations
+		job, ok := deps.JobQueue.GetJobPointer(jobID)
 		if !ok {
 			c.JSON(404, ErrorResponse{Error: "Job not found"})
 			return
