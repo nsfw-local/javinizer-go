@@ -290,6 +290,12 @@ func processUpdateMode(job *worker.BatchJob, cfg *config.Config, db *database.DB
 			continue
 		}
 
+		// Skip files excluded by user
+		if job.IsExcluded(filePath) {
+			logging.Infof("Skipping excluded file: %s", filePath)
+			continue
+		}
+
 		movie, ok := fileResult.Data.(*models.Movie)
 		if !ok {
 			logging.Errorf("Invalid movie data type for file: %s", filePath)
@@ -388,6 +394,12 @@ func processOrganizeJob(job *worker.BatchJob, mat *matcher.Matcher, destination 
 	for filePath, fileResult := range status.Results {
 		// Skip files that failed during scraping
 		if fileResult.Status != worker.JobStatusCompleted || fileResult.Data == nil {
+			continue
+		}
+
+		// Skip files excluded by user
+		if job.IsExcluded(filePath) {
+			logging.Infof("Skipping excluded file: %s", filePath)
 			continue
 		}
 
@@ -548,22 +560,42 @@ func generatePreview(movie *models.Movie, destination string, cfg *config.Config
 	}
 }
 
-// copyFile copies a file from src to dst
+// copyFile copies a file from src to dst atomically using streaming I/O
+// Returns an error if the source file doesn't exist or if the copy fails
+// Uses streaming to avoid loading entire file into memory (safe for large files)
 func copyFile(src, dst string) error {
-	sourceFile, err := os.Open(src)
+	// Open source file
+	srcFile, err := os.Open(src)
 	if err != nil {
 		return fmt.Errorf("failed to open source file: %w", err)
 	}
-	defer sourceFile.Close()
+	defer srcFile.Close()
 
-	destFile, err := os.Create(dst)
+	// Write to temporary file first for atomic operation
+	tmpDst := dst + ".tmp"
+	dstFile, err := os.Create(tmpDst)
 	if err != nil {
-		return fmt.Errorf("failed to create destination file: %w", err)
+		return fmt.Errorf("failed to create temp file: %w", err)
 	}
-	defer destFile.Close()
 
-	if _, err := io.Copy(destFile, sourceFile); err != nil {
-		return fmt.Errorf("failed to copy file: %w", err)
+	// Stream copy (memory-safe for large files)
+	_, err = io.Copy(dstFile, srcFile)
+	closeErr := dstFile.Close()
+
+	if err != nil {
+		os.Remove(tmpDst) // Clean up temp file on copy error
+		return fmt.Errorf("failed to copy data: %w", err)
+	}
+
+	if closeErr != nil {
+		os.Remove(tmpDst) // Clean up temp file on close error
+		return fmt.Errorf("failed to close temp file: %w", closeErr)
+	}
+
+	// Rename temp file to final destination (atomic on most filesystems)
+	if err := os.Rename(tmpDst, dst); err != nil {
+		os.Remove(tmpDst) // Clean up temp file on rename error
+		return fmt.Errorf("failed to rename temp file: %w", err)
 	}
 
 	return nil

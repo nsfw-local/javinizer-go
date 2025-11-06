@@ -163,7 +163,8 @@ func (r *MovieRepository) Upsert(movie *models.Movie) error {
 			movie.Translations = nil
 
 			// Create the movie record (without translations)
-			if err := tx.Create(movie).Error; err != nil {
+			// Omit Actresses and Genres to prevent GORM from auto-processing associations with ID=0
+			if err := tx.Omit("Actresses", "Genres").Create(movie).Error; err != nil {
 				// Handle race condition: another transaction may have inserted the same ContentID
 				if errors.Is(err, gorm.ErrDuplicatedKey) {
 					// Reload the existing record and switch to update path
@@ -173,7 +174,8 @@ func (r *MovieRepository) Upsert(movie *models.Movie) error {
 						movie.CreatedAt = existingMovie.CreatedAt
 
 						// Update the movie record (without translations)
-						if err := tx.Save(movie).Error; err != nil {
+						// Omit Actresses and Genres to prevent GORM from auto-processing associations with ID=0
+						if err := tx.Omit("Actresses", "Genres").Save(movie).Error; err != nil {
 							return err
 						}
 
@@ -251,7 +253,8 @@ func (r *MovieRepository) Upsert(movie *models.Movie) error {
 		movie.Translations = nil
 
 		// Update the movie record (without translations)
-		if err := tx.Save(movie).Error; err != nil {
+		// Omit Actresses and Genres to prevent GORM from auto-processing associations with ID=0
+		if err := tx.Omit("Actresses", "Genres").Save(movie).Error; err != nil {
 			return err
 		}
 

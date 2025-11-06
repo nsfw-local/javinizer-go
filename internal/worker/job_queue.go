@@ -40,6 +40,7 @@ type BatchJob struct {
 	TotalFiles  int                    `json:"total_files"`
 	Completed   int                    `json:"completed"`
 	Failed      int                    `json:"failed"`
+	Excluded    map[string]bool        `json:"excluded"` // Files excluded from organization (keyed by file path)
 	Files       []string               `json:"files"`
 	Results     map[string]*FileResult `json:"results"` // keyed by file path
 	Progress    float64                `json:"progress"`
@@ -70,6 +71,7 @@ func (jq *JobQueue) CreateJob(files []string) *BatchJob {
 		TotalFiles: len(files),
 		Files:      files,
 		Results:    make(map[string]*FileResult),
+		Excluded:   make(map[string]bool),
 		StartedAt:  time.Now(),
 	}
 
@@ -276,6 +278,20 @@ func (job *BatchJob) GetProgress() float64 {
 	return job.Progress
 }
 
+// ExcludeFile marks a file as excluded from organization (thread-safe)
+func (job *BatchJob) ExcludeFile(filePath string) {
+	job.mu.Lock()
+	defer job.mu.Unlock()
+	job.Excluded[filePath] = true
+}
+
+// IsExcluded checks if a file is excluded from organization (thread-safe)
+func (job *BatchJob) IsExcluded(filePath string) bool {
+	job.mu.RLock()
+	defer job.mu.RUnlock()
+	return job.Excluded[filePath]
+}
+
 // GetStatus returns a thread-safe copy of the job status
 func (job *BatchJob) GetStatus() *BatchJob {
 	job.mu.RLock()
@@ -337,6 +353,12 @@ func (job *BatchJob) GetStatus() *BatchJob {
 	files := make([]string, len(job.Files))
 	copy(files, job.Files)
 
+	// Deep copy the Excluded map
+	excluded := make(map[string]bool, len(job.Excluded))
+	for k, v := range job.Excluded {
+		excluded[k] = v
+	}
+
 	completedAt := job.CompletedAt
 	if completedAt != nil {
 		t := *completedAt
@@ -349,6 +371,7 @@ func (job *BatchJob) GetStatus() *BatchJob {
 		TotalFiles:  job.TotalFiles,
 		Completed:   job.Completed,
 		Failed:      job.Failed,
+		Excluded:    excluded,
 		Files:       files,
 		Results:     results,
 		Progress:    job.Progress,

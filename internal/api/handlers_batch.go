@@ -96,6 +96,7 @@ func getBatchJob(deps *ServerDependencies) gin.HandlerFunc {
 			TotalFiles:  job.TotalFiles,
 			Completed:   job.Completed,
 			Failed:      job.Failed,
+			Excluded:    job.Excluded,
 			Progress:    job.Progress,
 			Results:     results,
 			StartedAt:   job.StartedAt.Format("2006-01-02T15:04:05Z07:00"),
@@ -214,6 +215,64 @@ func updateBatchMovie(deps *ServerDependencies) gin.HandlerFunc {
 		}
 
 		c.JSON(200, MovieResponse{Movie: req.Movie})
+	}
+}
+
+// excludeBatchMovie godoc
+// @Summary Exclude movie from batch organization
+// @Description Mark a movie in a batch job as excluded from file organization
+// @Tags web
+// @Produce json
+// @Param id path string true "Job ID"
+// @Param movieId path string true "Movie ID"
+// @Success 200 {object} map[string]string
+// @Failure 404 {object} ErrorResponse
+// @Router /api/v1/batch/{id}/movies/{movieId}/exclude [post]
+func excludeBatchMovie(deps *ServerDependencies) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		jobID := c.Param("id")
+		movieID := c.Param("movieId")
+
+		// Use GetJobPointer to get the real job (not a snapshot) for mutations
+		job, ok := deps.JobQueue.GetJobPointer(jobID)
+		if !ok {
+			c.JSON(404, ErrorResponse{Error: "Job not found"})
+			return
+		}
+
+		// Get a snapshot to search for the file
+		status := job.GetStatus()
+		var foundFilePath string
+		for filePath, result := range status.Results {
+			if result.MovieID == movieID {
+				foundFilePath = filePath
+				break
+			}
+		}
+
+		// If not found by MovieID, try searching by the actual movie.ID
+		if foundFilePath == "" {
+			for filePath, result := range status.Results {
+				if result.Data != nil {
+					if m, ok := result.Data.(*models.Movie); ok && m.ID == movieID {
+						foundFilePath = filePath
+						break
+					}
+				}
+			}
+		}
+
+		if foundFilePath == "" {
+			c.JSON(404, ErrorResponse{Error: fmt.Sprintf("Movie %s not found in job", movieID)})
+			return
+		}
+
+		// Mark the file as excluded
+		job.ExcludeFile(foundFilePath)
+
+		logging.Infof("Movie %s (file: %s) excluded from batch job %s", movieID, foundFilePath, jobID)
+
+		c.JSON(200, gin.H{"message": "Movie excluded from organization"})
 	}
 }
 

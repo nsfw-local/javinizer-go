@@ -115,6 +115,13 @@ class APIClient {
 		});
 	}
 
+	// Exclude movie from batch organization
+	async excludeBatchMovie(jobId: string, movieId: string): Promise<{ message: string }> {
+		return this.request<{ message: string }>(`/api/v1/batch/${jobId}/movies/${movieId}/exclude`, {
+			method: 'POST'
+		});
+	}
+
 	// Organize scraped files
 	async organizeBatchJob(jobId: string, request: OrganizeRequest): Promise<OrganizeResponse> {
 		return this.request<OrganizeResponse>(`/api/v1/batch/${jobId}/organize`, {

@@ -322,6 +322,7 @@ func NewServer(deps *ServerDependencies) *gin.Engine {
 		v1.GET("/batch/:id", getBatchJob(deps))
 		v1.POST("/batch/:id/cancel", cancelBatchJob(deps))
 		v1.PATCH("/batch/:id/movies/:movieId", updateBatchMovie(deps))
+		v1.POST("/batch/:id/movies/:movieId/exclude", excludeBatchMovie(deps))
 		v1.POST("/batch/:id/movies/:movieId/preview", previewOrganize(deps))
 		v1.POST("/batch/:id/movies/:movieId/rescrape", rescrapeBatchMovie(deps))
 		v1.POST("/batch/:id/organize", organizeJob(deps))

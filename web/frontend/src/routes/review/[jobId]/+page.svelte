@@ -28,7 +28,8 @@
 		Loader2,
 		X,
 		Check,
-		RefreshCw
+		RefreshCw,
+		Trash2
 	} from 'lucide-svelte';
 
 	let jobId = $derived($page.params.jobId as string);
@@ -442,6 +443,34 @@
 		}
 	}
 
+	async function excludeCurrentMovie() {
+		if (!currentMovie || !job) return;
+
+		try {
+			await apiClient.excludeBatchMovie(job.id, currentMovie.id);
+			toastStore.success(`Movie ${currentMovie.id} excluded from organization`);
+
+			// Store the current movie count before refresh
+			const previousMovieCount = movieResults.length;
+
+			// Refetch the job to update the state (this will recalculate movieResults)
+			await fetchJob();
+
+			// Update current index to navigate to next movie or previous if at end
+			if (movieResults.length === 0) {
+				// All movies excluded, navigate back to browse
+				await goto('/batch');
+			} else if (currentMovieIndex >= movieResults.length) {
+				// If we were at the last movie, go to the new last movie
+				currentMovieIndex = movieResults.length - 1;
+			}
+			// Otherwise stay at the same index (which now shows the next movie)
+
+		} catch (err) {
+			toastStore.error(`Failed to exclude movie: ${err}`);
+		}
+	}
+
 	function openDestinationBrowser() {
 		// TODO: Implement browse dialog
 		showDestinationBrowser = true;
@@ -820,7 +849,7 @@
 								{/snippet}
 							</Button>
 
-							<div class="text-center">
+							<div class="text-center flex-1 mx-4">
 								<p class="font-semibold">
 									Movie {currentMovieIndex + 1} of {movieResults.length}
 								</p>
@@ -833,17 +862,30 @@
 								{/if}
 							</div>
 
-							<Button
-								variant="outline"
-								onclick={() =>
-									(currentMovieIndex = Math.min(movieResults.length - 1, currentMovieIndex + 1))}
-								disabled={currentMovieIndex === movieResults.length - 1}
-							>
-								{#snippet children()}
-									Next
-									<ChevronRight class="h-4 w-4 ml-2" />
-								{/snippet}
-							</Button>
+							<div class="flex gap-2">
+								<Button
+									variant="outline"
+									onclick={excludeCurrentMovie}
+									class="text-destructive hover:bg-destructive hover:text-destructive-foreground"
+								>
+									{#snippet children()}
+										<Trash2 class="h-4 w-4 mr-2" />
+										Remove
+									{/snippet}
+								</Button>
+
+								<Button
+									variant="outline"
+									onclick={() =>
+										(currentMovieIndex = Math.min(movieResults.length - 1, currentMovieIndex + 1))}
+									disabled={currentMovieIndex === movieResults.length - 1}
+								>
+									{#snippet children()}
+										Next
+										<ChevronRight class="h-4 w-4 ml-2" />
+									{/snippet}
+								</Button>
+							</div>
 						</div>
 					</Card>
 
