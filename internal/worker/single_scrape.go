@@ -4,21 +4,25 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/javinizer/javinizer-go/internal/aggregator"
 	"github.com/javinizer/javinizer-go/internal/database"
+	"github.com/javinizer/javinizer-go/internal/fsutil"
 	"github.com/javinizer/javinizer-go/internal/logging"
 	"github.com/javinizer/javinizer-go/internal/matcher"
 	"github.com/javinizer/javinizer-go/internal/models"
 	"github.com/javinizer/javinizer-go/internal/scanner"
 	"github.com/javinizer/javinizer-go/internal/scraper/dmm"
 )
+
+// processedMovieIDsMutex protects concurrent access to processedMovieIDs map
+var processedMovieIDsMutex sync.Mutex
 
 // RunBatchScrapeOnce performs a single scrape operation for a file within a batch job context
 // This function extracts the core scraping logic that can be reused for both initial batch scraping
@@ -39,6 +43,7 @@ import (
 //   - referer: Referer header value from config
 //   - force: If true, skip cache and delete existing data
 //   - selectedScrapers: If non-empty, use these scrapers instead of defaults
+//   - processedMovieIDs: Map to track which movie IDs have already had posters generated (pass nil to disable tracking)
 //
 // Returns:
 //   - movie: Successfully scraped and saved movie metadata
@@ -56,12 +61,13 @@ func RunBatchScrapeOnce(
 	registry *models.ScraperRegistry,
 	agg *aggregator.Aggregator,
 	movieRepo *database.MovieRepository,
-	matcher *matcher.Matcher,
+	fileMatcher *matcher.Matcher,
 	httpClient *http.Client,
 	userAgent string,
 	referer string,
 	force bool,
 	selectedScrapers []string,
+	processedMovieIDs map[string]bool,
 ) (*models.Movie, *FileResult, error) {
 	logging.Debugf("[Batch %s] Starting scrape for file %d: %s (force=%v, customScrapers=%v, queryOverride=%s)",
 		job.ID, fileIndex, filePath, force, selectedScrapers, queryOverride)
@@ -70,8 +76,11 @@ func RunBatchScrapeOnce(
 
 	// Step 1: Determine the query (use queryOverride if provided, otherwise extract from filename)
 	var movieID string
+	var matchResultPtr *matcher.MatchResult // Store full match result for multi-part info
+
 	if queryOverride != "" {
 		movieID = queryOverride
+		matchResultPtr = nil // No match result when using manual override
 		logging.Debugf("[Batch %s] File %d: Using manual search query: %s", job.ID, fileIndex, movieID)
 	} else {
 		// Extract ID from filename using matcher
@@ -82,7 +91,7 @@ func RunBatchScrapeOnce(
 			Dir:       filepath.Dir(filePath),
 		}
 
-		matchResults := matcher.Match([]scanner.FileInfo{fileInfo})
+		matchResults := fileMatcher.Match([]scanner.FileInfo{fileInfo})
 		if len(matchResults) == 0 {
 			errMsg := "Could not extract movie ID from filename"
 			logging.Debugf("[Batch %s] File %d: %s", job.ID, fileIndex, errMsg)
@@ -95,7 +104,9 @@ func RunBatchScrapeOnce(
 			}, errors.New(errMsg)
 		}
 
-		movieID = matchResults[0].ID
+		// Store pointer to match result for later use
+		matchResultPtr = &matchResults[0]
+		movieID = matchResultPtr.ID
 		logging.Debugf("[Batch %s] File %d: Extracted movie ID: %s", job.ID, fileIndex, movieID)
 	}
 
@@ -110,14 +121,23 @@ func RunBatchScrapeOnce(
 				job.ID, fileIndex, movieID, cached.Title, cached.Maker)
 
 			now := time.Now()
-			return cached, &FileResult{
+			fileResult := &FileResult{
 				FilePath:  filePath,
 				MovieID:   movieID,
 				Status:    JobStatusCompleted,
 				Data:      cached,
 				StartedAt: startTime,
 				EndedAt:   &now,
-			}, nil
+			}
+
+			// Populate multi-part fields (only valid if not using query override)
+			if matchResultPtr != nil {
+				fileResult.IsMultiPart = matchResultPtr.IsMultiPart
+				fileResult.PartNumber = matchResultPtr.PartNumber
+				fileResult.PartSuffix = matchResultPtr.PartSuffix
+			}
+
+			return cached, fileResult, nil
 		}
 		logging.Debugf("[Batch %s] File %d: %s not found in cache, will scrape", job.ID, fileIndex, movieID)
 	} else if force {
@@ -277,13 +297,39 @@ func RunBatchScrapeOnce(
 	movie.OriginalFileName = filepath.Base(filePath)
 
 	// Step 7: Download and crop poster temporarily for review page
+	// Skip if we've already processed this movie ID (for multi-part files)
 	var posterErr *string
 	if httpClient != nil {
-		if _, err := GenerateTempPoster(ctx, job.ID, movie, httpClient, userAgent, referer); err != nil {
-			logging.Warnf("[Batch %s] File %d: Failed to create temp poster: %v (continuing anyway)", job.ID, fileIndex, err)
-			errMsg := err.Error()
-			posterErr = &errMsg
-			// Continue - temp poster is optional for review
+		shouldGeneratePoster := true
+
+		// Check if we've already generated a poster for this movie ID (thread-safe)
+		if processedMovieIDs != nil {
+			processedMovieIDsMutex.Lock()
+			if processedMovieIDs[movie.ID] {
+				shouldGeneratePoster = false
+				logging.Debugf("[Batch %s] File %d: Skipping poster generation for %s (already processed for multi-part file)",
+					job.ID, fileIndex, movie.ID)
+			} else {
+				// Mark this movie ID as processed
+				processedMovieIDs[movie.ID] = true
+			}
+			processedMovieIDsMutex.Unlock()
+		}
+
+		if shouldGeneratePoster {
+			if tempPosterURL, err := GenerateTempPoster(ctx, job.ID, movie, httpClient, userAgent, referer); err != nil {
+				logging.Warnf("[Batch %s] File %d: Failed to create temp poster: %v (continuing anyway)", job.ID, fileIndex, err)
+				errMsg := err.Error()
+				posterErr = &errMsg
+				// Continue - temp poster is optional for review
+			} else {
+				// Set the temp poster URL so frontend can display it
+				movie.CroppedPosterURL = tempPosterURL
+			}
+		} else {
+			// For multi-part files that skip generation, set the temp poster URL to the already-generated one
+			// This ensures all parts of a multi-part file show the same poster in the review page
+			movie.CroppedPosterURL = fmt.Sprintf("/api/v1/temp/posters/%s/%s.jpg", job.ID, movie.ID)
 		}
 	}
 
@@ -314,7 +360,7 @@ func RunBatchScrapeOnce(
 				logging.Warnf("[Batch %s] File %d: Failed to create posters directory: %v", job.ID, fileIndex, err)
 			} else {
 				// Copy temp poster to persistent location
-				if copyErr := copyFile(tempPath, persistentPath); copyErr != nil {
+				if copyErr := fsutil.CopyFileAtomic(tempPath, persistentPath); copyErr != nil {
 					logging.Warnf("[Batch %s] File %d: Failed to copy poster: %v", job.ID, fileIndex, copyErr)
 				} else {
 					// Update database with cropped poster URL
@@ -374,48 +420,14 @@ func RunBatchScrapeOnce(
 		EndedAt:     &now,
 	}
 
+	// Populate multi-part fields (only valid if not using query override)
+	if matchResultPtr != nil {
+		fileResult.IsMultiPart = matchResultPtr.IsMultiPart
+		fileResult.PartNumber = matchResultPtr.PartNumber
+		fileResult.PartSuffix = matchResultPtr.PartSuffix
+	}
+
 	logging.Debugf("[Batch %s] File %d: Scrape completed successfully", job.ID, fileIndex)
 
 	return finalMovie, fileResult, nil
-}
-
-// copyFile copies a file from src to dst atomically using streaming I/O
-// Returns an error if the source file doesn't exist or if the copy fails
-// Uses streaming to avoid loading entire file into memory (safe for large files)
-func copyFile(src, dst string) error {
-	// Open source file
-	srcFile, err := os.Open(src)
-	if err != nil {
-		return fmt.Errorf("failed to open source file: %w", err)
-	}
-	defer srcFile.Close()
-
-	// Write to temporary file first for atomic operation
-	tmpDst := dst + ".tmp"
-	dstFile, err := os.Create(tmpDst)
-	if err != nil {
-		return fmt.Errorf("failed to create temp file: %w", err)
-	}
-
-	// Stream copy (memory-safe for large files)
-	_, err = io.Copy(dstFile, srcFile)
-	closeErr := dstFile.Close()
-
-	if err != nil {
-		os.Remove(tmpDst) // Clean up temp file on copy error
-		return fmt.Errorf("failed to copy data: %w", err)
-	}
-
-	if closeErr != nil {
-		os.Remove(tmpDst) // Clean up temp file on close error
-		return fmt.Errorf("failed to close temp file: %w", closeErr)
-	}
-
-	// Rename temp file to final destination (atomic on most filesystems)
-	if err := os.Rename(tmpDst, dst); err != nil {
-		os.Remove(tmpDst) // Clean up temp file on rename error
-		return fmt.Errorf("failed to rename temp file: %w", err)
-	}
-
-	return nil
 }

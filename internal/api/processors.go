@@ -3,7 +3,6 @@ package api
 import (
 	"context"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"time"
@@ -12,6 +11,7 @@ import (
 	"github.com/javinizer/javinizer-go/internal/config"
 	"github.com/javinizer/javinizer-go/internal/database"
 	"github.com/javinizer/javinizer-go/internal/downloader"
+	"github.com/javinizer/javinizer-go/internal/fsutil"
 	"github.com/javinizer/javinizer-go/internal/httpclient"
 	"github.com/javinizer/javinizer-go/internal/logging"
 	"github.com/javinizer/javinizer-go/internal/matcher"
@@ -80,6 +80,11 @@ func processBatchJob(job *worker.BatchJob, registry *models.ScraperRegistry, agg
 		httpClient = nil // Continue without poster generation
 	}
 
+	// Create a map to track which movie IDs have had posters generated
+	// This prevents redundant poster downloads/crops for multi-part files
+	// Thread safety is handled by processedMovieIDsMutex in single_scrape.go
+	processedMovieIDs := make(map[string]bool)
+
 	// Submit tasks to pool
 	for i, filePath := range job.Files {
 		// Check if context is cancelled
@@ -121,6 +126,7 @@ func processBatchJob(job *worker.BatchJob, registry *models.ScraperRegistry, agg
 			httpClient,             // httpClient - configured with proxy support
 			cfg.Scrapers.UserAgent, // userAgent
 			cfg.Scrapers.Referer,   // referer
+			processedMovieIDs,      // poster deduplication map (shared across all tasks)
 		)
 
 		// Submit to pool (blocks if pool is full)
@@ -144,6 +150,20 @@ func processBatchJob(job *worker.BatchJob, registry *models.ScraperRegistry, agg
 
 	// Mark job as completed (don't auto-process update mode - wait for user to review and click "Update")
 	job.MarkCompleted()
+
+	// Cleanup temp posters for this job (best-effort, non-blocking)
+	// These are no longer needed once the job is complete since:
+	// - Successful files have persistent posters in data/posters/
+	// - Failed files don't need temp posters
+	// - User has reviewed and can no longer rescrape from this job
+	go func() {
+		tempDir := filepath.Join("data", "temp", "posters", job.ID)
+		if err := os.RemoveAll(tempDir); err != nil {
+			logging.Debugf("[Job %s] Failed to clean temp poster dir: %v", job.ID, err)
+		} else {
+			logging.Debugf("[Job %s] Cleaned temp poster directory", job.ID)
+		}
+	}()
 
 	// Broadcast final completion
 	wsHub.BroadcastProgress(&ws.ProgressMessage{
@@ -176,7 +196,7 @@ func copyTempCroppedPoster(job *worker.BatchJob, movie *models.Movie, destDir st
 	destPosterPath := filepath.Join(destDir, posterFilename)
 
 	// Copy temp poster to destination
-	if err := copyFile(tempPosterPath, destPosterPath); err != nil {
+	if err := fsutil.CopyFileAtomic(tempPosterPath, destPosterPath); err != nil {
 		logging.Warnf("%s mode: Failed to copy temp poster: %v", mode, err)
 		return false
 	}
@@ -491,7 +511,8 @@ func processOrganizeJob(job *worker.BatchJob, mat *matcher.Matcher, destination 
 }
 
 // generatePreview generates an organize preview response for a movie
-func generatePreview(movie *models.Movie, destination string, cfg *config.Config) OrganizePreviewResponse {
+// fileResults contains all file results for this movie (to support multi-part files)
+func generatePreview(movie *models.Movie, fileResults []*worker.FileResult, destination string, cfg *config.Config) OrganizePreviewResponse {
 	// Create template context from movie
 	ctx := template.NewContextFromMovie(movie)
 	ctx.GroupActress = cfg.Output.GroupActress
@@ -534,7 +555,40 @@ func generatePreview(movie *models.Movie, destination string, cfg *config.Config
 	pathParts = append(pathParts, subfolderParts...)
 	pathParts = append(pathParts, folderName)
 	folderPath := filepath.Join(pathParts...)
-	videoPath := filepath.Join(folderPath, fileName+".mp4") // Using .mp4 as placeholder
+
+	// Generate video file paths for all parts (multi-part support)
+	videoFiles := make([]string, 0, len(fileResults))
+	var primaryVideoPath string
+
+	for _, result := range fileResults {
+		if result != nil && result.FilePath != "" {
+			// Get original extension
+			ext := filepath.Ext(result.FilePath)
+			if ext == "" {
+				ext = ".mp4" // Fallback
+			}
+
+			// Generate path with part suffix if multi-part
+			videoFileName := fileName
+			if result.IsMultiPart && result.PartSuffix != "" {
+				videoFileName = fileName + result.PartSuffix
+			}
+			videoPath := filepath.Join(folderPath, videoFileName+ext)
+			videoFiles = append(videoFiles, videoPath)
+
+			// Use first video as primary path for backward compatibility
+			if primaryVideoPath == "" {
+				primaryVideoPath = videoPath
+			}
+		}
+	}
+
+	// Fallback if no file results (shouldn't happen, but be defensive)
+	if primaryVideoPath == "" {
+		primaryVideoPath = filepath.Join(folderPath, fileName+".mp4")
+		videoFiles = append(videoFiles, primaryVideoPath)
+	}
+
 	nfoPath := filepath.Join(folderPath, fileName+".nfo")
 	posterPath := filepath.Join(folderPath, fileName+"-poster.jpg")
 	fanartPath := filepath.Join(folderPath, fileName+"-fanart.jpg")
@@ -551,7 +605,8 @@ func generatePreview(movie *models.Movie, destination string, cfg *config.Config
 	return OrganizePreviewResponse{
 		FolderName:      folderName,
 		FileName:        fileName,
-		FullPath:        videoPath,
+		FullPath:        primaryVideoPath, // Backward compatibility
+		VideoFiles:      videoFiles,       // All video files (multi-part support)
 		NFOPath:         nfoPath,
 		PosterPath:      posterPath,
 		FanartPath:      fanartPath,
@@ -563,40 +618,3 @@ func generatePreview(movie *models.Movie, destination string, cfg *config.Config
 // copyFile copies a file from src to dst atomically using streaming I/O
 // Returns an error if the source file doesn't exist or if the copy fails
 // Uses streaming to avoid loading entire file into memory (safe for large files)
-func copyFile(src, dst string) error {
-	// Open source file
-	srcFile, err := os.Open(src)
-	if err != nil {
-		return fmt.Errorf("failed to open source file: %w", err)
-	}
-	defer srcFile.Close()
-
-	// Write to temporary file first for atomic operation
-	tmpDst := dst + ".tmp"
-	dstFile, err := os.Create(tmpDst)
-	if err != nil {
-		return fmt.Errorf("failed to create temp file: %w", err)
-	}
-
-	// Stream copy (memory-safe for large files)
-	_, err = io.Copy(dstFile, srcFile)
-	closeErr := dstFile.Close()
-
-	if err != nil {
-		os.Remove(tmpDst) // Clean up temp file on copy error
-		return fmt.Errorf("failed to copy data: %w", err)
-	}
-
-	if closeErr != nil {
-		os.Remove(tmpDst) // Clean up temp file on close error
-		return fmt.Errorf("failed to close temp file: %w", closeErr)
-	}
-
-	// Rename temp file to final destination (atomic on most filesystems)
-	if err := os.Rename(tmpDst, dst); err != nil {
-		os.Remove(tmpDst) // Clean up temp file on rename error
-		return fmt.Errorf("failed to rename temp file: %w", err)
-	}
-
-	return nil
-}
