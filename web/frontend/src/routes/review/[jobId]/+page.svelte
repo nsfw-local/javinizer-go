@@ -108,8 +108,19 @@
 
 	const movieGroups = $derived<MovieGroup[]>(
 		job ? (() => {
+			const excluded = (job as BatchJobResponse).excluded || {};
 			const allResults = (Object.values((job as BatchJobResponse).results) as FileResult[])
-				.filter((r) => r.status === 'completed' && r.data);
+				.filter((r) => {
+					// Filter out files that are not completed or don't have data
+					if (r.status !== 'completed' || !r.data) {
+						return false;
+					}
+					// Filter out files that are excluded
+					if (excluded[r.file_path]) {
+						return false;
+					}
+					return true;
+				});
 
 			// Group by movie_id
 			const grouped = new Map<string, FileResult[]>();

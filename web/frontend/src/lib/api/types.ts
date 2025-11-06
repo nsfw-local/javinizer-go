@@ -81,6 +81,7 @@ export interface BatchJobResponse {
 	total_files: number;
 	completed: number;
 	failed: number;
+	excluded: Record<string, boolean>; // Map of file paths excluded from organization
 	progress: number;
 	results: Record<string, FileResult>;
 	files?: string[]; // List of all file paths in the job
