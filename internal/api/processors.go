@@ -598,7 +598,36 @@ func generatePreview(movie *models.Movie, fileResults []*worker.FileResult, dest
 		videoFiles = append(videoFiles, primaryVideoPath)
 	}
 
-	nfoPath := filepath.Join(folderPath, fileName+".nfo")
+	// Check if multi-part and per_file is enabled
+	isMultiPart := len(fileResults) > 1 && fileResults[0] != nil && fileResults[0].IsMultiPart
+	generatePerFileNFO := cfg.Metadata.NFO.PerFile && isMultiPart
+
+	// Generate NFO paths
+	var nfoPath string
+	var nfoPaths []string
+
+	if generatePerFileNFO {
+		// Generate one NFO per video file (matching video file naming)
+		nfoPaths = make([]string, 0, len(fileResults))
+		for _, result := range fileResults {
+			if result != nil && result.FilePath != "" {
+				nfoFileName := fileName
+				if result.IsMultiPart && result.PartSuffix != "" {
+					nfoFileName = fileName + result.PartSuffix
+				}
+				nfoPath := filepath.Join(folderPath, nfoFileName+".nfo")
+				nfoPaths = append(nfoPaths, nfoPath)
+			}
+		}
+		// Set primary NFO path for backward compatibility (use first)
+		if len(nfoPaths) > 0 {
+			nfoPath = nfoPaths[0]
+		}
+	} else {
+		// Single NFO file (default behavior)
+		nfoPath = filepath.Join(folderPath, fileName+".nfo")
+	}
+
 	posterPath := filepath.Join(folderPath, fileName+"-poster.jpg")
 	fanartPath := filepath.Join(folderPath, fileName+"-fanart.jpg")
 	extrafanartPath := filepath.Join(folderPath, "extrafanart")
@@ -616,7 +645,8 @@ func generatePreview(movie *models.Movie, fileResults []*worker.FileResult, dest
 		FileName:        fileName,
 		FullPath:        primaryVideoPath, // Backward compatibility
 		VideoFiles:      videoFiles,       // All video files (multi-part support)
-		NFOPath:         nfoPath,
+		NFOPath:         nfoPath,          // Single NFO or first NFO (backward compatibility)
+		NFOPaths:        nfoPaths,         // All NFO paths when per_file=true (nil otherwise)
 		PosterPath:      posterPath,
 		FanartPath:      fanartPath,
 		ExtrafanartPath: extrafanartPath,

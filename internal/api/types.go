@@ -125,8 +125,9 @@ type OrganizePreviewResponse struct {
 	FolderName      string   `json:"folder_name" example:"IPX-535 [IdeaPocket] - Beautiful Woman (2021)"`
 	FileName        string   `json:"file_name" example:"IPX-535"`
 	FullPath        string   `json:"full_path" example:"/path/to/output/IPX-535 [IdeaPocket] - Beautiful Woman (2021)/IPX-535.mp4"`
-	VideoFiles      []string `json:"video_files,omitempty"` // For multi-part files: all video file paths
-	NFOPath         string   `json:"nfo_path" example:"/path/to/output/IPX-535 [IdeaPocket] - Beautiful Woman (2021)/IPX-535.nfo"`
+	VideoFiles      []string `json:"video_files,omitempty"`                                                                        // For multi-part files: all video file paths
+	NFOPath         string   `json:"nfo_path" example:"/path/to/output/IPX-535 [IdeaPocket] - Beautiful Woman (2021)/IPX-535.nfo"` // Single NFO (backward compatibility)
+	NFOPaths        []string `json:"nfo_paths,omitempty"`                                                                          // For per_file=true multi-part: all NFO file paths
 	PosterPath      string   `json:"poster_path" example:"/path/to/output/IPX-535 [IdeaPocket] - Beautiful Woman (2021)/IPX-535-poster.jpg"`
 	FanartPath      string   `json:"fanart_path" example:"/path/to/output/IPX-535 [IdeaPocket] - Beautiful Woman (2021)/IPX-535-fanart.jpg"`
 	ExtrafanartPath string   `json:"extrafanart_path" example:"/path/to/output/IPX-535 [IdeaPocket] - Beautiful Woman (2021)/extrafanart"`
