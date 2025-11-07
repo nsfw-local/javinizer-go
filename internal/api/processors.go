@@ -151,10 +151,12 @@ func processBatchJob(job *worker.BatchJob, registry *models.ScraperRegistry, agg
 	// Mark job as completed (don't auto-process update mode - wait for user to review and click "Update")
 	job.MarkCompleted()
 
-	// Cleanup temp posters for this job now that it's completed
-	// Best-effort, non-blocking cleanup. The batch job is gone, so temp posters are no longer needed.
-	// Note: Startup cleanup (cmd/cli/api.go) handles any orphaned temp posters from crashed/incomplete jobs
-	go cleanupJobTempPosters(job.ID)
+	// NOTE: We do NOT cleanup temp posters here!
+	// Users need them to view the review page after job completion.
+	// Temp posters are cleaned up:
+	//   1. After organize (when copied to final location)
+	//   2. After job cancellation
+	//   3. On server restart (for orphaned posters)
 
 	// Broadcast final completion
 	wsHub.BroadcastProgress(&ws.ProgressMessage{
@@ -517,6 +519,10 @@ func processOrganizeJob(job *worker.BatchJob, mat *matcher.Matcher, destination 
 		Progress: 100,
 		Message:  fmt.Sprintf("Organized %d files, %d failed", organized, failed),
 	})
+
+	// Cleanup temp posters after organize completes
+	// Files have been copied to their final organized locations
+	go cleanupJobTempPosters(job.ID)
 }
 
 // generatePreview generates an organize preview response for a movie

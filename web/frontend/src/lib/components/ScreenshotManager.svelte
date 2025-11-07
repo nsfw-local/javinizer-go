@@ -107,7 +107,7 @@
 								class="absolute h-full"
 								style="right: 0; width: auto; min-width: 211.8%; object-fit: cover; object-position: right center;"
 								onerror={(e) => {
-									(e.currentTarget as HTMLImageElement).src = 'https://via.placeholder.com/300x450?text=Invalid+URL';
+									const target = e.currentTarget as HTMLImageElement; target.style.display = 'none';
 								}}
 							/>
 						{:else}
@@ -117,7 +117,7 @@
 								alt="Poster"
 								class="w-full h-full object-contain"
 								onerror={(e) => {
-									(e.currentTarget as HTMLImageElement).src = 'https://via.placeholder.com/300x450?text=Invalid+URL';
+									const target = e.currentTarget as HTMLImageElement; target.style.display = 'none';
 								}}
 							/>
 						{/if}
@@ -162,7 +162,7 @@
 							alt="Cover"
 							class="w-full"
 							onerror={(e) => {
-								(e.currentTarget as HTMLImageElement).src = 'https://via.placeholder.com/400x225?text=Invalid+URL';
+								const target = e.currentTarget as HTMLImageElement; target.style.display = 'none';
 							}}
 						/>
 					</button>
@@ -263,7 +263,7 @@
 								alt="Screenshot {index + 1}"
 								class="w-full aspect-video object-cover rounded"
 								onerror={(e) => {
-									(e.currentTarget as HTMLImageElement).src = 'https://via.placeholder.com/400x225?text=Invalid+URL';
+									const target = e.currentTarget as HTMLImageElement; target.style.display = 'none';
 								}}
 							/>
 						</button>

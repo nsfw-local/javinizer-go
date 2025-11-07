@@ -368,8 +368,7 @@
 									alt={getFullName(editingActress) || 'Preview'}
 									class="w-full aspect-[2/3] object-cover rounded mb-2"
 									onerror={(e) => {
-										(e.currentTarget as HTMLImageElement).src =
-											'https://via.placeholder.com/200x300?text=Invalid+URL';
+										const target = e.currentTarget as HTMLImageElement; target.style.display = 'none';
 									}}
 								/>
 							{:else}

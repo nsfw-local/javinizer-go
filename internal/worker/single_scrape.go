@@ -13,7 +13,6 @@ import (
 
 	"github.com/javinizer/javinizer-go/internal/aggregator"
 	"github.com/javinizer/javinizer-go/internal/database"
-	"github.com/javinizer/javinizer-go/internal/fsutil"
 	"github.com/javinizer/javinizer-go/internal/logging"
 	"github.com/javinizer/javinizer-go/internal/matcher"
 	"github.com/javinizer/javinizer-go/internal/models"
@@ -440,8 +439,8 @@ func RunBatchScrapeOnce(
 		logging.Debugf("[Batch %s] File %d: Saving metadata to database", job.ID, fileIndex)
 
 		// IMPORTANT: Don't save temp poster URLs to database
-		// Temp posters are cleaned up after job completion, causing 404s on subsequent cache hits
-		// Only persistent poster URLs (set in Step 8a) should be stored in the database
+		// Temp posters are ephemeral and cleaned up after job completion
+		// Only persistent poster URLs (created during organize workflow) should be stored in the database
 		tempPosterURL := movie.CroppedPosterURL
 		movie.CroppedPosterURL = "" // Clear temp URL before saving
 
@@ -454,60 +453,6 @@ func RunBatchScrapeOnce(
 
 		// Restore temp URL for the FileResult (needed for review page display)
 		movie.CroppedPosterURL = tempPosterURL
-
-		// Step 8a: Copy temp poster to persistent location (only for fresh scrapes, not cache hits)
-		// This happens after database save so the movie exists in DB for the repository update
-		// We reuse the temp poster from Step 7 instead of regenerating to avoid redundant downloads
-		//
-		// RACE CONDITION FIX: For multi-part files, only one task generates the temp poster, but all tasks
-		// try to copy it. We check if the persistent poster already exists to avoid race condition where
-		// the first task succeeds and removes the temp file, causing subsequent tasks to fail.
-		if httpClient != nil && posterErr == nil {
-			tempPath := filepath.Join("data", "temp", "posters", job.ID, movie.ID+".jpg")
-			persistentPath := filepath.Join("data", "posters", movie.ID+".jpg")
-
-			// Check if persistent poster already exists (for multi-part files)
-			if _, statErr := os.Stat(persistentPath); statErr == nil {
-				logging.Debugf("[Batch %s] File %d: Persistent poster already exists for %s, skipping copy", job.ID, fileIndex, movie.ID)
-
-				// Update database with cropped poster URL (other task may have persisted it)
-				// Use Upsert instead of Update to avoid GORM association side effects
-				croppedURL := fmt.Sprintf("/api/v1/posters/%s.jpg", movie.ID)
-				movie.CroppedPosterURL = croppedURL
-				if updateErr := movieRepo.Upsert(movie); updateErr != nil {
-					logging.Warnf("[Batch %s] File %d: Failed to upsert cropped poster URL: %v", job.ID, fileIndex, updateErr)
-				}
-			} else {
-				logging.Debugf("[Batch %s] File %d: Copying temp poster to persistent location for %s", job.ID, fileIndex, movie.ID)
-
-				// Ensure persistent posters directory exists
-				posterDir := filepath.Join("data", "posters")
-				if err := os.MkdirAll(posterDir, 0755); err != nil {
-					logging.Warnf("[Batch %s] File %d: Failed to create posters directory: %v", job.ID, fileIndex, err)
-				} else {
-					// Copy temp poster to persistent location
-					if copyErr := fsutil.CopyFileAtomic(tempPath, persistentPath); copyErr != nil {
-						logging.Warnf("[Batch %s] File %d: Failed to copy poster: %v", job.ID, fileIndex, copyErr)
-					} else {
-						// Update database with cropped poster URL
-						// Use Upsert instead of Update to avoid GORM association side effects
-						croppedURL := fmt.Sprintf("/api/v1/posters/%s.jpg", movie.ID)
-						movie.CroppedPosterURL = croppedURL
-
-						if updateErr := movieRepo.Upsert(movie); updateErr != nil {
-							logging.Warnf("[Batch %s] File %d: Failed to upsert cropped poster URL: %v", job.ID, fileIndex, updateErr)
-						} else {
-							logging.Debugf("[Batch %s] File %d: Successfully persisted cropped poster: %s", job.ID, fileIndex, croppedURL)
-						}
-
-						// Clean up temp poster after successful copy
-						if removeErr := os.Remove(tempPath); removeErr != nil && !os.IsNotExist(removeErr) {
-							logging.Debugf("[Batch %s] File %d: Failed to remove temp poster: %v", job.ID, fileIndex, removeErr)
-						}
-					}
-				}
-			}
-		}
 	} else {
 		logging.Debugf("[Batch %s] File %d: Skipping database save (custom scrapers used)", job.ID, fileIndex)
 	}
@@ -525,6 +470,8 @@ func RunBatchScrapeOnce(
 			if movie.DisplayName != "" {
 				finalMovie.DisplayName = movie.DisplayName
 			}
+			// Preserve temp poster URL from Step 7 (DB should never have temp URLs)
+			finalMovie.CroppedPosterURL = movie.CroppedPosterURL
 			logging.Debugf("[Batch %s] File %d: Reloaded movie from database with associations", job.ID, fileIndex)
 		}
 	} else {
