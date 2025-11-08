@@ -638,8 +638,14 @@
 							type="text"
 							bind:value={config.Output.FileFormat}
 							class="{inputClass} font-mono text-sm"
-							placeholder="<ID>"
+							placeholder="<ID><PARTSUFFIX>"
 						/>
+						<p class="text-xs text-muted-foreground mt-1">
+							Multi-part support: &lt;PART&gt; (part number), &lt;PARTSUFFIX&gt; (original suffix), &lt;IF:MULTIPART&gt;...&lt;/IF&gt;
+						</p>
+						<p class="text-xs text-muted-foreground">
+							Examples: &lt;ID&gt;&lt;PARTSUFFIX&gt; or &lt;ID&gt;-CD&lt;PART:2&gt; or &lt;ID&gt;&lt;IF:MULTIPART&gt;-pt&lt;PART&gt;&lt;/IF&gt;
+						</p>
 					</div>
 
 					<SettingsSubsection title="Media File Naming">

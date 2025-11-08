@@ -129,6 +129,11 @@ func (o *Organizer) Plan(match matcher.MatchResult, movie *models.Movie, destDir
 	ctx := template.NewContextFromMovie(movie)
 	ctx.GroupActress = o.config.GroupActress
 
+	// Add multi-part information to template context
+	ctx.PartNumber = match.PartNumber
+	ctx.PartSuffix = match.PartSuffix
+	ctx.IsMultiPart = match.IsMultiPart
+
 	// Generate subfolder hierarchy (if configured)
 	subfolderParts := make([]string, 0, len(o.config.SubfolderFormat))
 	for _, subfolderTemplate := range o.config.SubfolderFormat {
@@ -170,12 +175,7 @@ func (o *Organizer) Plan(match matcher.MatchResult, movie *models.Movie, destDir
 		}
 		fileName = template.SanitizeFilename(fileName)
 
-		// Append part suffix before extension
-		if match.IsMultiPart && match.PartSuffix != "" {
-			fileName = fileName + match.PartSuffix
-		}
-
-		// Add extension
+		// Add extension (part suffix now handled in template via <PART> or <PARTSUFFIX> placeholders)
 		fileName = fileName + match.File.Extension
 	} else {
 		// Keep original filename

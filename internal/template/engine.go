@@ -24,9 +24,11 @@ type Engine struct {
 func NewEngine() *Engine {
 	return &Engine{
 		// Matches: <ID>, <TITLE:50>, <RELEASEDATE:YYYY-MM-DD>, etc.
-		tagPattern: regexp.MustCompile(`<([A-Z_]+)(?::([^>]+))?>`),
+		// Case-insensitive to allow <id>, <Id>, <ID>, etc.
+		tagPattern: regexp.MustCompile(`(?i)<([A-Z_]+)(?::([^>]+))?>`),
 		// Matches: <IF:TAG>content</IF> or <IF:TAG>true<ELSE>false</IF>
-		conditionalPattern: regexp.MustCompile(`<IF:([A-Z_]+)>(.*?)(?:<ELSE>(.*?))?</IF>`),
+		// Case-insensitive to allow <if:tag>, <IF:TAG>, etc.
+		conditionalPattern: regexp.MustCompile(`(?i)<IF:([A-Z_]+)>(.*?)(?:<ELSE>(.*?))?</IF>`),
 	}
 }
 
@@ -45,8 +47,8 @@ func (e *Engine) Execute(template string, ctx *Context) (string, error) {
 	matches := e.tagPattern.FindAllStringSubmatch(result, -1)
 
 	for _, match := range matches {
-		fullTag := match[0] // e.g., "<TITLE:50>"
-		tagName := match[1] // e.g., "TITLE"
+		fullTag := match[0]                  // e.g., "<TITLE:50>" or "<title:50>"
+		tagName := strings.ToUpper(match[1]) // Normalize to uppercase: "TITLE"
 		modifier := ""
 		if len(match) > 2 {
 			modifier = match[2] // e.g., "50"
@@ -78,9 +80,9 @@ func (e *Engine) processConditionals(template string, ctx *Context) string {
 	matches := e.conditionalPattern.FindAllStringSubmatch(result, -1)
 
 	for _, match := range matches {
-		fullBlock := match[0]   // e.g., "<IF:SERIES>Series: <SERIES></IF>"
-		tagName := match[1]     // e.g., "SERIES"
-		trueContent := match[2] // e.g., "Series: <SERIES>"
+		fullBlock := match[0]                // e.g., "<IF:SERIES>Series: <SERIES></IF>" or "<if:series>..."
+		tagName := strings.ToUpper(match[1]) // Normalize to uppercase: "SERIES"
+		trueContent := match[2]              // e.g., "Series: <SERIES>"
 		falseContent := ""
 		if len(match) > 3 {
 			falseContent = match[3] // Content after <ELSE>
@@ -225,6 +227,29 @@ func (e *Engine) resolveTag(tagName, modifier string, ctx *Context) (string, err
 		info := ctx.GetMediaInfo()
 		if info != nil {
 			return info.GetResolution(), nil
+		}
+		return "", nil
+
+	case "PART", "DISC":
+		// Multi-part file part number
+		if ctx.PartNumber > 0 {
+			if modifier != "" {
+				// Modifier is padding width (e.g., <PART:2> -> "01")
+				format := fmt.Sprintf("%%0%sd", modifier)
+				return fmt.Sprintf(format, ctx.PartNumber), nil
+			}
+			return fmt.Sprintf("%d", ctx.PartNumber), nil
+		}
+		return "", nil
+
+	case "PARTSUFFIX":
+		// Original part suffix from filename (e.g., "-pt1", "-A", "-cd2")
+		return ctx.PartSuffix, nil
+
+	case "MULTIPART":
+		// Returns "true" if multi-part, empty string otherwise (for use in conditionals)
+		if ctx.IsMultiPart {
+			return "true", nil
 		}
 		return "", nil
 

@@ -169,7 +169,16 @@ file_matching:
     regex_pattern: ([a-zA-Z|tT28]+-\d+[zZ]?[eE]?)(?:-pt)?(\d{1,2})?
 output:
     folder_format: <ID> [<STUDIO>] - <TITLE> (<YEAR>)
-    file_format: <ID>
+    # File format supports multi-part templates:
+    #   - <PART> or <DISC>: Part number (1, 2, 3...), use <PART:2> for zero-padding (01, 02, 03...)
+    #   - <PARTSUFFIX>: Original suffix from filename (e.g., "-pt1", "-A", "-cd2")
+    #   - <IF:MULTIPART>...</IF>: Conditional block for multi-part files only
+    # Examples:
+    #   <ID><PARTSUFFIX>           → IPX-535-pt1 (preserves original suffix style)
+    #   <ID>-pt<PART>              → IPX-535-pt1 (custom suffix format)
+    #   <ID>-CD<PART:2>            → IPX-535-CD01 (zero-padded disc number)
+    #   <ID><IF:MULTIPART>-pt<PART></IF>  → IPX-535-pt1 (only for multi-part, IPX-535 for single)
+    file_format: <ID><PARTSUFFIX>
     subfolder_format: []
     delimiter: ', '
     max_title_length: 100

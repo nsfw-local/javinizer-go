@@ -14,7 +14,7 @@ import (
 func TestPlan_AppendsPartSuffix(t *testing.T) {
 	cfg := &config.OutputConfig{
 		FolderFormat:    "<ID> [<STUDIO>] - <TITLE>",
-		FileFormat:      "<ID>",
+		FileFormat:      "<ID><PARTSUFFIX>", // Use <PARTSUFFIX> placeholder for multi-part support
 		RenameFile:      true,
 		SubfolderFormat: []string{},
 		MaxTitleLength:  0,
@@ -99,7 +99,7 @@ func TestOrganizeBatch_GroupsAndSortsParts(t *testing.T) {
 	tmpDir := t.TempDir()
 	cfg := &config.OutputConfig{
 		FolderFormat:    "<ID>",
-		FileFormat:      "<ID>",
+		FileFormat:      "<ID><PARTSUFFIX>", // Use <PARTSUFFIX> placeholder for multi-part support
 		RenameFile:      true,
 		SubfolderFormat: []string{},
 	}

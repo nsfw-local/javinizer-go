@@ -59,9 +59,20 @@
 		return (Object.values(job.results) as FileResult[]).filter(r => r.status === 'failed');
 	});
 
-	// Worker pool status (default to 5 if not configured)
-	const maxWorkers = $state(5);
+	// Worker pool status - fetched from server config
+	let maxWorkers = $state(5); // Default to 5 until config is loaded
 	const activeWorkerCount = $derived(activeFiles.length);
+
+	// Fetch server config to get actual max_workers
+	async function fetchConfig() {
+		try {
+			const config = await apiClient.getConfig();
+			maxWorkers = config.performance?.max_workers || 5;
+		} catch (err) {
+			console.error('Failed to fetch config:', err);
+			// Keep default value of 5
+		}
+	}
 
 	async function fetchJob() {
 		try {
@@ -108,6 +119,7 @@
 	}
 
 	onMount(() => {
+		fetchConfig(); // Fetch server config to get max_workers
 		fetchJob();
 		// Poll for updates every 2 seconds
 		pollInterval = setInterval(fetchJob, 2000);

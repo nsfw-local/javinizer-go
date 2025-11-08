@@ -18,7 +18,8 @@ import type {
 	RescrapeRequest,
 	ScrapeRequest,
 	BatchRescrapeRequest,
-	BatchRescrapeResponse
+	BatchRescrapeResponse,
+	Config
 } from './types';
 
 // Build API base URL dynamically from browser location
@@ -204,6 +205,11 @@ class APIClient {
 			method: 'POST',
 			body: JSON.stringify(req)
 		});
+	}
+
+	// Get server configuration
+	async getConfig(): Promise<Config> {
+		return this.request<Config>('/api/v1/config');
 	}
 }
 

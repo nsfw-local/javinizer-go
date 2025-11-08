@@ -205,3 +205,17 @@ export interface Scraper {
 export interface AvailableScrapersResponse {
 	scrapers: ScraperInfo[];
 }
+
+// Config types
+export interface PerformanceConfig {
+	max_workers: number;
+	worker_timeout: number;
+	buffer_size: number;
+	update_interval: number;
+}
+
+export interface Config {
+	performance: PerformanceConfig;
+	// Other config fields can be added here as needed
+	[key: string]: any;
+}

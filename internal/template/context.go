@@ -42,6 +42,11 @@ type Context struct {
 	// Indexing (for screenshots, multi-part, etc.)
 	Index int
 
+	// Multi-part file information
+	PartNumber  int    // Part number (1, 2, 3, etc.) - 0 means single file
+	PartSuffix  string // Original part suffix detected from filename (e.g., "-pt1", "-A")
+	IsMultiPart bool   // Whether this is a multi-part file
+
 	// Cached mediainfo (lazy-loaded)
 	cachedMediaInfo *mediainfo.VideoInfo
 

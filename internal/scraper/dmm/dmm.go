@@ -448,7 +448,8 @@ func (s *Scraper) extractCandidateURLs(doc *goquery.Document, contentID string) 
 		// Check if this link contains our canonical content-ID or base ID
 		// DMM product pages can use different ID formats (e.g., sone860, 4sone860, tksone860)
 		// Use lowercase canonical forms for consistent matching
-		containsID := strings.Contains(href, contentIDLower) || strings.Contains(href, baseID)
+		hrefLower := strings.ToLower(href)
+		containsID := strings.Contains(hrefLower, contentIDLower) || strings.Contains(hrefLower, baseID)
 		if !containsID {
 			return
 		}

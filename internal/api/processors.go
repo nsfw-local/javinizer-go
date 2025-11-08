@@ -572,6 +572,13 @@ func generatePreview(movie *models.Movie, fileResults []*worker.FileResult, dest
 	pathParts = append(pathParts, folderName)
 	folderPath := filepath.Join(pathParts...)
 
+	// Validate folder path length if configured
+	if cfg.Output.MaxPathLength > 0 {
+		if err := templateEngine.ValidatePathLength(folderPath, cfg.Output.MaxPathLength); err != nil {
+			logging.Warnf("Preview: folder path exceeds max length: %s (length: %d, max: %d)", folderPath, len(folderPath), cfg.Output.MaxPathLength)
+		}
+	}
+
 	// Generate video file paths for all parts (multi-part support)
 	videoFiles := make([]string, 0, len(fileResults))
 	var primaryVideoPath string
@@ -584,11 +591,22 @@ func generatePreview(movie *models.Movie, fileResults []*worker.FileResult, dest
 				ext = ".mp4" // Fallback
 			}
 
-			// Generate path with part suffix if multi-part
-			videoFileName := fileName
-			if result.IsMultiPart && result.PartSuffix != "" {
-				videoFileName = fileName + result.PartSuffix
+			// Generate filename using template with multi-part context
+			fileCtx := ctx.Clone()
+			fileCtx.PartNumber = result.PartNumber
+			fileCtx.PartSuffix = result.PartSuffix
+			fileCtx.IsMultiPart = result.IsMultiPart
+
+			videoFileName, err := templateEngine.Execute(cfg.Output.FileFormat, fileCtx)
+			if err != nil {
+				// Fallback to base fileName if template fails
+				videoFileName = fileName
+				if result.IsMultiPart && result.PartSuffix != "" {
+					videoFileName = fileName + result.PartSuffix
+				}
 			}
+			videoFileName = template.SanitizeFilename(videoFileName)
+
 			videoPath := filepath.Join(folderPath, videoFileName+ext)
 			videoFiles = append(videoFiles, videoPath)
 
@@ -618,17 +636,22 @@ func generatePreview(movie *models.Movie, fileResults []*worker.FileResult, dest
 		nfoPaths = make([]string, 0, len(fileResults))
 		for _, result := range fileResults {
 			if result != nil && result.FilePath != "" {
-				// Generate NFO filename using template
-				nfoFileName, err := templateEngine.Execute(cfg.Metadata.NFO.FilenameTemplate, ctx)
+				// Generate NFO filename using template with multi-part context
+				nfoCtx := ctx.Clone()
+				nfoCtx.PartNumber = result.PartNumber
+				nfoCtx.PartSuffix = result.PartSuffix
+				nfoCtx.IsMultiPart = result.IsMultiPart
+
+				nfoFileName, err := templateEngine.Execute(cfg.Metadata.NFO.FilenameTemplate, nfoCtx)
 				if err != nil || nfoFileName == "" {
 					// Fallback to fileName-based naming
 					nfoFileName = fileName
+					if result.IsMultiPart && result.PartSuffix != "" {
+						nfoFileName = fileName + result.PartSuffix
+					}
 				}
 				nfoFileName = template.SanitizeFilename(nfoFileName)
 				nfoFileName = strings.TrimSuffix(nfoFileName, ".nfo")
-				if result.IsMultiPart && result.PartSuffix != "" {
-					nfoFileName = nfoFileName + result.PartSuffix
-				}
 				nfoFilePath := filepath.Join(folderPath, nfoFileName+".nfo")
 				nfoPaths = append(nfoPaths, nfoFilePath)
 			}
@@ -659,6 +682,11 @@ func generatePreview(movie *models.Movie, fileResults []*worker.FileResult, dest
 		// Fallback to hardcoded format
 		posterFileName = fmt.Sprintf("%s-poster.jpg", movie.ID)
 	}
+	posterFileName = template.SanitizeFilename(posterFileName)
+	if posterFileName == "" {
+		// Double fallback if sanitization removes everything
+		posterFileName = fmt.Sprintf("%s-poster.jpg", template.SanitizeFilename(movie.ID))
+	}
 	posterPath := filepath.Join(folderPath, posterFileName)
 
 	// Generate fanart path using template engine
@@ -666,6 +694,11 @@ func generatePreview(movie *models.Movie, fileResults []*worker.FileResult, dest
 	if err != nil || fanartFileName == "" {
 		// Fallback to hardcoded format
 		fanartFileName = fmt.Sprintf("%s-fanart.jpg", movie.ID)
+	}
+	fanartFileName = template.SanitizeFilename(fanartFileName)
+	if fanartFileName == "" {
+		// Double fallback if sanitization removes everything
+		fanartFileName = fmt.Sprintf("%s-fanart.jpg", template.SanitizeFilename(movie.ID))
 	}
 	fanartPath := filepath.Join(folderPath, fanartFileName)
 
@@ -686,7 +719,51 @@ func generatePreview(movie *models.Movie, fileResults []*worker.FileResult, dest
 					screenshotName = fmt.Sprintf("fanart%d.jpg", i+1)
 				}
 			}
+			screenshotName = template.SanitizeFilename(screenshotName)
+			if screenshotName == "" {
+				// Double fallback if sanitization removes everything
+				if cfg.Output.ScreenshotPadding > 0 {
+					screenshotName = fmt.Sprintf("fanart%0*d.jpg", cfg.Output.ScreenshotPadding, i+1)
+				} else {
+					screenshotName = fmt.Sprintf("fanart%d.jpg", i+1)
+				}
+			}
 			screenshots = append(screenshots, screenshotName)
+		}
+	}
+
+	// Validate path lengths if max_path_length is configured
+	if cfg.Output.MaxPathLength > 0 {
+		// Validate video file paths
+		for _, videoPath := range videoFiles {
+			if err := templateEngine.ValidatePathLength(videoPath, cfg.Output.MaxPathLength); err != nil {
+				logging.Warnf("Preview: video path exceeds max length: %s (length: %d, max: %d)", videoPath, len(videoPath), cfg.Output.MaxPathLength)
+			}
+		}
+		// Validate NFO paths
+		if nfoPath != "" {
+			if err := templateEngine.ValidatePathLength(nfoPath, cfg.Output.MaxPathLength); err != nil {
+				logging.Warnf("Preview: NFO path exceeds max length: %s (length: %d, max: %d)", nfoPath, len(nfoPath), cfg.Output.MaxPathLength)
+			}
+		}
+		for _, nfoFilePath := range nfoPaths {
+			if err := templateEngine.ValidatePathLength(nfoFilePath, cfg.Output.MaxPathLength); err != nil {
+				logging.Warnf("Preview: NFO path exceeds max length: %s (length: %d, max: %d)", nfoFilePath, len(nfoFilePath), cfg.Output.MaxPathLength)
+			}
+		}
+		// Validate media file paths
+		if err := templateEngine.ValidatePathLength(posterPath, cfg.Output.MaxPathLength); err != nil {
+			logging.Warnf("Preview: poster path exceeds max length: %s (length: %d, max: %d)", posterPath, len(posterPath), cfg.Output.MaxPathLength)
+		}
+		if err := templateEngine.ValidatePathLength(fanartPath, cfg.Output.MaxPathLength); err != nil {
+			logging.Warnf("Preview: fanart path exceeds max length: %s (length: %d, max: %d)", fanartPath, len(fanartPath), cfg.Output.MaxPathLength)
+		}
+		// Validate screenshot paths (full paths in extrafanart folder)
+		for _, screenshot := range screenshots {
+			screenshotPath := filepath.Join(extrafanartPath, screenshot)
+			if err := templateEngine.ValidatePathLength(screenshotPath, cfg.Output.MaxPathLength); err != nil {
+				logging.Warnf("Preview: screenshot path exceeds max length: %s (length: %d, max: %d)", screenshotPath, len(screenshotPath), cfg.Output.MaxPathLength)
+			}
 		}
 	}
 

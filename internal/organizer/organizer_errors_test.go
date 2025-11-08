@@ -539,7 +539,7 @@ func TestOrganizer_Plan_EdgeCases(t *testing.T) {
 	t.Run("Plan with multi-part file", func(t *testing.T) {
 		cfg := &config.OutputConfig{
 			FolderFormat: "<ID>",
-			FileFormat:   "<ID>",
+			FileFormat:   "<ID><PARTSUFFIX>", // Use <PARTSUFFIX> placeholder for multi-part support
 			RenameFile:   true,
 		}
 
