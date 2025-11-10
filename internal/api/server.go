@@ -300,9 +300,10 @@ func NewServer(deps *ServerDependencies) *gin.Engine {
 	{
 		// Movie endpoints
 		v1.POST("/scrape", scrapeMovie(deps))
-		v1.GET("/movie/:id", getMovie(deps))
+		v1.GET("/movies/:id", getMovie(deps))
 		v1.GET("/movies", listMovies(deps))
-		v1.POST("/movie/:id/rescrape", rescrapeMovie(deps))
+		v1.POST("/movies/:id/rescrape", rescrapeMovie(deps))
+		v1.POST("/movies/:id/compare-nfo", compareNFO(deps))
 
 		// Actress endpoints
 		v1.GET("/actresses/search", searchActresses(deps.ActressRepo))
@@ -349,12 +350,19 @@ func NewServer(deps *ServerDependencies) *gin.Engine {
 			c.Request.URL.Path,
 			c.Request.Header.Get("Accept"))
 
-		// Only serve SPA for GET/HEAD requests that accept HTML (browser traffic)
-		// HEAD is treated like GET for monitoring tools and HTTP caches
+		// Handle requests that accept HTML (browser traffic)
 		method := c.Request.Method
-		if (method == http.MethodGet || method == http.MethodHead) && acceptsHTML(c) {
-			c.File("/app/web/dist/index.html")
-			return
+		if acceptsHTML(c) {
+			// HEAD requests should not return a body per HTTP semantics
+			if method == http.MethodHead {
+				c.Status(http.StatusNoContent)
+				return
+			}
+			// Serve SPA for GET requests
+			if method == http.MethodGet {
+				c.File("/app/web/dist/index.html")
+				return
+			}
 		}
 
 		// Return proper 404 JSON for API requests

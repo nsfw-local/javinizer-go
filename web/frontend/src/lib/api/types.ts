@@ -61,6 +61,47 @@ export interface BatchRescrapeResponse {
 	movie: Movie;
 }
 
+export interface DataSource {
+	source: string; // "scraper" or "nfo"
+	confidence: number; // 0.0-1.0
+	last_updated?: string; // ISO 8601 timestamp
+}
+
+export interface MergeStatistics {
+	total_fields: number;
+	from_scraper: number;
+	from_nfo: number;
+	merged_arrays: number;
+	conflicts_resolved: number;
+	empty_fields: number;
+}
+
+export interface FieldDifference {
+	field: string;
+	nfo_value?: any;
+	scraped_value?: any;
+	merged_value?: any;
+	reason?: string;
+}
+
+export interface NFOComparisonRequest {
+	nfo_path?: string;
+	merge_strategy?: 'prefer-scraper' | 'prefer-nfo' | 'merge-arrays';
+	selected_scrapers?: string[];
+}
+
+export interface NFOComparisonResponse {
+	movie_id: string;
+	nfo_exists: boolean;
+	nfo_path?: string;
+	nfo_data?: Movie;
+	scraped_data?: Movie;
+	merged_data?: Movie;
+	provenance?: Record<string, DataSource>;
+	merge_stats?: MergeStatistics;
+	differences?: FieldDifference[];
+}
+
 export interface BatchScrapeResponse {
 	job_id: string;
 }

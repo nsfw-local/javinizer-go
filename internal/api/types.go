@@ -27,7 +27,26 @@ type ScrapeResponse struct {
 
 // MovieResponse represents a movie response
 type MovieResponse struct {
-	Movie *models.Movie `json:"movie"`
+	Movie      *models.Movie         `json:"movie"`
+	Provenance map[string]DataSource `json:"provenance,omitempty"`  // Field-level data source tracking
+	MergeStats *MergeStatistics      `json:"merge_stats,omitempty"` // Merge statistics when NFO merging occurred
+}
+
+// DataSource represents the source of a metadata field
+type DataSource struct {
+	Source      string  `json:"source" example:"nfo"`                                  // "scraper" or "nfo"
+	Confidence  float64 `json:"confidence" example:"0.9"`                              // Confidence score (0.0-1.0)
+	LastUpdated *string `json:"last_updated,omitempty" example:"2024-01-15T10:30:00Z"` // ISO 8601 timestamp
+}
+
+// MergeStatistics represents statistics about a merge operation
+type MergeStatistics struct {
+	TotalFields       int `json:"total_fields" example:"15"`
+	FromScraper       int `json:"from_scraper" example:"10"`
+	FromNFO           int `json:"from_nfo" example:"3"`
+	MergedArrays      int `json:"merged_arrays" example:"2"`
+	ConflictsResolved int `json:"conflicts_resolved" example:"5"`
+	EmptyFields       int `json:"empty_fields" example:"2"`
 }
 
 // MoviesResponse represents a list of movies response
@@ -195,4 +214,33 @@ type BatchRescrapeRequest struct {
 // BatchRescrapeResponse represents a batch rescrape response with movie
 type BatchRescrapeResponse struct {
 	Movie *models.Movie `json:"movie"`
+}
+
+// NFOComparisonRequest represents a request to compare NFO with scraped data
+type NFOComparisonRequest struct {
+	NFOPath          string   `json:"nfo_path,omitempty" example:"/path/to/movie.nfo"`   // Optional: explicit NFO path
+	MergeStrategy    string   `json:"merge_strategy,omitempty" example:"prefer-scraper"` // prefer-scraper, prefer-nfo, merge-arrays
+	SelectedScrapers []string `json:"selected_scrapers,omitempty" example:"r18dev,dmm"`  // Optional: custom scrapers for comparison
+}
+
+// NFOComparisonResponse represents the result of comparing NFO with scraped data
+type NFOComparisonResponse struct {
+	MovieID     string                `json:"movie_id" example:"IPX-535"`
+	NFOExists   bool                  `json:"nfo_exists" example:"true"`
+	NFOPath     string                `json:"nfo_path,omitempty" example:"movie.nfo"` // Returns filename only for security
+	NFOData     *models.Movie         `json:"nfo_data,omitempty"`                     // Data from NFO file
+	ScrapedData *models.Movie         `json:"scraped_data,omitempty"`                 // Fresh scraped data
+	MergedData  *models.Movie         `json:"merged_data,omitempty"`                  // Result of merging
+	Provenance  map[string]DataSource `json:"provenance,omitempty"`                   // Field-level provenance
+	MergeStats  *MergeStatistics      `json:"merge_stats,omitempty"`                  // Merge statistics
+	Differences []FieldDifference     `json:"differences,omitempty"`                  // List of fields that differ
+}
+
+// FieldDifference represents a difference between NFO and scraped data
+type FieldDifference struct {
+	Field        string      `json:"field" example:"title"`
+	NFOValue     interface{} `json:"nfo_value,omitempty" example:"Beautiful Woman"`
+	ScrapedValue interface{} `json:"scraped_value,omitempty" example:"Pretty Lady"`
+	MergedValue  interface{} `json:"merged_value,omitempty" example:"Beautiful Woman"`
+	Reason       string      `json:"reason,omitempty" example:"NFO preferred by merge strategy"`
 }

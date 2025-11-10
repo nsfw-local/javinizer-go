@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<movie>
+  <title>Minimal Test Movie</title>
+  <id>IPX-001</id>
+  <uniqueid type="contentid" default="true">IPX-001</uniqueid>
+</movie>

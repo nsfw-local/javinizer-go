@@ -49,6 +49,12 @@ type MergeStats struct {
 // scraped: Movie from scraper results
 // nfo: Movie from existing NFO file
 // strategy: How to handle conflicts
+//
+// IMPORTANT: Zero values are treated as "empty" for primitive types:
+// - int/float fields: 0 and 0.0 are considered absent data
+// - bool fields: false is considered absent data
+// This means explicit zero/false values cannot be distinguished from missing values.
+// For fields where zero/false are meaningful, consider using pointer types (*int, *float64, *bool).
 func MergeMovieMetadata(scraped, nfo *models.Movie, strategy MergeStrategy) (*MergeResult, error) {
 	if scraped == nil && nfo == nil {
 		return nil, fmt.Errorf("both scraped and nfo are nil")
@@ -81,46 +87,61 @@ func MergeMovieMetadata(scraped, nfo *models.Movie, strategy MergeStrategy) (*Me
 	provenance := make(map[string]DataSource)
 	stats := MergeStats{}
 
-	// Capture timestamp for provenance tracking
-	now := time.Now()
+	// Get source timestamps for provenance tracking
+	// Use UpdatedAt if available, fall back to CreatedAt, then current time
+	scrapedTS := scraped.UpdatedAt
+	if scrapedTS.IsZero() && !scraped.CreatedAt.IsZero() {
+		scrapedTS = scraped.CreatedAt
+	}
+	if scrapedTS.IsZero() {
+		scrapedTS = time.Now()
+	}
 
-	// Merge each field
-	merged.ContentID = mergeStringField("ContentID", scraped.ContentID, nfo.ContentID, strategy, &stats, provenance, now)
-	merged.ID = mergeStringField("ID", scraped.ID, nfo.ID, strategy, &stats, provenance, now)
-	merged.DisplayName = mergeStringField("DisplayName", scraped.DisplayName, nfo.DisplayName, strategy, &stats, provenance, now)
-	merged.Title = mergeStringField("Title", scraped.Title, nfo.Title, strategy, &stats, provenance, now)
-	merged.OriginalTitle = mergeStringField("OriginalTitle", scraped.OriginalTitle, nfo.OriginalTitle, strategy, &stats, provenance, now)
-	merged.Description = mergeStringField("Description", scraped.Description, nfo.Description, strategy, &stats, provenance, now)
-	merged.Director = mergeStringField("Director", scraped.Director, nfo.Director, strategy, &stats, provenance, now)
-	merged.Maker = mergeStringField("Maker", scraped.Maker, nfo.Maker, strategy, &stats, provenance, now)
-	merged.Label = mergeStringField("Label", scraped.Label, nfo.Label, strategy, &stats, provenance, now)
-	merged.Series = mergeStringField("Series", scraped.Series, nfo.Series, strategy, &stats, provenance, now)
-	merged.PosterURL = mergeStringField("PosterURL", scraped.PosterURL, nfo.PosterURL, strategy, &stats, provenance, now)
-	merged.CoverURL = mergeStringField("CoverURL", scraped.CoverURL, nfo.CoverURL, strategy, &stats, provenance, now)
-	merged.CroppedPosterURL = mergeStringField("CroppedPosterURL", scraped.CroppedPosterURL, nfo.CroppedPosterURL, strategy, &stats, provenance, now)
-	merged.TrailerURL = mergeStringField("TrailerURL", scraped.TrailerURL, nfo.TrailerURL, strategy, &stats, provenance, now)
-	merged.OriginalFileName = mergeStringField("OriginalFileName", scraped.OriginalFileName, nfo.OriginalFileName, strategy, &stats, provenance, now)
-	merged.SourceName = mergeStringField("SourceName", scraped.SourceName, nfo.SourceName, strategy, &stats, provenance, now)
-	merged.SourceURL = mergeStringField("SourceURL", scraped.SourceURL, nfo.SourceURL, strategy, &stats, provenance, now)
+	nfoTS := nfo.UpdatedAt
+	if nfoTS.IsZero() && !nfo.CreatedAt.IsZero() {
+		nfoTS = nfo.CreatedAt
+	}
+	if nfoTS.IsZero() {
+		nfoTS = time.Now()
+	}
+
+	// Merge each field (passing both source timestamps)
+	merged.ContentID = mergeStringField("ContentID", scraped.ContentID, nfo.ContentID, strategy, &stats, provenance, scrapedTS, nfoTS)
+	merged.ID = mergeStringField("ID", scraped.ID, nfo.ID, strategy, &stats, provenance, scrapedTS, nfoTS)
+	merged.DisplayName = mergeStringField("DisplayName", scraped.DisplayName, nfo.DisplayName, strategy, &stats, provenance, scrapedTS, nfoTS)
+	merged.Title = mergeStringField("Title", scraped.Title, nfo.Title, strategy, &stats, provenance, scrapedTS, nfoTS)
+	merged.OriginalTitle = mergeStringField("OriginalTitle", scraped.OriginalTitle, nfo.OriginalTitle, strategy, &stats, provenance, scrapedTS, nfoTS)
+	merged.Description = mergeStringField("Description", scraped.Description, nfo.Description, strategy, &stats, provenance, scrapedTS, nfoTS)
+	merged.Director = mergeStringField("Director", scraped.Director, nfo.Director, strategy, &stats, provenance, scrapedTS, nfoTS)
+	merged.Maker = mergeStringField("Maker", scraped.Maker, nfo.Maker, strategy, &stats, provenance, scrapedTS, nfoTS)
+	merged.Label = mergeStringField("Label", scraped.Label, nfo.Label, strategy, &stats, provenance, scrapedTS, nfoTS)
+	merged.Series = mergeStringField("Series", scraped.Series, nfo.Series, strategy, &stats, provenance, scrapedTS, nfoTS)
+	merged.PosterURL = mergeStringField("PosterURL", scraped.PosterURL, nfo.PosterURL, strategy, &stats, provenance, scrapedTS, nfoTS)
+	merged.CoverURL = mergeStringField("CoverURL", scraped.CoverURL, nfo.CoverURL, strategy, &stats, provenance, scrapedTS, nfoTS)
+	merged.CroppedPosterURL = mergeStringField("CroppedPosterURL", scraped.CroppedPosterURL, nfo.CroppedPosterURL, strategy, &stats, provenance, scrapedTS, nfoTS)
+	merged.TrailerURL = mergeStringField("TrailerURL", scraped.TrailerURL, nfo.TrailerURL, strategy, &stats, provenance, scrapedTS, nfoTS)
+	merged.OriginalFileName = mergeStringField("OriginalFileName", scraped.OriginalFileName, nfo.OriginalFileName, strategy, &stats, provenance, scrapedTS, nfoTS)
+	merged.SourceName = mergeStringField("SourceName", scraped.SourceName, nfo.SourceName, strategy, &stats, provenance, scrapedTS, nfoTS)
+	merged.SourceURL = mergeStringField("SourceURL", scraped.SourceURL, nfo.SourceURL, strategy, &stats, provenance, scrapedTS, nfoTS)
 
 	// Merge int fields
-	merged.ReleaseYear = mergeIntField("ReleaseYear", scraped.ReleaseYear, nfo.ReleaseYear, strategy, &stats, provenance, now)
-	merged.Runtime = mergeIntField("Runtime", scraped.Runtime, nfo.Runtime, strategy, &stats, provenance, now)
-	merged.RatingVotes = mergeIntField("RatingVotes", scraped.RatingVotes, nfo.RatingVotes, strategy, &stats, provenance, now)
+	merged.ReleaseYear = mergeIntField("ReleaseYear", scraped.ReleaseYear, nfo.ReleaseYear, strategy, &stats, provenance, scrapedTS, nfoTS)
+	merged.Runtime = mergeIntField("Runtime", scraped.Runtime, nfo.Runtime, strategy, &stats, provenance, scrapedTS, nfoTS)
+	merged.RatingVotes = mergeIntField("RatingVotes", scraped.RatingVotes, nfo.RatingVotes, strategy, &stats, provenance, scrapedTS, nfoTS)
 
 	// Merge float fields
-	merged.RatingScore = mergeFloatField("RatingScore", scraped.RatingScore, nfo.RatingScore, strategy, &stats, provenance, now)
+	merged.RatingScore = mergeFloatField("RatingScore", scraped.RatingScore, nfo.RatingScore, strategy, &stats, provenance, scrapedTS, nfoTS)
 
 	// Merge bool fields
-	merged.ShouldCropPoster = mergeBoolField("ShouldCropPoster", scraped.ShouldCropPoster, nfo.ShouldCropPoster, strategy, &stats, provenance, now)
+	merged.ShouldCropPoster = mergeBoolField("ShouldCropPoster", scraped.ShouldCropPoster, nfo.ShouldCropPoster, strategy, &stats, provenance, scrapedTS, nfoTS)
 
 	// Merge pointer fields
-	merged.ReleaseDate = mergeDateField("ReleaseDate", scraped.ReleaseDate, nfo.ReleaseDate, strategy, &stats, provenance, now)
+	merged.ReleaseDate = mergeDateField("ReleaseDate", scraped.ReleaseDate, nfo.ReleaseDate, strategy, &stats, provenance, scrapedTS, nfoTS)
 
 	// Merge array fields
-	merged.Actresses = mergeActresses("Actresses", scraped.Actresses, nfo.Actresses, strategy, &stats, provenance, now)
-	merged.Genres = mergeGenres("Genres", scraped.Genres, nfo.Genres, strategy, &stats, provenance, now)
-	merged.Screenshots = mergeStringSlice("Screenshots", scraped.Screenshots, nfo.Screenshots, strategy, &stats, provenance, now)
+	merged.Actresses = mergeActresses("Actresses", scraped.Actresses, nfo.Actresses, strategy, &stats, provenance, scrapedTS, nfoTS)
+	merged.Genres = mergeGenres("Genres", scraped.Genres, nfo.Genres, strategy, &stats, provenance, scrapedTS, nfoTS)
+	merged.Screenshots = mergeStringSlice("Screenshots", scraped.Screenshots, nfo.Screenshots, strategy, &stats, provenance, scrapedTS, nfoTS)
 
 	// Timestamps - always use most recent non-zero CreatedAt
 	merged.CreatedAt = scraped.CreatedAt
@@ -140,7 +161,8 @@ func MergeMovieMetadata(scraped, nfo *models.Movie, strategy MergeStrategy) (*Me
 }
 
 // mergeStringField merges two string fields according to strategy
-func mergeStringField(fieldName, scrapedVal, nfoVal string, strategy MergeStrategy, stats *MergeStats, provenance map[string]DataSource, timestamp time.Time) string {
+// Uses scrapedTS when choosing scraper data, nfoTS when choosing NFO data
+func mergeStringField(fieldName, scrapedVal, nfoVal string, strategy MergeStrategy, stats *MergeStats, provenance map[string]DataSource, scrapedTS, nfoTS time.Time) string {
 	scrapedEmpty := scrapedVal == ""
 	nfoEmpty := nfoVal == ""
 
@@ -151,33 +173,38 @@ func mergeStringField(fieldName, scrapedVal, nfoVal string, strategy MergeStrate
 		return ""
 	}
 
-	// Only one has data
+	// Only one has data - create unique timestamp copy for each field
 	if scrapedEmpty {
 		stats.FromNFO++
-		provenance[fieldName] = DataSource{Source: "nfo", Confidence: 1.0, LastUpdated: &timestamp}
+		nfoTimestamp := nfoTS
+		provenance[fieldName] = DataSource{Source: "nfo", Confidence: 1.0, LastUpdated: &nfoTimestamp}
 		return nfoVal
 	}
 	if nfoEmpty {
 		stats.FromScraper++
-		provenance[fieldName] = DataSource{Source: "scraper", Confidence: 1.0, LastUpdated: &timestamp}
+		scrapedTimestamp := scrapedTS
+		provenance[fieldName] = DataSource{Source: "scraper", Confidence: 1.0, LastUpdated: &scrapedTimestamp}
 		return scrapedVal
 	}
 
-	// Both have data - resolve conflict
+	// Both have data - resolve conflict using appropriate source timestamp
 	stats.ConflictsResolved++
 
 	switch strategy {
 	case PreferNFO:
 		stats.FromNFO++
-		provenance[fieldName] = DataSource{Source: "nfo", Confidence: 1.0, LastUpdated: &timestamp}
+		nfoTimestamp := nfoTS
+		provenance[fieldName] = DataSource{Source: "nfo", Confidence: 1.0, LastUpdated: &nfoTimestamp}
 		return nfoVal
 	case PreferScraper, MergeArrays: // MergeArrays falls back to PreferScraper for strings
 		stats.FromScraper++
-		provenance[fieldName] = DataSource{Source: "scraper", Confidence: 1.0, LastUpdated: &timestamp}
+		scrapedTimestamp := scrapedTS
+		provenance[fieldName] = DataSource{Source: "scraper", Confidence: 1.0, LastUpdated: &scrapedTimestamp}
 		return scrapedVal
 	default:
 		stats.FromScraper++
-		provenance[fieldName] = DataSource{Source: "scraper", Confidence: 1.0, LastUpdated: &timestamp}
+		scrapedTimestamp := scrapedTS
+		provenance[fieldName] = DataSource{Source: "scraper", Confidence: 1.0, LastUpdated: &scrapedTimestamp}
 		return scrapedVal
 	}
 }
@@ -185,7 +212,7 @@ func mergeStringField(fieldName, scrapedVal, nfoVal string, strategy MergeStrate
 // mergeIntField merges two int fields
 // NOTE: Treats 0 as "empty" - this is intentional but means legitimate zero values
 // are treated as absent. For fields where 0 is meaningful, consider using pointer types.
-func mergeIntField(fieldName string, scrapedVal, nfoVal int, strategy MergeStrategy, stats *MergeStats, provenance map[string]DataSource, timestamp time.Time) int {
+func mergeIntField(fieldName string, scrapedVal, nfoVal int, strategy MergeStrategy, stats *MergeStats, provenance map[string]DataSource, scrapedTS, nfoTS time.Time) int {
 	scrapedEmpty := scrapedVal == 0
 	nfoEmpty := nfoVal == 0
 
@@ -197,12 +224,14 @@ func mergeIntField(fieldName string, scrapedVal, nfoVal int, strategy MergeStrat
 
 	if scrapedEmpty {
 		stats.FromNFO++
-		provenance[fieldName] = DataSource{Source: "nfo", Confidence: 1.0, LastUpdated: &timestamp}
+		nfoTimestamp := nfoTS
+		provenance[fieldName] = DataSource{Source: "nfo", Confidence: 1.0, LastUpdated: &nfoTimestamp}
 		return nfoVal
 	}
 	if nfoEmpty {
 		stats.FromScraper++
-		provenance[fieldName] = DataSource{Source: "scraper", Confidence: 1.0, LastUpdated: &timestamp}
+		scrapedTimestamp := scrapedTS
+		provenance[fieldName] = DataSource{Source: "scraper", Confidence: 1.0, LastUpdated: &scrapedTimestamp}
 		return scrapedVal
 	}
 
@@ -210,11 +239,13 @@ func mergeIntField(fieldName string, scrapedVal, nfoVal int, strategy MergeStrat
 	switch strategy {
 	case PreferNFO:
 		stats.FromNFO++
-		provenance[fieldName] = DataSource{Source: "nfo", Confidence: 1.0, LastUpdated: &timestamp}
+		nfoTimestamp := nfoTS
+		provenance[fieldName] = DataSource{Source: "nfo", Confidence: 1.0, LastUpdated: &nfoTimestamp}
 		return nfoVal
 	default:
 		stats.FromScraper++
-		provenance[fieldName] = DataSource{Source: "scraper", Confidence: 1.0, LastUpdated: &timestamp}
+		scrapedTimestamp := scrapedTS
+		provenance[fieldName] = DataSource{Source: "scraper", Confidence: 1.0, LastUpdated: &scrapedTimestamp}
 		return scrapedVal
 	}
 }
@@ -222,7 +253,7 @@ func mergeIntField(fieldName string, scrapedVal, nfoVal int, strategy MergeStrat
 // mergeFloatField merges two float64 fields
 // NOTE: Treats 0.0 as "empty" - this is intentional but means legitimate zero values
 // are treated as absent. For fields where 0.0 is meaningful, consider using pointer types.
-func mergeFloatField(fieldName string, scrapedVal, nfoVal float64, strategy MergeStrategy, stats *MergeStats, provenance map[string]DataSource, timestamp time.Time) float64 {
+func mergeFloatField(fieldName string, scrapedVal, nfoVal float64, strategy MergeStrategy, stats *MergeStats, provenance map[string]DataSource, scrapedTS, nfoTS time.Time) float64 {
 	scrapedEmpty := scrapedVal == 0
 	nfoEmpty := nfoVal == 0
 
@@ -234,12 +265,14 @@ func mergeFloatField(fieldName string, scrapedVal, nfoVal float64, strategy Merg
 
 	if scrapedEmpty {
 		stats.FromNFO++
-		provenance[fieldName] = DataSource{Source: "nfo", Confidence: 1.0, LastUpdated: &timestamp}
+		nfoTimestamp := nfoTS
+		provenance[fieldName] = DataSource{Source: "nfo", Confidence: 1.0, LastUpdated: &nfoTimestamp}
 		return nfoVal
 	}
 	if nfoEmpty {
 		stats.FromScraper++
-		provenance[fieldName] = DataSource{Source: "scraper", Confidence: 1.0, LastUpdated: &timestamp}
+		scrapedTimestamp := scrapedTS
+		provenance[fieldName] = DataSource{Source: "scraper", Confidence: 1.0, LastUpdated: &scrapedTimestamp}
 		return scrapedVal
 	}
 
@@ -247,11 +280,13 @@ func mergeFloatField(fieldName string, scrapedVal, nfoVal float64, strategy Merg
 	switch strategy {
 	case PreferNFO:
 		stats.FromNFO++
-		provenance[fieldName] = DataSource{Source: "nfo", Confidence: 1.0, LastUpdated: &timestamp}
+		nfoTimestamp := nfoTS
+		provenance[fieldName] = DataSource{Source: "nfo", Confidence: 1.0, LastUpdated: &nfoTimestamp}
 		return nfoVal
 	default:
 		stats.FromScraper++
-		provenance[fieldName] = DataSource{Source: "scraper", Confidence: 1.0, LastUpdated: &timestamp}
+		scrapedTimestamp := scrapedTS
+		provenance[fieldName] = DataSource{Source: "scraper", Confidence: 1.0, LastUpdated: &scrapedTimestamp}
 		return scrapedVal
 	}
 }
@@ -259,7 +294,7 @@ func mergeFloatField(fieldName string, scrapedVal, nfoVal float64, strategy Merg
 // mergeBoolField merges two bool fields
 // NOTE: Treats false as "empty" - this is intentional but means explicit false values
 // are treated as absent. For fields where false is meaningful, consider using pointer types.
-func mergeBoolField(fieldName string, scrapedVal, nfoVal bool, strategy MergeStrategy, stats *MergeStats, provenance map[string]DataSource, timestamp time.Time) bool {
+func mergeBoolField(fieldName string, scrapedVal, nfoVal bool, strategy MergeStrategy, stats *MergeStats, provenance map[string]DataSource, scrapedTS, nfoTS time.Time) bool {
 	scrapedEmpty := !scrapedVal
 	nfoEmpty := !nfoVal
 
@@ -271,12 +306,14 @@ func mergeBoolField(fieldName string, scrapedVal, nfoVal bool, strategy MergeStr
 
 	if scrapedEmpty {
 		stats.FromNFO++
-		provenance[fieldName] = DataSource{Source: "nfo", Confidence: 1.0, LastUpdated: &timestamp}
+		nfoTimestamp := nfoTS
+		provenance[fieldName] = DataSource{Source: "nfo", Confidence: 1.0, LastUpdated: &nfoTimestamp}
 		return nfoVal
 	}
 	if nfoEmpty {
 		stats.FromScraper++
-		provenance[fieldName] = DataSource{Source: "scraper", Confidence: 1.0, LastUpdated: &timestamp}
+		scrapedTimestamp := scrapedTS
+		provenance[fieldName] = DataSource{Source: "scraper", Confidence: 1.0, LastUpdated: &scrapedTimestamp}
 		return scrapedVal
 	}
 
@@ -284,17 +321,19 @@ func mergeBoolField(fieldName string, scrapedVal, nfoVal bool, strategy MergeStr
 	switch strategy {
 	case PreferNFO:
 		stats.FromNFO++
-		provenance[fieldName] = DataSource{Source: "nfo", Confidence: 1.0, LastUpdated: &timestamp}
+		nfoTimestamp := nfoTS
+		provenance[fieldName] = DataSource{Source: "nfo", Confidence: 1.0, LastUpdated: &nfoTimestamp}
 		return nfoVal
 	default:
 		stats.FromScraper++
-		provenance[fieldName] = DataSource{Source: "scraper", Confidence: 1.0, LastUpdated: &timestamp}
+		scrapedTimestamp := scrapedTS
+		provenance[fieldName] = DataSource{Source: "scraper", Confidence: 1.0, LastUpdated: &scrapedTimestamp}
 		return scrapedVal
 	}
 }
 
 // mergeDateField merges two time.Time pointer fields
-func mergeDateField(fieldName string, scrapedVal, nfoVal *time.Time, strategy MergeStrategy, stats *MergeStats, provenance map[string]DataSource, timestamp time.Time) *time.Time {
+func mergeDateField(fieldName string, scrapedVal, nfoVal *time.Time, strategy MergeStrategy, stats *MergeStats, provenance map[string]DataSource, scrapedTS, nfoTS time.Time) *time.Time {
 	scrapedEmpty := scrapedVal == nil || scrapedVal.IsZero()
 	nfoEmpty := nfoVal == nil || nfoVal.IsZero()
 
@@ -306,12 +345,14 @@ func mergeDateField(fieldName string, scrapedVal, nfoVal *time.Time, strategy Me
 
 	if scrapedEmpty {
 		stats.FromNFO++
-		provenance[fieldName] = DataSource{Source: "nfo", Confidence: 1.0, LastUpdated: &timestamp}
+		nfoTimestamp := nfoTS
+		provenance[fieldName] = DataSource{Source: "nfo", Confidence: 1.0, LastUpdated: &nfoTimestamp}
 		return nfoVal
 	}
 	if nfoEmpty {
 		stats.FromScraper++
-		provenance[fieldName] = DataSource{Source: "scraper", Confidence: 1.0, LastUpdated: &timestamp}
+		scrapedTimestamp := scrapedTS
+		provenance[fieldName] = DataSource{Source: "scraper", Confidence: 1.0, LastUpdated: &scrapedTimestamp}
 		return scrapedVal
 	}
 
@@ -319,17 +360,19 @@ func mergeDateField(fieldName string, scrapedVal, nfoVal *time.Time, strategy Me
 	switch strategy {
 	case PreferNFO:
 		stats.FromNFO++
-		provenance[fieldName] = DataSource{Source: "nfo", Confidence: 1.0, LastUpdated: &timestamp}
+		nfoTimestamp := nfoTS
+		provenance[fieldName] = DataSource{Source: "nfo", Confidence: 1.0, LastUpdated: &nfoTimestamp}
 		return nfoVal
 	default:
 		stats.FromScraper++
-		provenance[fieldName] = DataSource{Source: "scraper", Confidence: 1.0, LastUpdated: &timestamp}
+		scrapedTimestamp := scrapedTS
+		provenance[fieldName] = DataSource{Source: "scraper", Confidence: 1.0, LastUpdated: &scrapedTimestamp}
 		return scrapedVal
 	}
 }
 
 // mergeActresses merges actress slices
-func mergeActresses(fieldName string, scraped, nfo []models.Actress, strategy MergeStrategy, stats *MergeStats, provenance map[string]DataSource, timestamp time.Time) []models.Actress {
+func mergeActresses(fieldName string, scraped, nfo []models.Actress, strategy MergeStrategy, stats *MergeStats, provenance map[string]DataSource, scrapedTS, nfoTS time.Time) []models.Actress {
 	scrapedEmpty := len(scraped) == 0
 	nfoEmpty := len(nfo) == 0
 
@@ -341,12 +384,14 @@ func mergeActresses(fieldName string, scraped, nfo []models.Actress, strategy Me
 
 	if scrapedEmpty {
 		stats.FromNFO++
-		provenance[fieldName] = DataSource{Source: "nfo", Confidence: 1.0, LastUpdated: &timestamp}
+		nfoTimestamp := nfoTS
+		provenance[fieldName] = DataSource{Source: "nfo", Confidence: 1.0, LastUpdated: &nfoTimestamp}
 		return nfo
 	}
 	if nfoEmpty {
 		stats.FromScraper++
-		provenance[fieldName] = DataSource{Source: "scraper", Confidence: 1.0, LastUpdated: &timestamp}
+		scrapedTimestamp := scrapedTS
+		provenance[fieldName] = DataSource{Source: "scraper", Confidence: 1.0, LastUpdated: &scrapedTimestamp}
 		return scraped
 	}
 
@@ -355,7 +400,8 @@ func mergeActresses(fieldName string, scraped, nfo []models.Actress, strategy Me
 	case PreferNFO:
 		stats.FromNFO++
 		stats.ConflictsResolved++
-		provenance[fieldName] = DataSource{Source: "nfo", Confidence: 1.0, LastUpdated: &timestamp}
+		nfoTimestamp := nfoTS
+		provenance[fieldName] = DataSource{Source: "nfo", Confidence: 1.0, LastUpdated: &nfoTimestamp}
 		return nfo
 	case MergeArrays:
 		// Merge and deduplicate by normalized name (case-insensitive, trimmed)
@@ -378,18 +424,24 @@ func mergeActresses(fieldName string, scraped, nfo []models.Actress, strategy Me
 		}
 
 		stats.MergedArrays++
-		provenance[fieldName] = DataSource{Source: "merged", Confidence: 0.9, LastUpdated: &timestamp}
+		// Use the newer timestamp when merging arrays from both sources - create unique copy
+		mergedTimestamp := scrapedTS
+		if nfoTS.After(scrapedTS) {
+			mergedTimestamp = nfoTS
+		}
+		provenance[fieldName] = DataSource{Source: "merged", Confidence: 0.9, LastUpdated: &mergedTimestamp}
 		return merged
 	default: // PreferScraper
 		stats.FromScraper++
 		stats.ConflictsResolved++
-		provenance[fieldName] = DataSource{Source: "scraper", Confidence: 1.0, LastUpdated: &timestamp}
+		scrapedTimestamp := scrapedTS
+		provenance[fieldName] = DataSource{Source: "scraper", Confidence: 1.0, LastUpdated: &scrapedTimestamp}
 		return scraped
 	}
 }
 
 // mergeGenres merges genre slices
-func mergeGenres(fieldName string, scraped, nfo []models.Genre, strategy MergeStrategy, stats *MergeStats, provenance map[string]DataSource, timestamp time.Time) []models.Genre {
+func mergeGenres(fieldName string, scraped, nfo []models.Genre, strategy MergeStrategy, stats *MergeStats, provenance map[string]DataSource, scrapedTS, nfoTS time.Time) []models.Genre {
 	scrapedEmpty := len(scraped) == 0
 	nfoEmpty := len(nfo) == 0
 
@@ -401,12 +453,14 @@ func mergeGenres(fieldName string, scraped, nfo []models.Genre, strategy MergeSt
 
 	if scrapedEmpty {
 		stats.FromNFO++
-		provenance[fieldName] = DataSource{Source: "nfo", Confidence: 1.0, LastUpdated: &timestamp}
+		nfoTimestamp := nfoTS
+		provenance[fieldName] = DataSource{Source: "nfo", Confidence: 1.0, LastUpdated: &nfoTimestamp}
 		return nfo
 	}
 	if nfoEmpty {
 		stats.FromScraper++
-		provenance[fieldName] = DataSource{Source: "scraper", Confidence: 1.0, LastUpdated: &timestamp}
+		scrapedTimestamp := scrapedTS
+		provenance[fieldName] = DataSource{Source: "scraper", Confidence: 1.0, LastUpdated: &scrapedTimestamp}
 		return scraped
 	}
 
@@ -415,7 +469,8 @@ func mergeGenres(fieldName string, scraped, nfo []models.Genre, strategy MergeSt
 	case PreferNFO:
 		stats.FromNFO++
 		stats.ConflictsResolved++
-		provenance[fieldName] = DataSource{Source: "nfo", Confidence: 1.0, LastUpdated: &timestamp}
+		nfoTimestamp := nfoTS
+		provenance[fieldName] = DataSource{Source: "nfo", Confidence: 1.0, LastUpdated: &nfoTimestamp}
 		return nfo
 	case MergeArrays:
 		// Merge and deduplicate by normalized name (case-insensitive, trimmed)
@@ -438,18 +493,24 @@ func mergeGenres(fieldName string, scraped, nfo []models.Genre, strategy MergeSt
 		}
 
 		stats.MergedArrays++
-		provenance[fieldName] = DataSource{Source: "merged", Confidence: 0.9, LastUpdated: &timestamp}
+		// Use the newer timestamp when merging arrays from both sources - create unique copy
+		mergedTimestamp := scrapedTS
+		if nfoTS.After(scrapedTS) {
+			mergedTimestamp = nfoTS
+		}
+		provenance[fieldName] = DataSource{Source: "merged", Confidence: 0.9, LastUpdated: &mergedTimestamp}
 		return merged
 	default: // PreferScraper
 		stats.FromScraper++
 		stats.ConflictsResolved++
-		provenance[fieldName] = DataSource{Source: "scraper", Confidence: 1.0, LastUpdated: &timestamp}
+		scrapedTimestamp := scrapedTS
+		provenance[fieldName] = DataSource{Source: "scraper", Confidence: 1.0, LastUpdated: &scrapedTimestamp}
 		return scraped
 	}
 }
 
 // mergeStringSlice merges string slices (screenshots, etc.)
-func mergeStringSlice(fieldName string, scraped, nfo []string, strategy MergeStrategy, stats *MergeStats, provenance map[string]DataSource, timestamp time.Time) []string {
+func mergeStringSlice(fieldName string, scraped, nfo []string, strategy MergeStrategy, stats *MergeStats, provenance map[string]DataSource, scrapedTS, nfoTS time.Time) []string {
 	scrapedEmpty := len(scraped) == 0
 	nfoEmpty := len(nfo) == 0
 
@@ -461,12 +522,14 @@ func mergeStringSlice(fieldName string, scraped, nfo []string, strategy MergeStr
 
 	if scrapedEmpty {
 		stats.FromNFO++
-		provenance[fieldName] = DataSource{Source: "nfo", Confidence: 1.0, LastUpdated: &timestamp}
+		nfoTimestamp := nfoTS
+		provenance[fieldName] = DataSource{Source: "nfo", Confidence: 1.0, LastUpdated: &nfoTimestamp}
 		return nfo
 	}
 	if nfoEmpty {
 		stats.FromScraper++
-		provenance[fieldName] = DataSource{Source: "scraper", Confidence: 1.0, LastUpdated: &timestamp}
+		scrapedTimestamp := scrapedTS
+		provenance[fieldName] = DataSource{Source: "scraper", Confidence: 1.0, LastUpdated: &scrapedTimestamp}
 		return scraped
 	}
 
@@ -475,7 +538,8 @@ func mergeStringSlice(fieldName string, scraped, nfo []string, strategy MergeStr
 	case PreferNFO:
 		stats.FromNFO++
 		stats.ConflictsResolved++
-		provenance[fieldName] = DataSource{Source: "nfo", Confidence: 1.0, LastUpdated: &timestamp}
+		nfoTimestamp := nfoTS
+		provenance[fieldName] = DataSource{Source: "nfo", Confidence: 1.0, LastUpdated: &nfoTimestamp}
 		return nfo
 	case MergeArrays:
 		// Merge and deduplicate by normalized URL (lowercase, trimmed, no trailing slash)
@@ -498,12 +562,18 @@ func mergeStringSlice(fieldName string, scraped, nfo []string, strategy MergeStr
 		}
 
 		stats.MergedArrays++
-		provenance[fieldName] = DataSource{Source: "merged", Confidence: 0.9, LastUpdated: &timestamp}
+		// Use the newer timestamp when merging arrays from both sources - create unique copy
+		mergedTimestamp := scrapedTS
+		if nfoTS.After(scrapedTS) {
+			mergedTimestamp = nfoTS
+		}
+		provenance[fieldName] = DataSource{Source: "merged", Confidence: 0.9, LastUpdated: &mergedTimestamp}
 		return merged
 	default: // PreferScraper
 		stats.FromScraper++
 		stats.ConflictsResolved++
-		provenance[fieldName] = DataSource{Source: "scraper", Confidence: 1.0, LastUpdated: &timestamp}
+		scrapedTimestamp := scrapedTS
+		provenance[fieldName] = DataSource{Source: "scraper", Confidence: 1.0, LastUpdated: &scrapedTimestamp}
 		return scraped
 	}
 }
@@ -637,8 +707,11 @@ func isEmptyValue(v reflect.Value) bool {
 		return v.Len() == 0
 	case reflect.Struct:
 		// For time.Time, check IsZero
-		if t, ok := v.Interface().(time.Time); ok {
-			return t.IsZero()
+		// Guard against unexported fields which can't be accessed via Interface()
+		if v.CanInterface() {
+			if t, ok := v.Interface().(time.Time); ok {
+				return t.IsZero()
+			}
 		}
 		return false
 	default:

@@ -22,6 +22,7 @@ import (
 	"github.com/javinizer/javinizer-go/internal/organizer"
 	"github.com/javinizer/javinizer-go/internal/scanner"
 	"github.com/javinizer/javinizer-go/internal/scraper/dmm"
+	"github.com/javinizer/javinizer-go/internal/template"
 	"github.com/javinizer/javinizer-go/internal/version"
 	"github.com/spf13/cobra"
 )
@@ -117,6 +118,10 @@ func main() {
 	updateCmd.Flags().Bool("extrafanart", false, "Download extrafanart (screenshots)")
 	updateCmd.Flags().StringSliceP("scrapers", "p", nil, "Scraper priority (comma-separated, e.g., 'r18dev,dmm')")
 	updateCmd.Flags().Bool("force-refresh", false, "Force refresh metadata from scrapers (clear cache)")
+	updateCmd.Flags().Bool("force-overwrite", false, "Ignore existing NFO, use only scraper data (destructive)")
+	updateCmd.Flags().Bool("preserve-nfo", false, "Never overwrite NFO fields, only add missing data (conservative)")
+	updateCmd.Flags().Bool("show-merge-stats", false, "Display detailed merge statistics for each file")
+	updateCmd.Flags().String("merge-strategy", "prefer-scraper", "Merge strategy: prefer-scraper, prefer-nfo, or merge-arrays")
 
 	// Genre command with subcommands
 	genreCmd := &cobra.Command{
@@ -1093,6 +1098,10 @@ func runUpdate(cmd *cobra.Command, args []string, deps *Dependencies) error {
 	downloadExtrafanart, _ := cmd.Flags().GetBool("extrafanart")
 	scraperPriority, _ := cmd.Flags().GetStringSlice("scrapers")
 	forceRefresh, _ := cmd.Flags().GetBool("force-refresh")
+	forceOverwrite, _ := cmd.Flags().GetBool("force-overwrite")
+	preserveNFO, _ := cmd.Flags().GetBool("preserve-nfo")
+	showMergeStats, _ := cmd.Flags().GetBool("show-merge-stats")
+	mergeStrategyStr, _ := cmd.Flags().GetString("merge-strategy")
 
 	// In update mode: always generate NFO, never move files, force update enabled
 	generateNFO := true
@@ -1155,6 +1164,91 @@ func runUpdate(cmd *cobra.Command, args []string, deps *Dependencies) error {
 		return nil
 	}
 
+	// Step 3.5: Merge with existing NFO data (if not force-overwrite)
+	if !forceOverwrite {
+		// Determine merge strategy
+		var mergeStrategy nfo.MergeStrategy
+		if preserveNFO {
+			mergeStrategy = nfo.PreferNFO
+		} else {
+			switch strings.ToLower(mergeStrategyStr) {
+			case "prefer-nfo":
+				mergeStrategy = nfo.PreferNFO
+			case "merge-arrays":
+				mergeStrategy = nfo.MergeArrays
+			default: // "prefer-scraper"
+				mergeStrategy = nfo.PreferScraper
+			}
+		}
+
+		totalMerged := 0
+		totalPreservedFromNFO := 0
+		totalFromScraper := 0
+
+		for id, scrapedMovie := range movies {
+			// Find first match for this ID
+			var firstMatch *matcher.MatchResult
+			for _, m := range matches {
+				if m.ID == id {
+					firstMatch = &m
+					break
+				}
+			}
+			if firstMatch == nil {
+				continue
+			}
+
+			// Construct NFO path for this movie
+			nfoPath := constructNFOPath(*firstMatch, scrapedMovie, deps.Config.Metadata.NFO.PerFile)
+
+			// Check if NFO exists
+			if _, err := os.Stat(nfoPath); err == nil {
+				// Parse existing NFO
+				parseResult, parseErr := nfo.ParseNFO(nfoPath)
+				if parseErr != nil {
+					logging.Warnf("[%s] Failed to parse existing NFO: %v (using scraper data only)", id, parseErr)
+					continue
+				}
+
+				// Merge scraped data with NFO data
+				mergeResult, mergeErr := nfo.MergeMovieMetadata(scrapedMovie, parseResult.Movie, mergeStrategy)
+				if mergeErr != nil {
+					logging.Warnf("[%s] Failed to merge NFO data: %v (using scraper data only)", id, mergeErr)
+					continue
+				}
+
+				// Replace with merged movie
+				movies[id] = mergeResult.Merged
+				totalMerged++
+				totalPreservedFromNFO += mergeResult.Stats.FromNFO
+				totalFromScraper += mergeResult.Stats.FromScraper
+
+				// Display merge stats if requested
+				if showMergeStats {
+					fmt.Printf("\n[%s] Merge Statistics:\n", id)
+					fmt.Printf("  Total fields: %d\n", mergeResult.Stats.TotalFields)
+					fmt.Printf("  From scraper: %d\n", mergeResult.Stats.FromScraper)
+					fmt.Printf("  From NFO: %d\n", mergeResult.Stats.FromNFO)
+					if mergeResult.Stats.MergedArrays > 0 {
+						fmt.Printf("  Merged arrays: %d\n", mergeResult.Stats.MergedArrays)
+					}
+					if mergeResult.Stats.ConflictsResolved > 0 {
+						fmt.Printf("  Conflicts resolved: %d\n", mergeResult.Stats.ConflictsResolved)
+					}
+				}
+			}
+		}
+
+		// Display aggregate merge stats
+		if totalMerged > 0 {
+			fmt.Printf("\n=== NFO Merge Summary ===\n")
+			fmt.Printf("Movies merged with existing NFO: %d\n", totalMerged)
+			fmt.Printf("Total fields from scraper: %d\n", totalFromScraper)
+			fmt.Printf("Total fields preserved from NFO: %d\n", totalPreservedFromNFO)
+			fmt.Printf("Merge strategy: %s\n", mergeStrategyStr)
+		}
+	}
+
 	// Step 4: Generate NFO files (always enabled in update mode)
 	// Note: In update mode, we always generate NFOs regardless of config setting
 	// because that's the primary purpose of the update command
@@ -1195,6 +1289,34 @@ func runUpdate(cmd *cobra.Command, args []string, deps *Dependencies) error {
 	}
 
 	return nil
+}
+
+// constructNFOPath constructs the expected path to an NFO file for a movie
+func constructNFOPath(match matcher.MatchResult, movie *models.Movie, perFile bool) string {
+	// Use source directory (where the video file is)
+	outputDir := match.File.Dir
+
+	// Construct NFO filename based on ID with sanitization
+	basename := movie.ID
+
+	// Add part suffix if per_file is enabled and this is multi-part
+	if perFile && match.IsMultiPart {
+		basename += match.PartSuffix
+	}
+
+	// Sanitize filename to prevent path traversal
+	sanitized := template.SanitizeFilename(basename)
+	if sanitized == "" {
+		// Fallback to just ID if sanitization results in empty string
+		sanitized = template.SanitizeFilename(movie.ID)
+		if sanitized == "" {
+			sanitized = "metadata"
+		}
+	}
+
+	filename := sanitized + ".nfo"
+
+	return filepath.Join(outputDir, filename)
 }
 
 func runGenreAdd(cmd *cobra.Command, args []string, deps *Dependencies) error {

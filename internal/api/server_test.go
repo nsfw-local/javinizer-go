@@ -62,7 +62,7 @@ func TestNewServer(t *testing.T) {
 		"/health",
 		"/ws/progress",
 		"/api/v1/scrape",
-		"/api/v1/movie/:id",
+		"/api/v1/movies/:id",
 		"/api/v1/movies",
 		"/api/v1/actresses/search",
 		"/api/v1/config",

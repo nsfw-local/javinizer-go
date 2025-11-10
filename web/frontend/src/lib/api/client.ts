@@ -148,7 +148,8 @@ class APIClient {
 
 	// Get movie by ID
 	async getMovie(id: string): Promise<Movie> {
-		return this.request<Movie>(`/api/v1/movie/${id}`);
+		const response = await this.request<{ movie: Movie }>(`/api/v1/movies/${id}`);
+		return response.movie;
 	}
 
 	// List all movies
@@ -178,7 +179,7 @@ class APIClient {
 
 	// Rescrape movie with selected scrapers
 	async rescrapeMovie(id: string, req: RescrapeRequest): Promise<Movie> {
-		const response = await this.request<{ movie: Movie }>(`/api/v1/movie/${id}/rescrape`, {
+		const response = await this.request<{ movie: Movie }>(`/api/v1/movies/${id}/rescrape`, {
 			method: 'POST',
 			body: JSON.stringify(req)
 		});

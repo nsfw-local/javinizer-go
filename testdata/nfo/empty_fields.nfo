@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<movie>
+  <title>Movie With Empty Fields</title>
+  <id>IPX-456</id>
+  <uniqueid type="contentid" default="true">IPX-456</uniqueid>
+  <plot></plot>
+  <director></director>
+  <studio></studio>
+  <releasedate>2024-06-01</releasedate>
+</movie>

@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<movie>
+  <title>Complete Test Movie</title>
+  <originaltitle>完全なテスト映画</originaltitle>
+  <sorttitle>IPX-123</sorttitle>
+  <id>IPX-123</id>
+  <uniqueid type="contentid" default="true">IPX-123</uniqueid>
+  <plot>This is a complete test movie with all metadata fields populated for comprehensive testing.</plot>
+  <outline>Short description</outline>
+  <tagline>Test Tagline</tagline>
+  <runtime>120</runtime>
+  <year>2024</year>
+  <releasedate>2024-01-15</releasedate>
+  <premiered>2024-01-15</premiered>
+  <ratings>
+    <rating name="themoviedb" max="10" default="true">
+      <value>8.5</value>
+      <votes>1250</votes>
+    </rating>
+  </ratings>
+  <director>Test Director</director>
+  <actor>
+    <name>Yui Hatano</name>
+    <role>波多野結衣</role>
+    <order>0</order>
+    <thumb>https://example.com/actress1.jpg</thumb>
+  </actor>
+  <actor>
+    <name>Ai Sayama</name>
+    <role>佐山愛</role>
+    <order>1</order>
+    <thumb>https://example.com/actress2.jpg</thumb>
+  </actor>
+  <credits>Writer Name</credits>
+  <studio>Test Studio</studio>
+  <maker>Test Maker</maker>
+  <label>Test Label</label>
+  <set>Test Series</set>
+  <genre>Drama</genre>
+  <genre>Romance</genre>
+  <genre>Comedy</genre>
+  <tag>Tag1</tag>
+  <tag>Tag2</tag>
+  <thumb aspect="poster">https://example.com/poster.jpg</thumb>
+  <fanart>
+    <thumb>https://example.com/screenshot1.jpg</thumb>
+    <thumb>https://example.com/screenshot2.jpg</thumb>
+    <thumb>https://example.com/screenshot3.jpg</thumb>
+  </fanart>
+  <trailer>https://example.com/trailer.mp4</trailer>
+  <originalpath>IPX-123-original.mp4</originalpath>
+</movie>
