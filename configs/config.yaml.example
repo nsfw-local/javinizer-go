@@ -8,12 +8,18 @@ api:
         # - Use specific origins like ["http://localhost:3000", "http://127.0.0.1:3000"] for stricter control
         # - Empty array [] means same-origin only (secure but may block browser-based frontends)
         allowed_origins: []  # Change to ["*"] for local development
-        # Allowed directories for scanning/browsing (empty = no allowlist restriction)
-        # Supports ~ for home directory expansion
+
+        # Allowed directories for API file operations (organize, preview, etc.)
+        # Empty list = deny all. Docker deployments auto-detect /media.
+        # Manual deployments should list specific paths:
+        #   allowed_directories:
+        #     - /path/to/media
+        #     - ~/Videos
         allowed_directories: []
-        # Denied directories are always blocked (system directories)
-        # These are in addition to the built-in denylist
+
+        # Explicitly deny specific directories (optional)
         denied_directories: []
+
         # Maximum number of files to return in a scan
         max_files_per_scan: 10000
         # Timeout for scan operations (seconds)

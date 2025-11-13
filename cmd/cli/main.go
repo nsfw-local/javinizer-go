@@ -121,7 +121,8 @@ func main() {
 	updateCmd.Flags().Bool("force-overwrite", false, "Ignore existing NFO, use only scraper data (destructive)")
 	updateCmd.Flags().Bool("preserve-nfo", false, "Never overwrite NFO fields, only add missing data (conservative)")
 	updateCmd.Flags().Bool("show-merge-stats", false, "Display detailed merge statistics for each file")
-	updateCmd.Flags().String("scalar-strategy", "prefer-nfo", "Scalar field merge strategy: prefer-nfo or prefer-scraper")
+	updateCmd.Flags().String("preset", "", "Merge strategy preset: conservative, gap-fill, or aggressive (overrides scalar/array strategies)")
+	updateCmd.Flags().String("scalar-strategy", "prefer-nfo", "Scalar field merge strategy: prefer-nfo, prefer-scraper, preserve-existing, or fill-missing-only")
 	updateCmd.Flags().String("array-strategy", "merge", "Array field merge strategy: merge or replace")
 
 	// Genre command with subcommands
@@ -1102,8 +1103,19 @@ func runUpdate(cmd *cobra.Command, args []string, deps *Dependencies) error {
 	forceOverwrite, _ := cmd.Flags().GetBool("force-overwrite")
 	preserveNFO, _ := cmd.Flags().GetBool("preserve-nfo")
 	showMergeStats, _ := cmd.Flags().GetBool("show-merge-stats")
+	preset, _ := cmd.Flags().GetString("preset")
 	scalarStrategyStr, _ := cmd.Flags().GetString("scalar-strategy")
 	arrayStrategyStr, _ := cmd.Flags().GetString("array-strategy")
+
+	// Apply preset if specified (overrides individual strategy flags)
+	if preset != "" {
+		var err error
+		scalarStrategyStr, arrayStrategyStr, err = nfo.ApplyPreset(preset, scalarStrategyStr, arrayStrategyStr)
+		if err != nil {
+			return err
+		}
+		fmt.Printf("Using preset: %s (%s + %s)\n", preset, scalarStrategyStr, arrayStrategyStr)
+	}
 
 	// In update mode: always generate NFO, never move files, force update enabled
 	generateNFO := true

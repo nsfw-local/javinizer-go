@@ -71,6 +71,11 @@ func TestBatchScrape(t *testing.T) {
 				Matching: config.MatchingConfig{
 					RegexEnabled: false,
 				},
+				API: config.APIConfig{
+					Security: config.SecurityConfig{
+						AllowedDirectories: []string{"/path", "/output"}, // Allow test paths
+					},
+				},
 			}
 
 			deps := createTestDeps(t, cfg, "")
@@ -379,6 +384,11 @@ func TestOrganizeJob(t *testing.T) {
 				Matching: config.MatchingConfig{
 					RegexEnabled: false,
 				},
+				API: config.APIConfig{
+					Security: config.SecurityConfig{
+						AllowedDirectories: []string{"/path", "/output"}, // Allow test paths
+					},
+				},
 			}
 
 			deps := createTestDeps(t, cfg, "")
@@ -503,6 +513,11 @@ func TestPreviewOrganize(t *testing.T) {
 				Output: config.OutputConfig{
 					FolderFormat: "<ID>",
 					FileFormat:   "<ID>",
+				},
+				API: config.APIConfig{
+					Security: config.SecurityConfig{
+						AllowedDirectories: []string{"/path", "/output"}, // Allow test paths
+					},
 				},
 			}
 

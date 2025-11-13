@@ -13,8 +13,15 @@ import (
 	"github.com/javinizer/javinizer-go/internal/logging"
 	"github.com/javinizer/javinizer-go/internal/matcher"
 	"github.com/javinizer/javinizer-go/internal/models"
+	"github.com/javinizer/javinizer-go/internal/nfo"
 	"github.com/javinizer/javinizer-go/internal/scanner"
 	"github.com/javinizer/javinizer-go/internal/worker"
+)
+
+const (
+	// minScanTimeout is the minimum timeout duration for directory scans.
+	// This prevents immediate context cancellation when ScanTimeoutSeconds is 0 or negative.
+	minScanTimeout = 5 * time.Second
 )
 
 // isDirAllowed checks if a directory is allowed based on API security settings.
@@ -25,37 +32,79 @@ func isDirAllowed(dir string, allow, deny []string) bool {
 	expandedDir := expandHomeDir(dir)
 	d := filepath.Clean(expandedDir)
 
+	// Resolve symlinks for the checked directory (security: prevent symlink traversal)
+	resolved := d
+	absPath, err := filepath.Abs(d)
+	if err != nil {
+		// Fail closed: deny access if absolute path resolution fails
+		return false
+	}
+
+	// Try to resolve symlinks, but allow validation even if path doesn't exist yet
+	// (e.g., during batch job setup before files are downloaded)
+	if realPath, err := filepath.EvalSymlinks(absPath); err == nil {
+		resolved = realPath
+	} else if !os.IsNotExist(err) {
+		// Fail closed: deny access if symlink resolution fails for reasons other than non-existence
+		return false
+	} else {
+		// Path doesn't exist yet - use absolute path for validation
+		resolved = absPath
+	}
+
 	// Get built-in denied directories (system directories that should never be accessed)
 	builtInDenied := getDeniedDirectories()
 
-	// Check built-in denylist first
+	// Check built-in denylist first (with symlink resolution)
 	for _, blocked := range builtInDenied {
 		cleanBlocked := filepath.Clean(blocked)
-		if strings.HasPrefix(d, cleanBlocked+string(os.PathSeparator)) || d == cleanBlocked {
-			return false
+		if absBlocked, err := filepath.Abs(cleanBlocked); err == nil {
+			// Resolve symlink for blocked path if it exists
+			realBlocked := absBlocked
+			if resolvedBlocked, err := filepath.EvalSymlinks(absBlocked); err == nil {
+				realBlocked = resolvedBlocked
+			}
+			if strings.HasPrefix(resolved, realBlocked+string(os.PathSeparator)) || resolved == realBlocked {
+				return false
+			}
 		}
 	}
 
-	// Check config-provided denied directories (with home expansion)
+	// Check config-provided denied directories (with home expansion and symlink resolution)
 	for _, blocked := range deny {
 		expandedBlocked := expandHomeDir(blocked)
 		cleanBlocked := filepath.Clean(expandedBlocked)
-		if strings.HasPrefix(d, cleanBlocked+string(os.PathSeparator)) || d == cleanBlocked {
-			return false
+		if absBlocked, err := filepath.Abs(cleanBlocked); err == nil {
+			// Resolve symlink for blocked path if it exists
+			realBlocked := absBlocked
+			if resolvedBlocked, err := filepath.EvalSymlinks(absBlocked); err == nil {
+				realBlocked = resolvedBlocked
+			}
+			if strings.HasPrefix(resolved, realBlocked+string(os.PathSeparator)) || resolved == realBlocked {
+				return false
+			}
 		}
 	}
 
-	// If no allow list specified, allow by default
+	// If no allow list specified, deny by default (secure by default)
+	// This matches the behavior of validateNFOPath and prevents unrestricted filesystem access
 	if len(allow) == 0 {
-		return true
+		return false
 	}
 
-	// Check if directory is in allow list (allowlist, with home expansion)
+	// Check if directory is in allow list (with home expansion and symlink resolution)
 	for _, allowed := range allow {
 		expandedAllowed := expandHomeDir(allowed)
 		cleanAllowed := filepath.Clean(expandedAllowed)
-		if strings.HasPrefix(d, cleanAllowed+string(os.PathSeparator)) || d == cleanAllowed {
-			return true
+		if absAllowed, err := filepath.Abs(cleanAllowed); err == nil {
+			// Resolve symlink for allowed path if it exists
+			realAllowed := absAllowed
+			if resolvedAllowed, err := filepath.EvalSymlinks(absAllowed); err == nil {
+				realAllowed = resolvedAllowed
+			}
+			if strings.HasPrefix(resolved, realAllowed+string(os.PathSeparator)) || resolved == realAllowed {
+				return true
+			}
 		}
 	}
 
@@ -136,8 +185,12 @@ func discoverSiblingParts(files []string, fileMatcher *matcher.Matcher, cfg *con
 		}
 
 		// Create context with timeout to prevent resource exhaustion on large directories
-		scanCtx, cancelScan := context.WithTimeout(context.Background(),
-			time.Duration(cfg.API.Security.ScanTimeoutSeconds)*time.Second)
+		// Use minimum timeout if config is 0 or negative
+		timeout := time.Duration(cfg.API.Security.ScanTimeoutSeconds) * time.Second
+		if timeout <= 0 {
+			timeout = minScanTimeout
+		}
+		scanCtx, cancelScan := context.WithTimeout(context.Background(), timeout)
 
 		// Scan the directory with resource limits (non-recursive)
 		result, err := scan.ScanWithLimits(scanCtx, dir, cfg.API.Security.MaxFilesPerScan)
@@ -147,8 +200,9 @@ func discoverSiblingParts(files []string, fileMatcher *matcher.Matcher, cfg *con
 			continue
 		}
 		if result.TimedOut {
+			effectiveSeconds := int(timeout / time.Second)
 			logging.Warnf("Directory scan timed out for %s (limit: %d seconds)",
-				dir, cfg.API.Security.ScanTimeoutSeconds)
+				dir, effectiveSeconds)
 			// Continue with partial results
 		}
 		if result.LimitReached {
@@ -161,9 +215,18 @@ func discoverSiblingParts(files []string, fileMatcher *matcher.Matcher, cfg *con
 		matchResults := fileMatcher.Match(result.Files)
 
 		// Find siblings for the multi-part movies we're processing
+		// Note: All files in result.Files come from 'dir', which was already validated above.
+		// No need to re-validate each file's parent directory (avoids symlink race condition).
 		for _, dirMatch := range matchResults {
 			if movieIDsToProcess[dirMatch.ID] && dirMatch.IsMultiPart {
 				if !seenPaths[dirMatch.File.Path] {
+					// Sanity check: Ensure file is actually in the scanned directory
+					parent := filepath.Dir(dirMatch.File.Path)
+					if filepath.Clean(parent) != filepath.Clean(dir) {
+						logging.Warnf("Scanner returned file outside scanned directory: %s (expected: %s)", parent, dir)
+						continue
+					}
+
 					seenPaths[dirMatch.File.Path] = true
 					allFiles = append(allFiles, dirMatch.File.Path)
 					logging.Infof("Auto-discovered multi-part sibling: %s (movie ID: %s, part: %d)",
@@ -194,12 +257,24 @@ func batchScrape(deps *ServerDependencies) gin.HandlerFunc {
 			return
 		}
 
+		// Apply preset if specified (overrides individual strategy fields)
+		if req.Preset != "" {
+			var presetErr error
+			req.ScalarStrategy, req.ArrayStrategy, presetErr = nfo.ApplyPreset(req.Preset, req.ScalarStrategy, req.ArrayStrategy)
+			if presetErr != nil {
+				c.JSON(400, ErrorResponse{Error: presetErr.Error()})
+				return
+			}
+			logging.Infof("Applied preset '%s': scalar=%s, array=%s", req.Preset, req.ScalarStrategy, req.ArrayStrategy)
+		}
+
 		// Security: Validate all submitted files against directory security settings
 		cfg := deps.GetConfig()
 		for _, filePath := range req.Files {
 			dir := filepath.Dir(filePath)
 			if !isDirAllowed(dir, cfg.API.Security.AllowedDirectories, cfg.API.Security.DeniedDirectories) {
-				c.JSON(403, ErrorResponse{Error: fmt.Sprintf("Access denied to directory: %s", dir)})
+				// Security: Don't leak directory paths in error messages
+				c.JSON(403, ErrorResponse{Error: "Access denied to requested directory"})
 				return
 			}
 		}
@@ -510,8 +585,15 @@ func organizeJob(deps *ServerDependencies) gin.HandlerFunc {
 			return
 		}
 
+		// Security: Validate destination directory against allow/deny lists
+		cfg := deps.GetConfig()
+		if !isDirAllowed(req.Destination, cfg.API.Security.AllowedDirectories, cfg.API.Security.DeniedDirectories) {
+			c.JSON(403, ErrorResponse{Error: "Access denied to requested directory"})
+			return
+		}
+
 		// Start organization in background - use getter for thread-safe access
-		go processOrganizeJob(job, deps.GetMatcher(), req.Destination, req.CopyOnly, deps.DB, deps.GetConfig())
+		go processOrganizeJob(job, deps.GetMatcher(), req.Destination, req.CopyOnly, deps.DB, cfg)
 
 		c.JSON(200, gin.H{"message": "Organization started"})
 	}
@@ -573,6 +655,13 @@ func previewOrganize(deps *ServerDependencies) gin.HandlerFunc {
 		var req OrganizePreviewRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
 			c.JSON(400, ErrorResponse{Error: err.Error()})
+			return
+		}
+
+		// Security: Validate destination directory against allow/deny lists
+		cfg := deps.GetConfig()
+		if !isDirAllowed(req.Destination, cfg.API.Security.AllowedDirectories, cfg.API.Security.DeniedDirectories) {
+			c.JSON(403, ErrorResponse{Error: "Access denied to requested directory"})
 			return
 		}
 
