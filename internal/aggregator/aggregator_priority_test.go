@@ -305,3 +305,254 @@ func TestAggregatePriority_MissingPriorityFallsBackToGlobal(t *testing.T) {
 	assert.Equal(t, "Japanese Maker", movie.Maker,
 		"Maker with missing priority should use global priority (dmm first)")
 }
+
+// TestAggregateWithPriority_CustomPriority tests custom priority override for manual scraping
+func TestAggregateWithPriority_CustomPriority(t *testing.T) {
+	// Setup config with one priority, but we'll override it
+	cfg := &config.Config{
+		Scrapers: config.ScrapersConfig{
+			Priority: []string{"dmm", "r18dev"}, // Global default
+		},
+		Metadata: config.MetadataConfig{
+			Priority: config.PriorityConfig{
+				Title: []string{"dmm", "r18dev"}, // Config priority
+			},
+		},
+	}
+
+	agg := New(cfg)
+
+	releaseDate := time.Date(2021, 1, 8, 0, 0, 0, 0, time.UTC)
+
+	r18devResult := &models.ScraperResult{
+		Source:      "r18dev",
+		Language:    "en",
+		ID:          "ABW-102",
+		ContentID:   "abw00102",
+		Title:       "English Title from R18Dev",
+		Maker:       "Prestige",
+		Description: "English description",
+		ReleaseDate: &releaseDate,
+		Runtime:     120,
+		PosterURL:   "https://r18dev.com/poster.jpg",
+	}
+
+	dmmResult := &models.ScraperResult{
+		Source:      "dmm",
+		Language:    "ja",
+		ID:          "ABW-102",
+		ContentID:   "abw00102",
+		Title:       "Japanese Title from DMM",
+		Maker:       "プレステージ",
+		Description: "Japanese description",
+		ReleaseDate: &releaseDate,
+		Runtime:     120,
+		PosterURL:   "https://dmm.com/poster.jpg",
+	}
+
+	results := []*models.ScraperResult{r18devResult, dmmResult}
+
+	// Test with custom priority that overrides config (r18dev first)
+	customPriority := []string{"r18dev", "dmm"}
+	movie, err := agg.AggregateWithPriority(results, customPriority)
+	require.NoError(t, err)
+	require.NotNil(t, movie)
+
+	// Should use R18Dev data even though config prioritizes DMM
+	assert.Equal(t, "English Title from R18Dev", movie.Title,
+		"Should use R18Dev title based on custom priority")
+	assert.Equal(t, "Prestige", movie.Maker,
+		"Should use R18Dev maker based on custom priority")
+	assert.Equal(t, "English description", movie.Description,
+		"Should use R18Dev description based on custom priority")
+	assert.Equal(t, "https://r18dev.com/poster.jpg", movie.PosterURL,
+		"Should use R18Dev poster URL based on custom priority")
+
+	// Test with opposite custom priority (dmm first)
+	customPriorityDMM := []string{"dmm", "r18dev"}
+	movie2, err := agg.AggregateWithPriority(results, customPriorityDMM)
+	require.NoError(t, err)
+	require.NotNil(t, movie2)
+
+	// Should use DMM data
+	assert.Equal(t, "Japanese Title from DMM", movie2.Title,
+		"Should use DMM title based on custom priority")
+	assert.Equal(t, "プレステージ", movie2.Maker,
+		"Should use DMM maker based on custom priority")
+	assert.Equal(t, "Japanese description", movie2.Description,
+		"Should use DMM description based on custom priority")
+}
+
+// TestAggregateWithPriority_EmptyResults tests error handling with empty results
+func TestAggregateWithPriority_EmptyResults(t *testing.T) {
+	cfg := &config.Config{}
+	agg := New(cfg)
+
+	results := []*models.ScraperResult{}
+	customPriority := []string{"r18dev", "dmm"}
+
+	movie, err := agg.AggregateWithPriority(results, customPriority)
+	assert.Error(t, err)
+	assert.Nil(t, movie)
+	assert.Contains(t, err.Error(), "no scraper results to aggregate")
+}
+
+// TestAggregateWithPriority_FallbackToNextPriority tests fallback behavior
+func TestAggregateWithPriority_FallbackToNextPriority(t *testing.T) {
+	cfg := &config.Config{}
+	agg := New(cfg)
+
+	// First scraper has incomplete data
+	firstResult := &models.ScraperResult{
+		Source:      "scraper1",
+		ID:          "TEST-001",
+		Title:       "", // Empty title
+		Maker:       "Maker 1",
+		Description: "", // Empty description
+	}
+
+	// Second scraper has complete data
+	secondResult := &models.ScraperResult{
+		Source:      "scraper2",
+		ID:          "TEST-001",
+		Title:       "Title from Scraper 2",
+		Maker:       "Maker 2",
+		Description: "Description from Scraper 2",
+	}
+
+	results := []*models.ScraperResult{firstResult, secondResult}
+	customPriority := []string{"scraper1", "scraper2"}
+
+	movie, err := agg.AggregateWithPriority(results, customPriority)
+	require.NoError(t, err)
+	require.NotNil(t, movie)
+
+	// Should use scraper1 for fields it has
+	assert.Equal(t, "Maker 1", movie.Maker,
+		"Should use scraper1 maker since it's first in priority and has data")
+
+	// Should fall back to scraper2 for fields scraper1 doesn't have
+	assert.Equal(t, "Title from Scraper 2", movie.Title,
+		"Should fall back to scraper2 title since scraper1 has empty title")
+	assert.Equal(t, "Description from Scraper 2", movie.Description,
+		"Should fall back to scraper2 description since scraper1 has empty description")
+}
+
+// TestAggregateWithPriority_AllFields tests that all movie fields are properly aggregated
+func TestAggregateWithPriority_AllFields(t *testing.T) {
+	cfg := &config.Config{
+		Metadata: config.MetadataConfig{
+			NFO: config.NFOConfig{
+				DisplayName: "<ID> - <TITLE>",
+			},
+		},
+	}
+	agg := New(cfg)
+
+	releaseDate := time.Date(2021, 6, 15, 0, 0, 0, 0, time.UTC)
+	screenshots := []string{
+		"https://example.com/screen1.jpg",
+		"https://example.com/screen2.jpg",
+	}
+
+	result := &models.ScraperResult{
+		Source:        "test-scraper",
+		SourceURL:     "https://test-scraper.com/movie/123",
+		Language:      "en",
+		ID:            "TEST-123",
+		ContentID:     "test00123",
+		Title:         "Test Movie Title",
+		OriginalTitle: "Original Test Title",
+		Description:   "Test description",
+		Director:      "Test Director",
+		Maker:         "Test Studio",
+		Label:         "Test Label",
+		Series:        "Test Series",
+		PosterURL:     "https://example.com/poster.jpg",
+		CoverURL:      "https://example.com/cover.jpg",
+		TrailerURL:    "https://example.com/trailer.mp4",
+		Runtime:       120,
+		ReleaseDate:   &releaseDate,
+		Rating: &models.Rating{
+			Score: 8.5,
+			Votes: 100,
+		},
+		Actresses: []models.ActressInfo{
+			{FirstName: "Jane", LastName: "Doe", JapaneseName: "ジェーン・ドウ"},
+		},
+		Genres:        []string{"Drama", "Romance"},
+		ScreenshotURL: screenshots,
+	}
+
+	results := []*models.ScraperResult{result}
+	customPriority := []string{"test-scraper"}
+
+	movie, err := agg.AggregateWithPriority(results, customPriority)
+	require.NoError(t, err)
+	require.NotNil(t, movie)
+
+	// Verify all fields are populated
+	assert.Equal(t, "TEST-123", movie.ID)
+	assert.Equal(t, "test00123", movie.ContentID)
+	assert.Equal(t, "Test Movie Title", movie.Title)
+	assert.Equal(t, "Original Test Title", movie.OriginalTitle)
+	assert.Equal(t, "Test description", movie.Description)
+	assert.Equal(t, "Test Director", movie.Director)
+	assert.Equal(t, "Test Studio", movie.Maker)
+	assert.Equal(t, "Test Label", movie.Label)
+	assert.Equal(t, "Test Series", movie.Series)
+	assert.Equal(t, "https://example.com/poster.jpg", movie.PosterURL)
+	assert.Equal(t, "https://example.com/cover.jpg", movie.CoverURL)
+	assert.Equal(t, "https://example.com/trailer.mp4", movie.TrailerURL)
+	assert.Equal(t, 120, movie.Runtime)
+	assert.Equal(t, 2021, movie.ReleaseDate.Year())
+	assert.Equal(t, 2021, movie.ReleaseYear)
+	assert.Equal(t, 8.5, movie.RatingScore)
+	assert.Equal(t, 100, movie.RatingVotes)
+	assert.Len(t, movie.Actresses, 1)
+	assert.Equal(t, "Jane", movie.Actresses[0].FirstName)
+	assert.Len(t, movie.Genres, 2)
+	assert.Len(t, movie.Screenshots, 2)
+	assert.Equal(t, "test-scraper", movie.SourceName)
+	assert.Equal(t, "https://test-scraper.com/movie/123", movie.SourceURL)
+	assert.Equal(t, "TEST-123 - Test Movie Title", movie.DisplayName)
+
+	// Verify timestamps are set
+	assert.False(t, movie.CreatedAt.IsZero())
+	assert.False(t, movie.UpdatedAt.IsZero())
+}
+
+// TestAggregateWithPriority_ShouldCropPoster tests that ShouldCropPoster matches the PosterURL source
+func TestAggregateWithPriority_ShouldCropPoster(t *testing.T) {
+	cfg := &config.Config{}
+	agg := New(cfg)
+
+	// R18Dev result with ShouldCropPoster = false
+	r18devResult := &models.ScraperResult{
+		Source:           "r18dev",
+		ID:               "TEST-001",
+		PosterURL:        "https://r18dev.com/poster.jpg",
+		ShouldCropPoster: false,
+	}
+
+	// DMM result with ShouldCropPoster = true
+	dmmResult := &models.ScraperResult{
+		Source:           "dmm",
+		ID:               "TEST-001",
+		PosterURL:        "https://dmm.com/poster.jpg",
+		ShouldCropPoster: true,
+	}
+
+	// Test with r18dev first - should get ShouldCropPoster = false
+	results := []*models.ScraperResult{r18devResult, dmmResult}
+	movie, err := agg.AggregateWithPriority(results, []string{"r18dev", "dmm"})
+	require.NoError(t, err)
+	assert.Equal(t, "https://r18dev.com/poster.jpg", movie.PosterURL)
+	assert.False(t, movie.ShouldCropPoster, "ShouldCropPoster should match r18dev source")
+
+	// Test with dmm first - should get ShouldCropPoster = true
+	movie2, err := agg.AggregateWithPriority(results, []string{"dmm", "r18dev"})
+	require.NoError(t, err)
+	assert.Equal(t, "https://dmm.com/poster.jpg", movie2.PosterURL)
+	assert.True(t, movie2.ShouldCropPoster, "ShouldCropPoster should match dmm source")
+}

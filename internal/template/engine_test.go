@@ -1230,3 +1230,190 @@ func timePtr(year, month, day int) *time.Time {
 	t := time.Date(year, time.Month(month), day, 0, 0, 0, 0, time.UTC)
 	return &t
 }
+
+func TestTemplateEngine_TruncateTitleBytes(t *testing.T) {
+	engine := NewEngine()
+
+	tests := []struct {
+		name     string
+		title    string
+		maxBytes int
+		expected string
+		comment  string
+	}{
+		{
+			name:     "Short ASCII title - no truncation",
+			title:    "Test Movie",
+			maxBytes: 50,
+			expected: "Test Movie",
+			comment:  "Title fits within byte limit",
+		},
+		{
+			name:     "ASCII title - truncate at word boundary",
+			title:    "The Quick Brown Fox Jumps",
+			maxBytes: 20,
+			expected: "The Quick Brown...",
+			comment:  "Reserves 3 bytes for ellipsis, breaks at word boundary",
+		},
+		{
+			name:     "ASCII title - no word boundary",
+			title:    "Supercalifragilisticexpialidocious",
+			maxBytes: 15,
+			expected: "Supercalifra...",
+			comment:  "No spaces, truncates mid-word with ellipsis within budget",
+		},
+		{
+			name:     "ASCII title - very small limit with ellipsis",
+			title:    "Test Movie Title",
+			maxBytes: 5,
+			expected: "Te...",
+			comment:  "Budget of 2 bytes for content + 3 for ellipsis = 5 total",
+		},
+		{
+			name:     "ASCII title - limit too small for ellipsis",
+			title:    "Test Movie Title",
+			maxBytes: 2,
+			expected: "Te",
+			comment:  "Only 2 bytes, no room for ellipsis",
+		},
+		{
+			name:     "Japanese title - CJK bytes",
+			title:    "これは日本語のタイトルです",
+			maxBytes: 20,
+			expected: "これは日本...",
+			comment:  "Budget 17 bytes = 5 CJK chars (15 bytes) + ellipsis (3 bytes) = 18 bytes total",
+		},
+		{
+			name:     "Japanese title - exact fit",
+			title:    "これは",
+			maxBytes: 9,
+			expected: "これは",
+			comment:  "Exactly 9 bytes (3 chars × 3 bytes)",
+		},
+		{
+			name:     "Japanese title - one byte short",
+			title:    "これは日",
+			maxBytes: 11,
+			expected: "これ...",
+			comment:  "Budget 8 bytes = 2 CJK chars (6 bytes) + ellipsis (3 bytes) = 9 bytes total",
+		},
+		{
+			name:     "Mixed CJK and ASCII",
+			title:    "Movie Title 映画タイトル",
+			maxBytes: 20,
+			expected: "Movie Title 映...",
+			comment:  "Budget 17 bytes: 'Movie Title ' (12) + 1 CJK (3) + ellipsis (3) = 18 bytes",
+		},
+		{
+			name:     "Zero byte limit - no truncation",
+			title:    "Test Movie Title",
+			maxBytes: 0,
+			expected: "",
+			comment:  "Zero maxBytes returns empty string",
+		},
+		{
+			name:     "Negative byte limit - no truncation",
+			title:    "Test Movie Title",
+			maxBytes: -10,
+			expected: "",
+			comment:  "Negative maxBytes returns empty string",
+		},
+		{
+			name:     "Empty title",
+			title:    "",
+			maxBytes: 10,
+			expected: "",
+			comment:  "Empty input returns empty",
+		},
+		{
+			name:     "Title exactly at byte limit",
+			title:    "Test",
+			maxBytes: 4,
+			expected: "Test",
+			comment:  "Exactly 4 bytes, fits perfectly",
+		},
+		{
+			name:     "Cannot fit even one rune",
+			title:    "これは",
+			maxBytes: 2,
+			expected: "",
+			comment:  "First CJK char needs 3 bytes, can't fit in 2",
+		},
+		{
+			name:     "ASCII with ellipsis edge case",
+			title:    "Test Movie Title",
+			maxBytes: 6,
+			expected: "Tes...",
+			comment:  "Budget 3 bytes for content + 3 for ellipsis = 6 total",
+		},
+		{
+			name:     "Korean characters",
+			title:    "한국어 제목입니다",
+			maxBytes: 15,
+			expected: "한국어...",
+			comment:  "Budget 12 bytes, fits '한국어 ' (10 bytes), trims space, + ellipsis = 12 total",
+		},
+		{
+			name:     "Chinese characters",
+			title:    "这是一个很长的中文标题",
+			maxBytes: 24,
+			expected: "这是一个很长的...",
+			comment:  "Budget 21 bytes = 7 CJK chars (21 bytes) + ellipsis (3) = 24 total",
+		},
+		{
+			name:     "ASCII title at exact word boundary",
+			title:    "The Quick Brown",
+			maxBytes: 12,
+			expected: "The...",
+			comment:  "Budget 9 bytes fills 'The Quick', breaks at last space after 'The', + ellipsis = 6 total",
+		},
+		{
+			name:     "Title shorter than limit",
+			title:    "Short",
+			maxBytes: 100,
+			expected: "Short",
+			comment:  "Well under limit",
+		},
+		{
+			name:     "Single ASCII character limit",
+			title:    "Test",
+			maxBytes: 1,
+			expected: "T",
+			comment:  "Only 1 byte available",
+		},
+		{
+			name:     "Limit equals 3 (exact ellipsis size)",
+			title:    "Test Movie",
+			maxBytes: 3,
+			expected: "Tes",
+			comment:  "No room for ellipsis, just 3 chars",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := engine.TruncateTitleBytes(tt.title, tt.maxBytes)
+			if got != tt.expected {
+				t.Errorf("TruncateTitleBytes() = %q (len=%d bytes), want %q (len=%d bytes)\n  Comment: %s",
+					got, len(got), tt.expected, len(tt.expected), tt.comment)
+			}
+
+			// Verify result doesn't exceed maxBytes
+			if tt.maxBytes > 0 && len(got) > tt.maxBytes {
+				t.Errorf("Result exceeds maxBytes: got %d bytes, max allowed %d bytes", len(got), tt.maxBytes)
+			}
+
+			// Verify we don't split UTF-8 sequences (all results should be valid UTF-8)
+			if !isValidUTF8(got) {
+				t.Errorf("Result contains invalid UTF-8 sequences: %q", got)
+			}
+		})
+	}
+}
+
+// Helper to check if a string is valid UTF-8
+func isValidUTF8(s string) bool {
+	// Try to convert to runes and back - invalid UTF-8 will be replaced with replacement char
+	runes := []rune(s)
+	return string(runes) == s || len(s) == 0
+}

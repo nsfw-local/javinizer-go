@@ -304,48 +304,73 @@ func (e *Engine) TruncateTitle(title string, maxLen int) string {
 // TruncateTitleBytes smartly truncates a title to fit within maxBytes (byte length)
 // This is needed because file paths have byte length limits, not rune count limits
 func (e *Engine) TruncateTitleBytes(title string, maxBytes int) string {
-	if maxBytes <= 0 || len(title) <= maxBytes {
+	// Handle edge cases
+	if maxBytes <= 0 {
+		return ""
+	}
+	if len(title) <= maxBytes {
 		return title
 	}
 
-	runes := []rune(title)
-	currentBytes := 0
+	ellipsis := "..."
+	ellipsisLen := len(ellipsis)
 
-	// Always use rune-safe iteration to avoid splitting UTF-8 sequences
-	// even for very small byte limits
-	for i, r := range runes {
-		runeSize := len(string(r)) // Byte size of this rune
-
-		if currentBytes+runeSize > maxBytes {
-			// Can't fit this rune
-			if i == 0 {
-				// Can't fit even one rune, return empty
-				return ""
-			}
-
-			// Truncate here (no ellipsis if we have < 3 bytes budget)
-			truncated := string(runes[:i])
-
-			// Only add ellipsis if we have room (at least 3 bytes left after truncated)
-			if maxBytes >= len(truncated)+3 {
-				// For English/Latin text, try to break at word boundary
-				if !e.containsCJK(title) {
-					lastSpace := strings.LastIndex(truncated, " ")
-					if lastSpace > 0 && maxBytes >= len(truncated[:lastSpace])+3 {
-						return truncated[:lastSpace] + "..."
-					}
+	// If maxBytes is too small for ellipsis + content, just hard truncate
+	if maxBytes <= ellipsisLen {
+		// Return as many bytes as we can fit (no ellipsis)
+		runes := []rune(title)
+		currentBytes := 0
+		for i, r := range runes {
+			runeSize := len(string(r))
+			if currentBytes+runeSize > maxBytes {
+				if i == 0 {
+					return "" // Can't fit even one rune
 				}
-				return truncated + "..."
+				return string(runes[:i])
 			}
-
-			// Not enough room for ellipsis, just return truncated
-			return truncated
+			currentBytes += runeSize
 		}
-		currentBytes += runeSize
+		return title // Shouldn't reach here
 	}
 
-	// Entire title fits
-	return title
+	// Reserve space for ellipsis
+	budget := maxBytes - ellipsisLen
+	runes := []rune(title)
+	currentBytes := 0
+	endIdx := 0
+
+	// Find the cut point within budget
+	for i, r := range runes {
+		runeSize := len(string(r))
+		if currentBytes+runeSize > budget {
+			break
+		}
+		currentBytes += runeSize
+		endIdx = i + 1 // +1 because we want slice [:endIdx]
+	}
+
+	if endIdx == 0 {
+		// Can't fit even one rune in budget
+		return ellipsis
+	}
+
+	// Build the truncated string
+	truncated := string(runes[:endIdx])
+
+	// For non-CJK text, try to break at word boundary
+	if !e.containsCJK(title) {
+		// Find the last space in the truncated string
+		lastSpacePos := strings.LastIndex(truncated, " ")
+		if lastSpacePos > 0 {
+			// Use word boundary
+			truncated = truncated[:lastSpacePos]
+		}
+	}
+
+	// Always trim trailing spaces before adding ellipsis
+	truncated = strings.TrimRight(truncated, " ")
+
+	return truncated + ellipsis
 }
 
 // ValidatePathLength checks if a path exceeds the maximum length
