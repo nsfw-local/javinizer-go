@@ -801,3 +801,45 @@ func TestMergeMovieMetadata_TotalFieldsConsistency(t *testing.T) {
 	expectedCount := countNonEmptyFields(result.Merged)
 	assert.Equal(t, expectedCount, result.Stats.TotalFields)
 }
+
+// TestParseMergeStrategy tests the deprecated ParseMergeStrategy function
+func TestParseMergeStrategy(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected MergeStrategy
+	}{
+		{
+			name:     "prefer-scraper",
+			input:    "prefer-scraper",
+			expected: PreferScraper,
+		},
+		{
+			name:     "prefer-nfo",
+			input:    "prefer-nfo",
+			expected: PreferNFO,
+		},
+		{
+			name:     "merge-arrays",
+			input:    "merge-arrays",
+			expected: MergeArrays,
+		},
+		{
+			name:     "unknown defaults to PreferNFO",
+			input:    "unknown-value",
+			expected: PreferNFO,
+		},
+		{
+			name:     "empty string defaults to PreferNFO",
+			input:    "",
+			expected: PreferNFO,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := ParseMergeStrategy(tt.input)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
