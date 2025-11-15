@@ -553,3 +553,175 @@ func TestPreviewOrganize(t *testing.T) {
 		})
 	}
 }
+
+// TestRescrapeBatchMovie tests the rescrape endpoint
+func TestRescrapeBatchMovie(t *testing.T) {
+	tests := []struct {
+		name           string
+		setupJob       func(*worker.JobQueue) (jobID, movieID string)
+		requestBody    interface{}
+		expectedStatus int
+		validateFn     func(*testing.T, *BatchRescrapeResponse)
+	}{
+		{
+			name: "rescrape with selected scrapers - scraping fails with mock",
+			setupJob: func(jq *worker.JobQueue) (string, string) {
+				job := jq.CreateJob([]string{"/test/IPX-535.mp4"})
+				job.UpdateFileResult("/test/IPX-535.mp4", &worker.FileResult{
+					MovieID: "IPX-535",
+					Status:  worker.JobStatusCompleted,
+				})
+				return job.ID, "IPX-535"
+			},
+			requestBody: BatchRescrapeRequest{
+				SelectedScrapers: []string{"r18dev"},
+				Force:            true,
+			},
+			expectedStatus: 500, // Internal Server Error - scraping fails with mock scraper (no results)
+		},
+		{
+			name: "rescrape with manual search - scraping fails with mock",
+			setupJob: func(jq *worker.JobQueue) (string, string) {
+				job := jq.CreateJob([]string{"/test/ABC-123.mp4"})
+				job.UpdateFileResult("/test/ABC-123.mp4", &worker.FileResult{
+					MovieID: "ABC-123",
+					Status:  worker.JobStatusCompleted,
+				})
+				return job.ID, "ABC-123"
+			},
+			requestBody: BatchRescrapeRequest{
+				ManualSearchInput: "IPX-535",
+				Force:             false,
+			},
+			expectedStatus: 500, // Internal Server Error - scraping fails with mock scraper (no results)
+		},
+		{
+			name: "rescrape with valid preset",
+			setupJob: func(jq *worker.JobQueue) (string, string) {
+				job := jq.CreateJob([]string{"/test/TEST-001.mp4"})
+				job.UpdateFileResult("/test/TEST-001.mp4", &worker.FileResult{
+					MovieID: "TEST-001",
+					Status:  worker.JobStatusCompleted,
+				})
+				return job.ID, "TEST-001"
+			},
+			requestBody: BatchRescrapeRequest{
+				SelectedScrapers: []string{"r18dev"},
+				Preset:           "conservative", // Use valid preset
+			},
+			expectedStatus: 500, // Internal Server Error - scraping fails with mock scraper (no results)
+		},
+		{
+			name: "invalid preset name",
+			setupJob: func(jq *worker.JobQueue) (string, string) {
+				job := jq.CreateJob([]string{"/test/TEST-002.mp4"})
+				job.UpdateFileResult("/test/TEST-002.mp4", &worker.FileResult{
+					MovieID: "TEST-002",
+					Status:  worker.JobStatusCompleted,
+				})
+				return job.ID, "TEST-002"
+			},
+			requestBody: BatchRescrapeRequest{
+				SelectedScrapers: []string{"r18dev"},
+				Preset:           "invalid_preset",
+			},
+			expectedStatus: 400, // Bad Request - invalid preset
+		},
+		{
+			name: "invalid JSON",
+			setupJob: func(jq *worker.JobQueue) (string, string) {
+				return "job123", "movie123"
+			},
+			requestBody:    "{invalid-json",
+			expectedStatus: 400,
+		},
+		{
+			name: "missing scrapers and manual input",
+			setupJob: func(jq *worker.JobQueue) (string, string) {
+				job := jq.CreateJob([]string{"/test/file.mp4"})
+				return job.ID, "MOVIE-001"
+			},
+			requestBody:    BatchRescrapeRequest{},
+			expectedStatus: 400,
+		},
+		{
+			name: "job not found",
+			setupJob: func(jq *worker.JobQueue) (string, string) {
+				return "nonexistent-job", "MOVIE-001"
+			},
+			requestBody: BatchRescrapeRequest{
+				SelectedScrapers: []string{"r18dev"},
+			},
+			expectedStatus: 404,
+		},
+		{
+			name: "movie not found in job",
+			setupJob: func(jq *worker.JobQueue) (string, string) {
+				job := jq.CreateJob([]string{"/test/file.mp4"})
+				job.UpdateFileResult("/test/file.mp4", &worker.FileResult{
+					MovieID: "DIFFERENT-ID",
+					Status:  worker.JobStatusCompleted,
+				})
+				return job.ID, "NONEXISTENT-MOVIE"
+			},
+			requestBody: BatchRescrapeRequest{
+				SelectedScrapers: []string{"r18dev"},
+			},
+			expectedStatus: 404,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Initialize WebSocket hub
+			initTestWebSocket(t)
+
+			cfg := &config.Config{
+				Scrapers: config.ScrapersConfig{
+					UserAgent:             "Test Agent",
+					Referer:               "https://test.com",
+					RequestTimeoutSeconds: 30,
+					Priority:              []string{"r18dev"},
+					R18Dev:                config.R18DevConfig{Enabled: true},
+					DMM:                   config.DMMConfig{Enabled: true},
+					Proxy:                 config.ProxyConfig{Enabled: false},
+				},
+				API: config.APIConfig{
+					Security: config.SecurityConfig{
+						AllowedDirectories: []string{"/test"},
+					},
+				},
+			}
+
+			deps := createTestDeps(t, cfg, "")
+			jobID, movieID := tt.setupJob(deps.JobQueue)
+
+			router := gin.New()
+			router.POST("/batch/:id/movies/:movieId/rescrape", rescrapeBatchMovie(deps))
+
+			var body []byte
+			var err error
+			if str, ok := tt.requestBody.(string); ok {
+				body = []byte(str)
+			} else {
+				body, err = json.Marshal(tt.requestBody)
+				require.NoError(t, err)
+			}
+
+			req := httptest.NewRequest("POST", "/batch/"+jobID+"/movies/"+movieID+"/rescrape", bytes.NewBuffer(body))
+			req.Header.Set("Content-Type", "application/json")
+			w := httptest.NewRecorder()
+
+			router.ServeHTTP(w, req)
+
+			assert.Equal(t, tt.expectedStatus, w.Code, "Response body: %s", w.Body.String())
+
+			if tt.validateFn != nil && w.Code == 200 {
+				var response BatchRescrapeResponse
+				err := json.Unmarshal(w.Body.Bytes(), &response)
+				require.NoError(t, err)
+				tt.validateFn(t, &response)
+			}
+		})
+	}
+}
