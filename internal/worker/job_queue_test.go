@@ -581,3 +581,261 @@ func TestBatchJob_PointerFieldIndependence(t *testing.T) {
 	assert.Equal(t, newTime, *snapshot.Results["file1.mp4"].EndedAt)
 	assert.Equal(t, newError, *snapshot.Results["file1.mp4"].PosterError)
 }
+
+// TestJobQueue_GetJobPointer tests the GetJobPointer method
+func TestJobQueue_GetJobPointer(t *testing.T) {
+	t.Run("get existing job pointer", func(t *testing.T) {
+		jq := NewJobQueue()
+		files := []string{"file1.mp4", "file2.mkv"}
+		job := jq.CreateJob(files)
+
+		// Get pointer to the job
+		jobPtr, ok := jq.GetJobPointer(job.ID)
+		require.True(t, ok, "Should find existing job")
+		require.NotNil(t, jobPtr)
+
+		// Verify it's the same job
+		assert.Equal(t, job.ID, jobPtr.ID)
+		assert.Equal(t, job.TotalFiles, jobPtr.TotalFiles)
+
+		// Modify through pointer should affect original
+		jobPtr.MarkStarted()
+		assert.Equal(t, JobStatusRunning, job.Status)
+	})
+
+	t.Run("get non-existent job pointer", func(t *testing.T) {
+		jq := NewJobQueue()
+
+		jobPtr, ok := jq.GetJobPointer("non-existent-id")
+		assert.False(t, ok, "Should not find non-existent job")
+		assert.Nil(t, jobPtr)
+	})
+}
+
+// TestBatchJob_AtomicUpdateFileResult tests atomic file result updates
+func TestBatchJob_AtomicUpdateFileResult(t *testing.T) {
+	t.Run("atomic update with update function", func(t *testing.T) {
+		jq := NewJobQueue()
+		job := jq.CreateJob([]string{"file1.mp4"})
+
+		now := time.Now()
+		initial := &FileResult{
+			FilePath:  "file1.mp4",
+			MovieID:   "IPX-100",
+			Status:    JobStatusRunning,
+			StartedAt: now,
+		}
+		job.UpdateFileResult("file1.mp4", initial)
+
+		// Atomic update function
+		err := job.AtomicUpdateFileResult("file1.mp4", func(current *FileResult) (*FileResult, error) {
+			// Create updated result
+			updated := *current
+			updated.MovieID = "IPX-200"
+			updated.Status = JobStatusCompleted
+			return &updated, nil
+		})
+
+		assert.NoError(t, err)
+		assert.Equal(t, "IPX-200", job.Results["file1.mp4"].MovieID)
+		assert.Equal(t, JobStatusCompleted, job.Results["file1.mp4"].Status)
+	})
+
+	t.Run("atomic update with error", func(t *testing.T) {
+		jq := NewJobQueue()
+		job := jq.CreateJob([]string{"file1.mp4"})
+
+		now := time.Now()
+		initial := &FileResult{
+			FilePath:  "file1.mp4",
+			MovieID:   "IPX-100",
+			Status:    JobStatusRunning,
+			StartedAt: now,
+		}
+		job.UpdateFileResult("file1.mp4", initial)
+
+		// Atomic update that returns error
+		err := job.AtomicUpdateFileResult("file1.mp4", func(current *FileResult) (*FileResult, error) {
+			return nil, fmt.Errorf("update failed")
+		})
+
+		assert.Error(t, err)
+		assert.Equal(t, "update failed", err.Error())
+		// Original should be unchanged
+		assert.Equal(t, "IPX-100", job.Results["file1.mp4"].MovieID)
+	})
+
+	t.Run("atomic update on non-existent file", func(t *testing.T) {
+		jq := NewJobQueue()
+		job := jq.CreateJob([]string{"file1.mp4"})
+
+		// Try to update without initial result
+		err := job.AtomicUpdateFileResult("file1.mp4", func(current *FileResult) (*FileResult, error) {
+			updated := *current
+			updated.MovieID = "IPX-999"
+			return &updated, nil
+		})
+
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "file result not found")
+	})
+}
+
+// TestBatchJob_SetCancelFunc tests setting cancellation function
+func TestBatchJob_SetCancelFunc(t *testing.T) {
+	t.Run("set and trigger cancel func", func(t *testing.T) {
+		jq := NewJobQueue()
+		job := jq.CreateJob([]string{"file1.mp4"})
+
+		cancelled := false
+		cancelFunc := func() {
+			cancelled = true
+		}
+
+		// Set cancel function
+		job.SetCancelFunc(cancelFunc)
+
+		// Trigger cancellation
+		job.Cancel()
+
+		// Verify cancel function was called
+		assert.True(t, cancelled, "Cancel function should have been called")
+		assert.Equal(t, JobStatusCancelled, job.Status)
+	})
+
+	t.Run("cancel without cancel func", func(t *testing.T) {
+		jq := NewJobQueue()
+		job := jq.CreateJob([]string{"file1.mp4"})
+
+		// Don't set cancel func, just call Cancel
+		job.Cancel()
+
+		// Should still mark as cancelled
+		assert.Equal(t, JobStatusCancelled, job.Status)
+	})
+}
+
+// TestBatchJob_GetProgress tests progress retrieval
+func TestBatchJob_GetProgress(t *testing.T) {
+	t.Run("get progress at different stages", func(t *testing.T) {
+		jq := NewJobQueue()
+		files := []string{"file1.mp4", "file2.mkv", "file3.avi", "file4.mp4"}
+		job := jq.CreateJob(files)
+
+		// Initial progress
+		progress := job.GetProgress()
+		assert.Equal(t, 0.0, progress)
+
+		// Complete one file
+		now := time.Now()
+		job.UpdateFileResult("file1.mp4", &FileResult{
+			FilePath:  "file1.mp4",
+			Status:    JobStatusCompleted,
+			StartedAt: now,
+		})
+		progress = job.GetProgress()
+		assert.Equal(t, 25.0, progress)
+
+		// Complete two more files
+		job.UpdateFileResult("file2.mkv", &FileResult{
+			FilePath:  "file2.mkv",
+			Status:    JobStatusCompleted,
+			StartedAt: now,
+		})
+		job.UpdateFileResult("file3.avi", &FileResult{
+			FilePath:  "file3.avi",
+			Status:    JobStatusCompleted,
+			StartedAt: now,
+		})
+		progress = job.GetProgress()
+		assert.Equal(t, 75.0, progress)
+
+		// Complete last file
+		job.UpdateFileResult("file4.mp4", &FileResult{
+			FilePath:  "file4.mp4",
+			Status:    JobStatusCompleted,
+			StartedAt: now,
+		})
+		progress = job.GetProgress()
+		assert.Equal(t, 100.0, progress)
+	})
+}
+
+// TestBatchJob_ExcludeFile tests file exclusion
+func TestBatchJob_ExcludeFile(t *testing.T) {
+	t.Run("exclude single file", func(t *testing.T) {
+		jq := NewJobQueue()
+		files := []string{"file1.mp4", "file2.mkv", "file3.avi"}
+		job := jq.CreateJob(files)
+
+		// Exclude file
+		job.ExcludeFile("file1.mp4")
+
+		// Verify exclusion
+		assert.True(t, job.IsExcluded("file1.mp4"))
+		assert.False(t, job.IsExcluded("file2.mkv"))
+		assert.False(t, job.IsExcluded("file3.avi"))
+	})
+
+	t.Run("exclude multiple files", func(t *testing.T) {
+		jq := NewJobQueue()
+		files := []string{"file1.mp4", "file2.mkv", "file3.avi"}
+		job := jq.CreateJob(files)
+
+		// Exclude multiple files
+		job.ExcludeFile("file1.mp4")
+		job.ExcludeFile("file3.avi")
+
+		// Verify exclusions
+		assert.True(t, job.IsExcluded("file1.mp4"))
+		assert.False(t, job.IsExcluded("file2.mkv"))
+		assert.True(t, job.IsExcluded("file3.avi"))
+	})
+
+	t.Run("exclude same file multiple times", func(t *testing.T) {
+		jq := NewJobQueue()
+		files := []string{"file1.mp4"}
+		job := jq.CreateJob(files)
+
+		// Exclude same file multiple times
+		job.ExcludeFile("file1.mp4")
+		job.ExcludeFile("file1.mp4")
+		job.ExcludeFile("file1.mp4")
+
+		// Should still be excluded
+		assert.True(t, job.IsExcluded("file1.mp4"))
+	})
+}
+
+// TestBatchJob_IsExcluded tests exclusion checking
+func TestBatchJob_IsExcluded(t *testing.T) {
+	t.Run("check non-excluded file", func(t *testing.T) {
+		jq := NewJobQueue()
+		files := []string{"file1.mp4", "file2.mkv"}
+		job := jq.CreateJob(files)
+
+		// Files should not be excluded initially
+		assert.False(t, job.IsExcluded("file1.mp4"))
+		assert.False(t, job.IsExcluded("file2.mkv"))
+	})
+
+	t.Run("check excluded file", func(t *testing.T) {
+		jq := NewJobQueue()
+		files := []string{"file1.mp4", "file2.mkv"}
+		job := jq.CreateJob(files)
+
+		job.ExcludeFile("file1.mp4")
+
+		assert.True(t, job.IsExcluded("file1.mp4"))
+		assert.False(t, job.IsExcluded("file2.mkv"))
+	})
+
+	t.Run("check non-existent file", func(t *testing.T) {
+		jq := NewJobQueue()
+		files := []string{"file1.mp4"}
+		job := jq.CreateJob(files)
+
+		// Non-existent file should not be excluded
+		assert.False(t, job.IsExcluded("non-existent.mp4"))
+	})
+}
