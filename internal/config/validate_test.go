@@ -147,6 +147,41 @@ func TestConfig_Validate(t *testing.T) {
 			},
 			expectError: false,
 		},
+		{
+			name: "timeout_seconds at minimum valid value",
+			modifyConfig: func(c *Config) {
+				c.Scrapers.TimeoutSeconds = 1
+			},
+			expectError: false,
+		},
+		{
+			name: "timeout_seconds at maximum valid value",
+			modifyConfig: func(c *Config) {
+				c.Scrapers.TimeoutSeconds = 300
+			},
+			expectError: false,
+		},
+		{
+			name: "max_workers at minimum valid value",
+			modifyConfig: func(c *Config) {
+				c.Performance.MaxWorkers = 1
+			},
+			expectError: false,
+		},
+		{
+			name: "max_workers at maximum valid value",
+			modifyConfig: func(c *Config) {
+				c.Performance.MaxWorkers = 100
+			},
+			expectError: false,
+		},
+		{
+			name: "worker_timeout at boundaries",
+			modifyConfig: func(c *Config) {
+				c.Performance.WorkerTimeout = 10
+			},
+			expectError: false,
+		},
 	}
 
 	for _, tt := range tests {

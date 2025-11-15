@@ -200,6 +200,49 @@ func TestValidateRequiredFields_AdditionalFields(t *testing.T) {
 	}
 }
 
+// TestLoadCachesFunctions tests cache loading with nil repositories
+func TestLoadCachesFunctions(t *testing.T) {
+	t.Run("loadGenreReplacementCache with nil repo", func(t *testing.T) {
+		cfg := &config.Config{
+			Scrapers: config.ScrapersConfig{
+				Priority: []string{"r18dev"},
+			},
+		}
+
+		agg := New(cfg)
+		// genreReplacementRepo is nil by default
+		assert.Nil(t, agg.genreReplacementRepo)
+
+		// Should not panic when repo is nil
+		agg.loadGenreReplacementCache()
+
+		// Cache should remain empty
+		agg.genreCacheMutex.RLock()
+		assert.Empty(t, agg.genreReplacementCache)
+		agg.genreCacheMutex.RUnlock()
+	})
+
+	t.Run("loadActressAliasCache with nil repo", func(t *testing.T) {
+		cfg := &config.Config{
+			Scrapers: config.ScrapersConfig{
+				Priority: []string{"r18dev"},
+			},
+		}
+
+		agg := New(cfg)
+		// actressAliasRepo is nil by default
+		assert.Nil(t, agg.actressAliasRepo)
+
+		// Should not panic when repo is nil
+		agg.loadActressAliasCache()
+
+		// Cache should remain empty
+		agg.aliasCacheMutex.RLock()
+		assert.Empty(t, agg.actressAliasCache)
+		agg.aliasCacheMutex.RUnlock()
+	})
+}
+
 // TestGetFieldByPriority tests priority-based field selection
 func TestGetFieldByPriority(t *testing.T) {
 	cfg := &config.Config{
