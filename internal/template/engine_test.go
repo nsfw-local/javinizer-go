@@ -321,6 +321,24 @@ func TestTemplateEngine_TruncateTitle(t *testing.T) {
 			maxLen: -10,
 			want:   "Test Movie Title",
 		},
+		{
+			name:   "CJK title with maxLen <= 3 and title fits",
+			title:  "日本",
+			maxLen: 3,
+			want:   "日本",
+		},
+		{
+			name:   "CJK title with maxLen <= 3 needs truncation",
+			title:  "日本語タイトル",
+			maxLen: 2,
+			want:   "日本語タイトル",
+		},
+		{
+			name:   "English title with maxLen > 3 but no truncation needed",
+			title:  "Short",
+			maxLen: 10,
+			want:   "Short",
+		},
 	}
 
 	for _, tt := range tests {
