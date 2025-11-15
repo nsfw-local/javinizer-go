@@ -97,6 +97,109 @@ func TestAggregateEmptyPriorityUsesGlobal(t *testing.T) {
 	assert.Equal(t, []string{"r18dev", "dmm"}, agg.resolvedPriorities["Title"])
 }
 
+// TestValidateRequiredFields_AdditionalFields tests validation for less commonly validated fields
+func TestValidateRequiredFields_AdditionalFields(t *testing.T) {
+	tests := []struct {
+		name           string
+		requiredFields []string
+		movie          *models.Movie
+		expectError    bool
+		errorContains  string
+	}{
+		{
+			name:           "missing director",
+			requiredFields: []string{"director"},
+			movie: &models.Movie{
+				ID:    "IPX-001",
+				Title: "Test Movie",
+				// Director is missing
+			},
+			expectError:   true,
+			errorContains: "Director",
+		},
+		{
+			name:           "missing label",
+			requiredFields: []string{"label"},
+			movie: &models.Movie{
+				ID:    "IPX-001",
+				Title: "Test Movie",
+				// Label is missing
+			},
+			expectError:   true,
+			errorContains: "Label",
+		},
+		{
+			name:           "missing series with alias 'set'",
+			requiredFields: []string{"set"},
+			movie: &models.Movie{
+				ID:    "IPX-001",
+				Title: "Test Movie",
+				// Series is missing
+			},
+			expectError:   true,
+			errorContains: "Series",
+		},
+		{
+			name:           "missing runtime",
+			requiredFields: []string{"runtime"},
+			movie: &models.Movie{
+				ID:      "IPX-001",
+				Title:   "Test Movie",
+				Runtime: 0, // Missing
+			},
+			expectError:   true,
+			errorContains: "Runtime",
+		},
+		{
+			name:           "missing posterurl with alias 'poster'",
+			requiredFields: []string{"poster"},
+			movie: &models.Movie{
+				ID:    "IPX-001",
+				Title: "Test Movie",
+				// PosterURL is missing
+			},
+			expectError:   true,
+			errorContains: "PosterURL",
+		},
+		{
+			name:           "all fields present",
+			requiredFields: []string{"director", "label", "runtime", "poster"},
+			movie: &models.Movie{
+				ID:        "IPX-001",
+				Title:     "Test Movie",
+				Director:  "John Doe",
+				Label:     "Test Label",
+				Runtime:   120,
+				PosterURL: "http://example.com/poster.jpg",
+			},
+			expectError: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := &config.Config{
+				Metadata: config.MetadataConfig{
+					RequiredFields: tt.requiredFields,
+				},
+				Scrapers: config.ScrapersConfig{
+					Priority: []string{"r18dev"},
+				},
+			}
+
+			agg := New(cfg)
+			err := agg.validateRequiredFields(tt.movie)
+
+			if tt.expectError {
+				assert.Error(t, err)
+				assert.Contains(t, err.Error(), tt.errorContains)
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
+}
+
 // TestGetFieldByPriority tests priority-based field selection
 func TestGetFieldByPriority(t *testing.T) {
 	cfg := &config.Config{
