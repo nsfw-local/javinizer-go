@@ -1,3 +1,14 @@
+// Package matcher tests demonstrate the canonical table-driven test pattern for javinizer-go.
+//
+// This file serves as the reference implementation with 76 test cases showing best practices.
+// For the standardized template and documentation, see internal/testutil/template.go.
+//
+// Key patterns demonstrated:
+//   - Multiple test functions, each testing a specific aspect
+//   - Table-driven structure with name/input/want/wantErr fields
+//   - Comprehensive edge case coverage (real-world filenames, unicode, etc.)
+//   - Clear subtest naming for easy debugging
+//   - Proper use of t.Run() for parallel execution support
 package matcher
 
 import (
