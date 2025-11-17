@@ -1,0 +1,11 @@
+{
+  "id": 2,
+  "dmm_id": 789012,
+  "first_name": "Test",
+  "last_name": "Actress",
+  "japanese_name": "テスト女優",
+  "thumb_url": "https://example.com/test_actress.jpg",
+  "aliases": "Alias One|Alias Two|テストさん",
+  "created_at": "2023-02-20T14:00:00Z",
+  "updated_at": "2023-02-20T14:00:00Z"
+}
