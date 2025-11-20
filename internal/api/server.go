@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
@@ -25,8 +26,10 @@ import (
 )
 
 var (
-	wsHub      *ws.Hub
-	wsUpgrader websocket.Upgrader
+	wsHub         *ws.Hub
+	wsHubCancel   context.CancelFunc // Track cancel function to clean up old hubs
+	wsUpgrader    websocket.Upgrader
+	wsHubShutdown chan struct{} // Signal when hub goroutine exits
 )
 
 // ServerDependencies holds all dependencies needed to create the API server
@@ -190,11 +193,32 @@ func acceptsHTML(c *gin.Context) bool {
 
 // NewServer creates and configures the Gin router with all API endpoints
 func NewServer(deps *ServerDependencies) *gin.Engine {
+	// Clean up existing WebSocket hub if it exists (important for tests that call NewServer multiple times)
+	if wsHubCancel != nil {
+		wsHubCancel() // Cancel the old hub's context
+		if wsHubShutdown != nil {
+			// Wait for the old hub goroutine to fully exit (max 500ms)
+			select {
+			case <-wsHubShutdown:
+				// Old hub shut down successfully
+			case <-time.After(500 * time.Millisecond):
+				// Timeout - old hub didn't shut down gracefully, but proceed anyway
+				logging.Warnf("Old WebSocket hub did not shut down within timeout")
+			}
+		}
+	}
+
 	// Initialize job queue and WebSocket hub
 	wsHub = ws.NewHub()
+	wsHubShutdown = make(chan struct{})
 	ctx, cancel := context.WithCancel(context.Background())
+	wsHubCancel = cancel
 	deps.wsCancel = cancel
-	go wsHub.Run(ctx)
+
+	go func() {
+		wsHub.Run(ctx)
+		close(wsHubShutdown) // Signal that hub goroutine has exited
+	}()
 
 	// Configure WebSocket upgrader with dynamic origin checking from config
 	// Read allowedOrigins from deps.GetConfig() each time to respect config reloads

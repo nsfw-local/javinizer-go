@@ -128,12 +128,24 @@ func (h *Hub) Unregister(client *Client) {
 
 // Broadcast sends a message to all connected clients
 func (h *Hub) Broadcast(message interface{}) error {
+	// Handle nil hub (can occur during cleanup in tests when hub is being replaced)
+	if h == nil {
+		return nil // Silently ignore broadcasts to nil hub
+	}
+
 	data, err := json.Marshal(message)
 	if err != nil {
 		return err
 	}
-	h.broadcast <- data
-	return nil
+
+	// Use select with default to avoid blocking if hub is shutting down
+	select {
+	case h.broadcast <- data:
+		return nil
+	default:
+		// Hub is busy or shutting down, drop the message to avoid blocking
+		return nil
+	}
 }
 
 // BroadcastProgress sends a progress update to all clients

@@ -47,27 +47,34 @@ func initTestWebSocket(t *testing.T) {
 		},
 	}
 
-	// Only initialize wsHub if not already initialized
+	// Initialize wsHub if not already initialized
+	// This follows the same pattern as NewServer() to ensure consistency
 	if wsHub == nil {
 		wsHub = ws.NewHub()
+		wsHubShutdown = make(chan struct{})
 		ctx, cancel := context.WithCancel(context.Background())
+		wsHubCancel = cancel
 
-		// Create channel to signal when Run completes
-		done := make(chan struct{})
 		go func() {
 			wsHub.Run(ctx)
-			close(done)
+			close(wsHubShutdown)
 		}()
 
 		// Clean up on test completion - ensure hub stops gracefully
+		// This cleanup will be inherited by all tests in the package
+		// Note: We don't set wsHub = nil because other goroutines might still have references
 		t.Cleanup(func() {
-			cancel()
-			// Wait for hub goroutine to fully exit (max 500ms)
-			select {
-			case <-done:
-				// Hub shut down successfully
-			case <-time.After(500 * time.Millisecond):
-				// Timeout waiting for shutdown (shouldn't happen in tests)
+			if wsHubCancel != nil {
+				wsHubCancel()
+				if wsHubShutdown != nil {
+					select {
+					case <-wsHubShutdown:
+						// Hub shut down successfully
+					case <-time.After(500 * time.Millisecond):
+						// Timeout waiting for shutdown
+					}
+				}
+				wsHubCancel = nil
 			}
 		})
 	}

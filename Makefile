@@ -129,8 +129,9 @@ bench:
 # Generate coverage report using go-acc (more reliable for multi-package projects)
 # Uses go run to execute go-acc from project dependencies (no global install needed)
 # Version is pinned to match go.mod for reproducible builds
+# Uses -count=1 to disable test caching and ensure fresh coverage data
 coverage:
-	@go run github.com/ory/go-acc@v0.2.8 --covermode count -o coverage.out ./...
+	@go run github.com/ory/go-acc@v0.2.8 --covermode count -o coverage.out ./... -- -count=1
 
 # Open coverage report in browser
 coverage-html: coverage

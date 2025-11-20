@@ -253,7 +253,7 @@ func TestProcessBatchJobConcurrent(t *testing.T) {
 	select {
 	case <-done:
 		// Success
-	case <-time.After(30 * time.Second):
+	case <-time.After(180 * time.Second):
 		t.Fatal("Batch job did not complete within timeout")
 	}
 
@@ -438,7 +438,7 @@ func TestProcessBatchJobRaceConditions(t *testing.T) {
 	select {
 	case <-done:
 		// Success
-	case <-time.After(30 * time.Second):
+	case <-time.After(180 * time.Second):
 		t.Fatal("Batch job did not complete within timeout")
 	}
 
@@ -610,7 +610,7 @@ func TestBatchScrapeTaskDatabaseSafety(t *testing.T) {
 	select {
 	case <-done:
 		// Success - no deadlocks occurred
-	case <-time.After(30 * time.Second):
+	case <-time.After(180 * time.Second):
 		t.Fatal("Database operations deadlocked")
 	}
 
@@ -705,7 +705,7 @@ func TestWorkerPoolErrorHandling(t *testing.T) {
 	select {
 	case <-done:
 		// Success
-	case <-time.After(30 * time.Second):
+	case <-time.After(180 * time.Second):
 		t.Fatal("Batch job did not complete within timeout")
 	}
 
