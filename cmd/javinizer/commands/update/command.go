@@ -29,7 +29,7 @@ func NewCommand() *cobra.Command {
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			configFile, _ := cmd.Flags().GetString("config")
-			return run(cmd, args, configFile)
+			return Run(cmd, args, configFile)
 		},
 	}
 	updateCmd.Flags().BoolP("dry-run", "n", false, "Preview operations without making changes")
@@ -46,7 +46,9 @@ func NewCommand() *cobra.Command {
 	return updateCmd
 }
 
-func run(cmd *cobra.Command, args []string, configFile string) error {
+// Run executes the update command with the given arguments and config file.
+// Exported for testing purposes (Epic 6 Story 6.3).
+func Run(cmd *cobra.Command, args []string, configFile string) error {
 	sourcePath := args[0]
 
 	// Get flags
@@ -184,7 +186,7 @@ func run(cmd *cobra.Command, args []string, configFile string) error {
 			}
 
 			// Construct NFO path for this movie
-			nfoPath := constructNFOPath(*firstMatch, scrapedMovie, deps.Config.Metadata.NFO.PerFile)
+			nfoPath := ConstructNFOPath(*firstMatch, scrapedMovie, deps.Config.Metadata.NFO.PerFile)
 
 			// Check if NFO exists
 			if _, err := os.Stat(nfoPath); err == nil {
@@ -277,8 +279,9 @@ func run(cmd *cobra.Command, args []string, configFile string) error {
 	return nil
 }
 
-// constructNFOPath constructs the expected path to an NFO file for a movie
-func constructNFOPath(match matcher.MatchResult, movie *models.Movie, perFile bool) string {
+// ConstructNFOPath constructs the expected path to an NFO file for a movie.
+// Exported for testing purposes (Epic 6 Story 6.3).
+func ConstructNFOPath(match matcher.MatchResult, movie *models.Movie, perFile bool) string {
 	// Use source directory (where the video file is)
 	outputDir := match.File.Dir
 

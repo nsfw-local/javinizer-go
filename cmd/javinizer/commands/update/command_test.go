@@ -1,9 +1,15 @@
 package update_test
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/javinizer/javinizer-go/cmd/javinizer/commands/update"
+	"github.com/javinizer/javinizer-go/internal/matcher"
+	"github.com/javinizer/javinizer-go/internal/models"
+	"github.com/javinizer/javinizer-go/internal/scanner"
+	"github.com/javinizer/javinizer-go/internal/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -112,30 +118,212 @@ func TestFlags_MutuallyExclusiveOptions(t *testing.T) {
 	assert.False(t, preserveNFO)
 }
 
-// Integration tests - Note: These tests verify command structure and basic flow.
-// Full integration tests with real scraping remain in the scrape command tests as the
-// update command shares the same core execution path (scan, match, scrape, generate NFO).
+// Integration tests
 
-// TestCommandExecutionFlow tests basic command execution flow
-func TestCommandExecutionFlow(t *testing.T) {
+// TestRun_Integration_NoVideoFiles tests graceful handling when no video files exist
+func TestRun_Integration_NoVideoFiles(t *testing.T) {
 	if testing.Short() {
 		t.Skip("integration test")
 	}
 
-	// Test that command can be created and flags parsed
-	cmd := update.NewCommand()
-	assert.NotNil(t, cmd)
+	tmpDir := t.TempDir()
+	configPath, _ := testutil.CreateTestConfig(t, nil)
 
-	// Verify all expected flags exist
-	assert.NotNil(t, cmd.Flags().Lookup("dry-run"))
-	assert.NotNil(t, cmd.Flags().Lookup("download"))
-	assert.NotNil(t, cmd.Flags().Lookup("preset"))
-	assert.NotNil(t, cmd.Flags().Lookup("scalar-strategy"))
-	assert.NotNil(t, cmd.Flags().Lookup("array-strategy"))
+	// Create a non-video file
+	textFile := filepath.Join(tmpDir, "readme.txt")
+	require.NoError(t, os.WriteFile(textFile, []byte("not a video"), 0644))
+
+	cmd := update.NewCommand()
+	cmd.SetArgs([]string{tmpDir})
+
+	err := update.Run(cmd, []string{tmpDir}, configPath)
+	// Should succeed (graceful exit when no videos found)
+	assert.NoError(t, err)
 }
 
-// Note: Full integration tests for update command including:
-// - update_merge_test.go (preset application, strategy parsing, merge behavior)
-// - construct_nfo_path_test.go (NFO path construction and sanitization)
-// remain in cmd/cli/ until the complete migration to the new command structure is finished.
-// These smoke tests verify the command structure and flags are correct.
+// TestRun_Integration_InvalidPath tests error handling for invalid paths
+func TestRun_Integration_InvalidPath(t *testing.T) {
+	if testing.Short() {
+		t.Skip("integration test")
+	}
+
+	configPath, _ := testutil.CreateTestConfig(t, nil)
+
+	cmd := update.NewCommand()
+	err := update.Run(cmd, []string{"/nonexistent/path/that/does/not/exist"}, configPath)
+
+	// Should return error for invalid path
+	assert.Error(t, err)
+}
+
+// TestRun_Integration_DryRunMode tests that dry-run mode doesn't modify files
+func TestRun_Integration_DryRunMode(t *testing.T) {
+	if testing.Short() {
+		t.Skip("integration test")
+	}
+
+	tmpDir := t.TempDir()
+	configPath, _ := testutil.CreateTestConfig(t, nil)
+
+	// Create a test video file
+	videoFile := filepath.Join(tmpDir, "IPX-123.mp4")
+	require.NoError(t, os.WriteFile(videoFile, []byte("fake video"), 0644))
+
+	cmd := update.NewCommand()
+	cmd.Flags().Set("dry-run", "true")
+
+	err := update.Run(cmd, []string{tmpDir}, configPath)
+	// Should succeed
+	assert.NoError(t, err)
+
+	// Video file should still exist (dry-run doesn't move/modify)
+	assert.FileExists(t, videoFile)
+
+	// NFO should NOT be created in dry-run mode
+	nfoFile := filepath.Join(tmpDir, "IPX-123.nfo")
+	assert.NoFileExists(t, nfoFile)
+}
+
+// TestRun_Integration_PresetApplication tests preset flag application
+func TestRun_Integration_PresetApplication(t *testing.T) {
+	if testing.Short() {
+		t.Skip("integration test")
+	}
+
+	tests := []struct {
+		name   string
+		preset string
+	}{
+		{
+			name:   "conservative preset",
+			preset: "conservative",
+		},
+		{
+			name:   "gap-fill preset",
+			preset: "gap-fill",
+		},
+		{
+			name:   "aggressive preset",
+			preset: "aggressive",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tmpDir := t.TempDir()
+			configPath, _ := testutil.CreateTestConfig(t, nil)
+
+			// Create a non-video file (to avoid scraping)
+			textFile := filepath.Join(tmpDir, "readme.txt")
+			require.NoError(t, os.WriteFile(textFile, []byte("not a video"), 0644))
+
+			cmd := update.NewCommand()
+			cmd.Flags().Set("preset", tt.preset)
+
+			err := update.Run(cmd, []string{tmpDir}, configPath)
+			// Should succeed (graceful exit when no videos found)
+			assert.NoError(t, err)
+		})
+	}
+}
+
+// TestConstructNFOPath tests NFO path construction
+func TestConstructNFOPath(t *testing.T) {
+	tests := []struct {
+		name     string
+		match    matcher.MatchResult
+		movie    *models.Movie
+		perFile  bool
+		expected string
+	}{
+		{
+			name: "simple ID",
+			match: matcher.MatchResult{
+				ID: "IPX-123",
+				File: scanner.FileInfo{
+					Dir: "/videos",
+				},
+				IsMultiPart: false,
+			},
+			movie: &models.Movie{
+				ID: "IPX-123",
+			},
+			perFile:  false,
+			expected: "/videos/IPX-123.nfo",
+		},
+		{
+			name: "multi-part with per-file enabled",
+			match: matcher.MatchResult{
+				ID: "IPX-123",
+				File: scanner.FileInfo{
+					Dir: "/videos",
+				},
+				IsMultiPart: true,
+				PartSuffix:  "-cd1",
+			},
+			movie: &models.Movie{
+				ID: "IPX-123",
+			},
+			perFile:  true,
+			expected: "/videos/IPX-123-cd1.nfo",
+		},
+		{
+			name: "multi-part with per-file disabled",
+			match: matcher.MatchResult{
+				ID: "IPX-123",
+				File: scanner.FileInfo{
+					Dir: "/videos",
+				},
+				IsMultiPart: true,
+				PartSuffix:  "-cd1",
+			},
+			movie: &models.Movie{
+				ID: "IPX-123",
+			},
+			perFile:  false,
+			expected: "/videos/IPX-123.nfo",
+		},
+		{
+			name: "ID with special characters",
+			match: matcher.MatchResult{
+				ID: "ABC-123/XYZ",
+				File: scanner.FileInfo{
+					Dir: "/videos",
+				},
+				IsMultiPart: false,
+			},
+			movie: &models.Movie{
+				ID: "ABC-123/XYZ",
+			},
+			perFile:  false,
+			expected: "/videos/ABC-123-XYZ.nfo",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := update.ConstructNFOPath(tt.match, tt.movie, tt.perFile)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+// TestConstructNFOPath_PathTraversalPrevention tests security against path traversal
+func TestConstructNFOPath_PathTraversalPrevention(t *testing.T) {
+	match := matcher.MatchResult{
+		ID: "../../../etc/passwd",
+		File: scanner.FileInfo{
+			Dir: "/videos",
+		},
+		IsMultiPart: false,
+	}
+	movie := &models.Movie{
+		ID: "../../../etc/passwd",
+	}
+
+	result := update.ConstructNFOPath(match, movie, false)
+
+	// Should sanitize path traversal attempts
+	assert.NotContains(t, result, "../")
+	assert.Contains(t, result, "/videos")
+}
