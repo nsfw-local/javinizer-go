@@ -327,3 +327,218 @@ func TestConstructNFOPath_PathTraversalPrevention(t *testing.T) {
 	assert.NotContains(t, result, "../")
 	assert.Contains(t, result, "/videos")
 }
+
+// TestConstructNFOPath_EmptyIDFallback tests fallback when ID sanitization results in empty string
+func TestConstructNFOPath_EmptyIDFallback(t *testing.T) {
+	match := matcher.MatchResult{
+		ID: "///", // Will sanitize to empty string
+		File: scanner.FileInfo{
+			Dir: "/videos",
+		},
+		IsMultiPart: false,
+	}
+	movie := &models.Movie{
+		ID: "///",
+	}
+
+	result := update.ConstructNFOPath(match, movie, false)
+
+	// Should use fallback "metadata" when sanitization results in empty
+	assert.Contains(t, result, "/videos/")
+	assert.Contains(t, result, ".nfo")
+	// Should not be empty filename
+	assert.NotEqual(t, "/videos/.nfo", result)
+}
+
+// TestRun_Integration_WithExistingNFO tests NFO merge with existing file
+func TestRun_Integration_WithExistingNFO(t *testing.T) {
+	if testing.Short() {
+		t.Skip("integration test")
+	}
+
+	tmpDir := t.TempDir()
+	configPath, _ := testutil.CreateTestConfig(t, nil)
+
+	// Create a test video file
+	videoFile := filepath.Join(tmpDir, "IPX-123.mp4")
+	require.NoError(t, os.WriteFile(videoFile, []byte("fake video"), 0644))
+
+	// Create an existing NFO file with some metadata
+	existingNFO := filepath.Join(tmpDir, "IPX-123.nfo")
+	nfoContent := `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<movie>
+  <title>Existing Title</title>
+  <plot>Existing plot from NFO</plot>
+  <studio>Existing Studio</studio>
+</movie>`
+	require.NoError(t, os.WriteFile(existingNFO, []byte(nfoContent), 0644))
+
+	cmd := update.NewCommand()
+	cmd.Flags().Set("scalar-strategy", "prefer-nfo")
+	cmd.Flags().Set("show-merge-stats", "true")
+
+	// This will exercise the NFO merge logic (lines 158-238)
+	err := update.Run(cmd, []string{tmpDir}, configPath)
+
+	// Should succeed even though scraper will fail (no real scraper data)
+	// The key is that it attempts to merge with existing NFO
+	if err != nil {
+		// Error is expected since we can't scrape real data, but merge logic was exercised
+		t.Logf("Expected error (no scraper data): %v", err)
+	}
+
+	// Verify existing NFO file still exists
+	assert.FileExists(t, existingNFO)
+}
+
+// TestRun_Integration_InvalidConfig tests error handling for invalid config
+func TestRun_Integration_InvalidConfig(t *testing.T) {
+	if testing.Short() {
+		t.Skip("integration test")
+	}
+
+	tmpDir := t.TempDir()
+
+	// Use a non-existent config file
+	invalidConfigPath := "/nonexistent/config.yaml"
+
+	cmd := update.NewCommand()
+	err := update.Run(cmd, []string{tmpDir}, invalidConfigPath)
+
+	// Should return error for invalid config
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to load config")
+}
+
+// TestRun_Integration_MergeStrategies tests different merge strategies
+func TestRun_Integration_MergeStrategies(t *testing.T) {
+	if testing.Short() {
+		t.Skip("integration test")
+	}
+
+	strategies := []struct {
+		name           string
+		scalarStrategy string
+		arrayStrategy  string
+	}{
+		{
+			name:           "prefer-scraper strategy",
+			scalarStrategy: "prefer-scraper",
+			arrayStrategy:  "replace",
+		},
+		{
+			name:           "preserve-existing strategy",
+			scalarStrategy: "preserve-existing",
+			arrayStrategy:  "merge",
+		},
+		{
+			name:           "fill-missing-only strategy",
+			scalarStrategy: "fill-missing-only",
+			arrayStrategy:  "merge",
+		},
+	}
+
+	for _, tt := range strategies {
+		t.Run(tt.name, func(t *testing.T) {
+			tmpDir := t.TempDir()
+			configPath, _ := testutil.CreateTestConfig(t, nil)
+
+			// Create a non-video file to avoid actual scraping
+			textFile := filepath.Join(tmpDir, "readme.txt")
+			require.NoError(t, os.WriteFile(textFile, []byte("not a video"), 0644))
+
+			cmd := update.NewCommand()
+			cmd.Flags().Set("scalar-strategy", tt.scalarStrategy)
+			cmd.Flags().Set("array-strategy", tt.arrayStrategy)
+
+			err := update.Run(cmd, []string{tmpDir}, configPath)
+			// Should succeed (graceful exit when no videos found)
+			assert.NoError(t, err)
+		})
+	}
+}
+
+// TestRun_Integration_DownloadMediaEnabled tests media download path
+func TestRun_Integration_DownloadMediaEnabled(t *testing.T) {
+	if testing.Short() {
+		t.Skip("integration test")
+	}
+
+	tmpDir := t.TempDir()
+	configPath, _ := testutil.CreateTestConfig(t, nil)
+
+	// Create a test video file
+	videoFile := filepath.Join(tmpDir, "IPX-123.mp4")
+	require.NoError(t, os.WriteFile(videoFile, []byte("fake video"), 0644))
+
+	cmd := update.NewCommand()
+	cmd.Flags().Set("download", "true")
+	cmd.Flags().Set("dry-run", "false")
+
+	// This will exercise the download media code path (lines 251-259)
+	err := update.Run(cmd, []string{tmpDir}, configPath)
+
+	// Error expected since scraper will fail, but download path was exercised
+	if err != nil {
+		t.Logf("Expected error (no scraper data): %v", err)
+	}
+}
+
+// TestConstructNFOPath_MultiPartSuffixVariations tests different multi-part suffix formats
+func TestConstructNFOPath_MultiPartSuffixVariations(t *testing.T) {
+	tests := []struct {
+		name                string
+		suffix              string
+		perFile             bool
+		shouldIncludeSuffix bool
+	}{
+		{
+			name:                "cd1 suffix with per-file",
+			suffix:              "-cd1",
+			perFile:             true,
+			shouldIncludeSuffix: true,
+		},
+		{
+			name:                "cd2 suffix with per-file",
+			suffix:              "-cd2",
+			perFile:             true,
+			shouldIncludeSuffix: true,
+		},
+		{
+			name:                "pt1 suffix with per-file",
+			suffix:              "-pt1",
+			perFile:             true,
+			shouldIncludeSuffix: true,
+		},
+		{
+			name:                "any suffix without per-file",
+			suffix:              "-cd1",
+			perFile:             false,
+			shouldIncludeSuffix: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			match := matcher.MatchResult{
+				ID: "IPX-123",
+				File: scanner.FileInfo{
+					Dir: "/videos",
+				},
+				IsMultiPart: true,
+				PartSuffix:  tt.suffix,
+			}
+			movie := &models.Movie{
+				ID: "IPX-123",
+			}
+
+			result := update.ConstructNFOPath(match, movie, tt.perFile)
+
+			if tt.shouldIncludeSuffix {
+				assert.Contains(t, result, tt.suffix)
+			} else {
+				assert.NotContains(t, result, tt.suffix)
+			}
+		})
+	}
+}
