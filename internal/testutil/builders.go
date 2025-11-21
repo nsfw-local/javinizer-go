@@ -185,3 +185,189 @@ func (b *ActressBuilder) WithBirthdate(date time.Time) *ActressBuilder {
 func (b *ActressBuilder) Build() *models.Actress {
 	return b.actress
 }
+
+// ScraperResultBuilder constructs ScraperResult test entities using the builder pattern with fluent API.
+// It provides sensible defaults and method chaining for easy test data creation.
+//
+// Default values:
+//   - Source: "dmm" (canonical test scraper)
+//   - ContentID: "ABC-123" (canonical test content ID)
+//   - Title: "Test Movie"
+//   - Language: "ja"
+//
+// Required fields validation on Build():
+//   - Source (panics if empty)
+//   - ContentID (panics if empty or invalid format)
+//   - Title (panics if empty)
+//
+// Example usage:
+//
+//	result := testutil.NewScraperResultBuilder().
+//	    WithSource("dmm").
+//	    WithContentID("IPX-123").
+//	    WithTitle("Test Movie").
+//	    WithActresses("Actress A", "Actress B").
+//	    WithGenres("Drama", "Romance").
+//	    Build()
+type ScraperResultBuilder struct {
+	result *models.ScraperResult
+}
+
+// NewScraperResultBuilder creates a new ScraperResultBuilder with sensible defaults.
+// Default: Source="dmm", ContentID="ABC-123", Title="Test Movie", Language="ja"
+func NewScraperResultBuilder() *ScraperResultBuilder {
+	return &ScraperResultBuilder{
+		result: &models.ScraperResult{
+			Source:    "dmm",
+			ContentID: "ABC-123",
+			Title:     "Test Movie",
+			Language:  "ja",
+		},
+	}
+}
+
+// WithSource sets the scraper source and returns the builder for chaining.
+// Required field. Common values: "dmm", "r18dev"
+func (b *ScraperResultBuilder) WithSource(source string) *ScraperResultBuilder {
+	b.result.Source = source
+	return b
+}
+
+// WithContentID sets the content ID and returns the builder for chaining.
+// Required field. Must match regex: ^[A-Z]{2,5}-\d{3,5}$ (e.g., "ABC-123", "IPXYZ-12345")
+func (b *ScraperResultBuilder) WithContentID(contentID string) *ScraperResultBuilder {
+	b.result.ContentID = contentID
+	return b
+}
+
+// WithTitle sets the movie title and returns the builder for chaining.
+// Required field.
+func (b *ScraperResultBuilder) WithTitle(title string) *ScraperResultBuilder {
+	b.result.Title = title
+	return b
+}
+
+// WithActresses sets the actresses and returns the builder for chaining.
+// Variadic parameter for convenient test data creation.
+func (b *ScraperResultBuilder) WithActresses(actresses ...string) *ScraperResultBuilder {
+	if len(actresses) == 0 {
+		b.result.Actresses = nil
+		return b
+	}
+
+	actressList := make([]models.ActressInfo, len(actresses))
+	for i, name := range actresses {
+		actressList[i] = models.ActressInfo{
+			FirstName: name,
+		}
+	}
+	b.result.Actresses = actressList
+	return b
+}
+
+// WithGenres sets the genres and returns the builder for chaining.
+// Variadic parameter for convenient test data creation.
+func (b *ScraperResultBuilder) WithGenres(genres ...string) *ScraperResultBuilder {
+	if len(genres) == 0 {
+		b.result.Genres = nil
+		return b
+	}
+
+	b.result.Genres = genres
+	return b
+}
+
+// WithReleaseDate sets the release date and returns the builder for chaining.
+func (b *ScraperResultBuilder) WithReleaseDate(date time.Time) *ScraperResultBuilder {
+	b.result.ReleaseDate = &date
+	return b
+}
+
+// WithCoverURL sets the cover URL and returns the builder for chaining.
+func (b *ScraperResultBuilder) WithCoverURL(url string) *ScraperResultBuilder {
+	b.result.CoverURL = url
+	return b
+}
+
+// WithPosterURL sets the poster URL and returns the builder for chaining.
+func (b *ScraperResultBuilder) WithPosterURL(url string) *ScraperResultBuilder {
+	b.result.PosterURL = url
+	return b
+}
+
+// WithDescription sets the description and returns the builder for chaining.
+func (b *ScraperResultBuilder) WithDescription(description string) *ScraperResultBuilder {
+	b.result.Description = description
+	return b
+}
+
+// WithMaker sets the maker (studio) and returns the builder for chaining.
+func (b *ScraperResultBuilder) WithMaker(maker string) *ScraperResultBuilder {
+	b.result.Maker = maker
+	return b
+}
+
+// WithLabel sets the label and returns the builder for chaining.
+func (b *ScraperResultBuilder) WithLabel(label string) *ScraperResultBuilder {
+	b.result.Label = label
+	return b
+}
+
+// WithSeries sets the series and returns the builder for chaining.
+func (b *ScraperResultBuilder) WithSeries(series string) *ScraperResultBuilder {
+	b.result.Series = series
+	return b
+}
+
+// WithRuntime sets the runtime in minutes and returns the builder for chaining.
+func (b *ScraperResultBuilder) WithRuntime(runtime int) *ScraperResultBuilder {
+	b.result.Runtime = runtime
+	return b
+}
+
+// WithSourceURL sets the source URL and returns the builder for chaining.
+func (b *ScraperResultBuilder) WithSourceURL(url string) *ScraperResultBuilder {
+	b.result.SourceURL = url
+	return b
+}
+
+// Build returns the constructed ScraperResult instance.
+// Panics if required fields are missing or invalid:
+//   - Source must not be empty
+//   - ContentID must not be empty and must match regex ^[A-Z]{2,5}-\d{3,5}$
+//   - Title must not be empty
+func (b *ScraperResultBuilder) Build() *models.ScraperResult {
+	// Validate required fields
+	if b.result.Source == "" {
+		panic("ScraperResultBuilder: Source is required (use WithSource)")
+	}
+	if b.result.ContentID == "" {
+		panic("ScraperResultBuilder: ContentID is required (use WithContentID)")
+	}
+	if b.result.Title == "" {
+		panic("ScraperResultBuilder: Title is required (use WithTitle)")
+	}
+
+	// Validate ContentID format (regex: ^[A-Z]{2,5}-\d{3,5}$)
+	// Simple validation: check for hyphen, letters before hyphen, numbers after
+	var hasHyphen bool
+	var beforeHyphen, afterHyphen string
+	for _, c := range b.result.ContentID {
+		if c == '-' {
+			hasHyphen = true
+			continue
+		}
+		if !hasHyphen {
+			beforeHyphen += string(c)
+		} else {
+			afterHyphen += string(c)
+		}
+	}
+
+	if !hasHyphen || len(beforeHyphen) < 2 || len(beforeHyphen) > 5 ||
+		len(afterHyphen) < 3 || len(afterHyphen) > 5 {
+		panic("ScraperResultBuilder: ContentID must match format ^[A-Z]{2,5}-\\d{3,5}$ (e.g., 'ABC-123' or 'IPXYZ-12345')")
+	}
+
+	return b.result
+}

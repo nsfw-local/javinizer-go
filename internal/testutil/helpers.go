@@ -298,6 +298,25 @@ func UpdateGoldenFile(name string, content []byte) error {
 	return nil
 }
 
+// GoldenFilePath returns the absolute path to a golden file in a package's testdata directory.
+// This function is useful when you need to access golden files from nested package directories.
+//
+// Parameters:
+//   - t: The testing.T instance (used for determining the package path)
+//   - packageName: The package subdirectory (e.g., "dmm", "r18dev")
+//   - filename: The golden file name (e.g., "response.html.golden")
+//
+// Returns the path: internal/scraper/{packageName}/testdata/{filename}
+//
+// Example:
+//
+//	path := testutil.GoldenFilePath(t, "dmm", "search_success.html.golden")
+//	// Returns: "internal/scraper/dmm/testdata/search_success.html.golden"
+func GoldenFilePath(t *testing.T, packageName, filename string) string {
+	t.Helper()
+	return filepath.Join("internal", "scraper", packageName, "testdata", filename)
+}
+
 // generateDiff creates a line-by-line diff between expected and actual strings.
 // Similar to the output of `diff -u` but simplified for test output.
 func generateDiff(expected, actual string) string {

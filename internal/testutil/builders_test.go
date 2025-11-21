@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/javinizer/javinizer-go/internal/models"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -485,6 +486,338 @@ func ExampleActressBuilder() {
 		WithDMMID("123456").
 		Build()
 	_ = customActress
+
+	// Output shows the builder pattern in action
+}
+
+// TestScraperResultBuilderDefaults verifies the default values set by NewScraperResultBuilder.
+func TestScraperResultBuilderDefaults(t *testing.T) {
+	result := NewScraperResultBuilder().Build()
+
+	assert.Equal(t, "dmm", result.Source, "default source should be 'dmm'")
+	assert.Equal(t, "ABC-123", result.ContentID, "default contentID should be 'ABC-123'")
+	assert.Equal(t, "Test Movie", result.Title, "default title should be 'Test Movie'")
+	assert.Equal(t, "ja", result.Language, "default language should be 'ja'")
+	assert.Nil(t, result.Actresses, "default actresses should be nil")
+	assert.Nil(t, result.Genres, "default genres should be nil")
+}
+
+// TestScraperResultBuilderRequiredFields verifies that Build() panics when required fields are missing or invalid.
+func TestScraperResultBuilderRequiredFields(t *testing.T) {
+	tests := []struct {
+		name        string
+		builderFunc func() *ScraperResultBuilder
+		wantPanic   string
+	}{
+		{
+			name: "missing source",
+			builderFunc: func() *ScraperResultBuilder {
+				return NewScraperResultBuilder().WithSource("")
+			},
+			wantPanic: "Source is required",
+		},
+		{
+			name: "missing contentID",
+			builderFunc: func() *ScraperResultBuilder {
+				return NewScraperResultBuilder().WithContentID("")
+			},
+			wantPanic: "ContentID is required",
+		},
+		{
+			name: "missing title",
+			builderFunc: func() *ScraperResultBuilder {
+				return NewScraperResultBuilder().WithTitle("")
+			},
+			wantPanic: "Title is required",
+		},
+		{
+			name: "contentID too short prefix",
+			builderFunc: func() *ScraperResultBuilder {
+				return NewScraperResultBuilder().WithContentID("A-123")
+			},
+			wantPanic: "must match format",
+		},
+		{
+			name: "contentID too long prefix",
+			builderFunc: func() *ScraperResultBuilder {
+				return NewScraperResultBuilder().WithContentID("ABCDEF-123")
+			},
+			wantPanic: "must match format",
+		},
+		{
+			name: "contentID too short suffix",
+			builderFunc: func() *ScraperResultBuilder {
+				return NewScraperResultBuilder().WithContentID("ABC-12")
+			},
+			wantPanic: "must match format",
+		},
+		{
+			name: "contentID too long suffix",
+			builderFunc: func() *ScraperResultBuilder {
+				return NewScraperResultBuilder().WithContentID("ABC-123456")
+			},
+			wantPanic: "must match format",
+		},
+		{
+			name: "contentID missing hyphen",
+			builderFunc: func() *ScraperResultBuilder {
+				return NewScraperResultBuilder().WithContentID("ABC123")
+			},
+			wantPanic: "must match format",
+		},
+		{
+			name: "valid 2-letter prefix",
+			builderFunc: func() *ScraperResultBuilder {
+				return NewScraperResultBuilder().WithContentID("AB-123")
+			},
+			wantPanic: "", // Should NOT panic
+		},
+		{
+			name: "valid 3-letter prefix",
+			builderFunc: func() *ScraperResultBuilder {
+				return NewScraperResultBuilder().WithContentID("ABC-123")
+			},
+			wantPanic: "", // Should NOT panic
+		},
+		{
+			name: "valid 5-letter prefix",
+			builderFunc: func() *ScraperResultBuilder {
+				return NewScraperResultBuilder().WithContentID("IPXYZ-123")
+			},
+			wantPanic: "", // Should NOT panic
+		},
+		{
+			name: "valid 3-digit suffix",
+			builderFunc: func() *ScraperResultBuilder {
+				return NewScraperResultBuilder().WithContentID("ABC-123")
+			},
+			wantPanic: "", // Should NOT panic
+		},
+		{
+			name: "valid 5-digit suffix",
+			builderFunc: func() *ScraperResultBuilder {
+				return NewScraperResultBuilder().WithContentID("ABC-12345")
+			},
+			wantPanic: "", // Should NOT panic
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.wantPanic == "" {
+				// Should NOT panic
+				assert.NotPanics(t, func() {
+					_ = tt.builderFunc().Build()
+				})
+			} else {
+				// Should panic with message containing wantPanic string
+				assert.Panics(t, func() {
+					defer func() {
+						if r := recover(); r != nil {
+							panicMsg, ok := r.(string)
+							assert.True(t, ok, "panic value should be a string")
+							assert.Contains(t, panicMsg, tt.wantPanic, "panic message should contain expected text")
+							panic(r) // Re-panic to satisfy assert.Panics
+						}
+					}()
+					_ = tt.builderFunc().Build()
+				})
+			}
+		})
+	}
+}
+
+// TestScraperResultBuilderWithSource verifies WithSource sets the source correctly.
+func TestScraperResultBuilderWithSource(t *testing.T) {
+	result := NewScraperResultBuilder().
+		WithSource("r18dev").
+		Build()
+
+	assert.Equal(t, "r18dev", result.Source)
+}
+
+// TestScraperResultBuilderWithContentID verifies WithContentID sets the content ID correctly.
+func TestScraperResultBuilderWithContentID(t *testing.T) {
+	result := NewScraperResultBuilder().
+		WithContentID("IPX-123").
+		Build()
+
+	assert.Equal(t, "IPX-123", result.ContentID)
+}
+
+// TestScraperResultBuilderWithActresses verifies WithActresses handles variadic arguments correctly.
+func TestScraperResultBuilderWithActresses(t *testing.T) {
+	tests := []struct {
+		name      string
+		actresses []string
+		want      []models.ActressInfo
+	}{
+		{
+			name:      "nil actresses",
+			actresses: nil,
+			want:      nil,
+		},
+		{
+			name:      "empty actresses",
+			actresses: []string{},
+			want:      nil,
+		},
+		{
+			name:      "single actress",
+			actresses: []string{"Actress A"},
+			want: []models.ActressInfo{
+				{FirstName: "Actress A"},
+			},
+		},
+		{
+			name:      "multiple actresses",
+			actresses: []string{"Actress A", "Actress B", "Actress C"},
+			want: []models.ActressInfo{
+				{FirstName: "Actress A"},
+				{FirstName: "Actress B"},
+				{FirstName: "Actress C"},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := NewScraperResultBuilder().
+				WithActresses(tt.actresses...).
+				Build()
+
+			assert.Equal(t, tt.want, result.Actresses)
+		})
+	}
+}
+
+// TestScraperResultBuilderWithGenres verifies WithGenres handles variadic arguments correctly.
+func TestScraperResultBuilderWithGenres(t *testing.T) {
+	tests := []struct {
+		name   string
+		genres []string
+		want   []string
+	}{
+		{
+			name:   "nil genres",
+			genres: nil,
+			want:   nil,
+		},
+		{
+			name:   "empty genres",
+			genres: []string{},
+			want:   nil,
+		},
+		{
+			name:   "single genre",
+			genres: []string{"Drama"},
+			want:   []string{"Drama"},
+		},
+		{
+			name:   "multiple genres",
+			genres: []string{"Drama", "Romance", "Comedy"},
+			want:   []string{"Drama", "Romance", "Comedy"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := NewScraperResultBuilder().
+				WithGenres(tt.genres...).
+				Build()
+
+			assert.Equal(t, tt.want, result.Genres)
+		})
+	}
+}
+
+// TestScraperResultBuilderMethodChaining verifies that all With methods support method chaining.
+func TestScraperResultBuilderMethodChaining(t *testing.T) {
+	releaseDate := time.Date(2025, 3, 15, 0, 0, 0, 0, time.UTC)
+
+	result := NewScraperResultBuilder().
+		WithSource("dmm").
+		WithContentID("IPX-123").
+		WithTitle("Test Movie Title").
+		WithActresses("Actress A", "Actress B").
+		WithGenres("Drama", "Romance").
+		WithReleaseDate(releaseDate).
+		WithCoverURL("https://example.com/cover.jpg").
+		WithPosterURL("https://example.com/poster.jpg").
+		WithDescription("Test description").
+		WithMaker("Test Studio").
+		WithLabel("Test Label").
+		WithSeries("Test Series").
+		WithRuntime(120).
+		WithSourceURL("https://example.com/source").
+		Build()
+
+	assert.Equal(t, "dmm", result.Source)
+	assert.Equal(t, "IPX-123", result.ContentID)
+	assert.Equal(t, "Test Movie Title", result.Title)
+	assert.Equal(t, 2, len(result.Actresses))
+	assert.Equal(t, "Actress A", result.Actresses[0].FirstName)
+	assert.Equal(t, "Actress B", result.Actresses[1].FirstName)
+	assert.Equal(t, []string{"Drama", "Romance"}, result.Genres)
+	assert.Equal(t, &releaseDate, result.ReleaseDate)
+	assert.Equal(t, "https://example.com/cover.jpg", result.CoverURL)
+	assert.Equal(t, "https://example.com/poster.jpg", result.PosterURL)
+	assert.Equal(t, "Test description", result.Description)
+	assert.Equal(t, "Test Studio", result.Maker)
+	assert.Equal(t, "Test Label", result.Label)
+	assert.Equal(t, "Test Series", result.Series)
+	assert.Equal(t, 120, result.Runtime)
+	assert.Equal(t, "https://example.com/source", result.SourceURL)
+}
+
+// TestScraperResultBuilderCanonicalValues verifies the builder works with canonical test values.
+func TestScraperResultBuilderCanonicalValues(t *testing.T) {
+	releaseDate := time.Date(2025, 3, 15, 0, 0, 0, 0, time.UTC)
+
+	result := NewScraperResultBuilder().
+		WithSource("dmm").
+		WithContentID("IPX-123").
+		WithTitle("Canonical Test Movie").
+		WithActresses("Test Actress A", "Test Actress B").
+		WithGenres("Drama").
+		WithReleaseDate(releaseDate).
+		WithCoverURL("https://pics.dmm.co.jp/digital/video/ipx123/ipx123ps.jpg").
+		WithMaker("Test Studio").
+		WithRuntime(120).
+		Build()
+
+	assert.Equal(t, "dmm", result.Source)
+	assert.Equal(t, "IPX-123", result.ContentID)
+	assert.Equal(t, "Canonical Test Movie", result.Title)
+	assert.Equal(t, "ja", result.Language)
+	assert.NotNil(t, result.Actresses)
+	assert.Equal(t, 2, len(result.Actresses))
+	assert.NotNil(t, result.Genres)
+	assert.Equal(t, 1, len(result.Genres))
+	assert.NotNil(t, result.ReleaseDate)
+	assert.NotEmpty(t, result.CoverURL)
+}
+
+// ExampleScraperResultBuilder demonstrates the builder pattern for creating test ScraperResult instances.
+func ExampleScraperResultBuilder() {
+	// Create a scraper result with default values
+	defaultResult := NewScraperResultBuilder().Build()
+	_ = defaultResult // defaultResult.Source == "dmm", defaultResult.ContentID == "ABC-123"
+
+	// Create a custom scraper result with specific values
+	releaseDate := time.Date(2025, 3, 15, 0, 0, 0, 0, time.UTC)
+	customResult := NewScraperResultBuilder().
+		WithSource("dmm").
+		WithContentID("IPX-123").
+		WithTitle("Custom Movie Title").
+		WithActresses("Actress A", "Actress B").
+		WithGenres("Drama", "Romance").
+		WithReleaseDate(releaseDate).
+		WithCoverURL("https://pics.dmm.co.jp/digital/video/ipx123/ipx123ps.jpg").
+		WithMaker("Test Studio").
+		WithRuntime(120).
+		Build()
+	_ = customResult
 
 	// Output shows the builder pattern in action
 }

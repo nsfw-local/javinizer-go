@@ -687,3 +687,65 @@ func TestScraperResultToNFO_TrailerDisabled(t *testing.T) {
 func timePtr(t time.Time) *time.Time {
 	return &t
 }
+
+// BenchmarkNFOGenerate measures the performance of NFO generation with 5 actresses and 10 genres
+// This benchmark is for observation only - not a pass/fail gate
+// Expected baseline: ~5ms per operation for full Movie
+func BenchmarkNFOGenerate(b *testing.B) {
+	// Setup: Create in-memory filesystem
+	fs := afero.NewMemMapFs()
+	cfg := DefaultConfig()
+	gen := NewGenerator(fs, cfg)
+
+	// Setup: Create test movie with 5 actresses and 10 genres
+	releaseDate := time.Date(2023, 5, 15, 0, 0, 0, 0, time.UTC)
+	movie := &models.Movie{
+		ID:            "IPX-123",
+		ContentID:     "ipx00123",
+		Title:         "Test Movie Title",
+		OriginalTitle: "テストムービータイトル",
+		Description:   "This is a comprehensive test movie description for benchmark testing.",
+		ReleaseDate:   &releaseDate,
+		Runtime:       150,
+		Director:      "Test Director",
+		Maker:         "Test Studio",
+		Label:         "Test Label",
+		Series:        "Test Series",
+		RatingScore:   8.7,
+		RatingVotes:   250,
+		Actresses: []models.Actress{
+			{FirstName: "Yui", LastName: "Hatano", JapaneseName: "波多野結衣"},
+			{FirstName: "Momo", LastName: "Sakura", JapaneseName: "桜空もも"},
+			{FirstName: "Aika", LastName: "Yumeno", JapaneseName: "夢乃あいか"},
+			{FirstName: "Mia", LastName: "Nanasawa", JapaneseName: "七沢みあ"},
+			{FirstName: "Sora", LastName: "Amakawa", JapaneseName: "天川そら"},
+		},
+		Genres: []models.Genre{
+			{Name: "Drama"},
+			{Name: "Romance"},
+			{Name: "4HR+"},
+			{Name: "Big Tits"},
+			{Name: "Beautiful Girl"},
+			{Name: "Slender"},
+			{Name: "Creampie"},
+			{Name: "Blowjob"},
+			{Name: "Threesome"},
+			{Name: "Digital Mosaic"},
+		},
+	}
+
+	outputPath := "/tmp/benchmark/test.nfo"
+	partSuffix := ""
+	videoFilePath := "/tmp/benchmark/IPX-123.mp4"
+
+	// Reset timer to exclude setup time
+	b.ResetTimer()
+
+	// Benchmark loop
+	for i := 0; i < b.N; i++ {
+		err := gen.Generate(movie, outputPath, partSuffix, videoFilePath)
+		if err != nil {
+			b.Fatalf("Generate failed: %v", err)
+		}
+	}
+}

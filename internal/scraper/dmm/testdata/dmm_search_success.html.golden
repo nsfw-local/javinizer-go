@@ -1,0 +1,94 @@
+<!-- Golden file created: 2025-11-21 -->
+<!-- Source: DMM search for test movie ABC-123 -->
+<!-- Last validated: 2025-11-21 (semantic check passed) -->
+<!-- Purpose: Complete movie data with all fields populated -->
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta property="og:title" content="Test Movie ABC-123 / Test Actress">
+    <title>Test Movie ABC-123 | DMM.co.jp</title>
+</head>
+<body>
+    <div class="content">
+        <h1 id="title" class="item">成功ムービー ABC-123</h1>
+
+        <div class="mg-b20 lh4">
+            <p class="mg-b20">
+                これはテスト用のムービー説明文です。This is a test movie description for testing purposes.
+                It contains multiple sentences to test description extraction properly.
+            </p>
+        </div>
+
+        <table class="mg-b20">
+            <tr>
+                <td class="nw">メーカー</td>
+                <td>
+                    <a href="?maker=1234">Test Studio</a>
+                </td>
+            </tr>
+            <tr>
+                <td class="nw">レーベル</td>
+                <td>
+                    <a href="?label=5678">Test Label</a>
+                </td>
+            </tr>
+            <tr>
+                <td class="nw">シリーズ</td>
+                <td>
+                    <a href="?series=9012">Test Series</a>
+                </td>
+            </tr>
+            <tr>
+                <td class="nw">出演者</td>
+                <td>
+                    <a href="?actress=1111">女優一</a>
+                    <a href="?actress=2222">女優二</a>
+                </td>
+            </tr>
+            <tr>
+                <td class="nw">ジャンル：</td>
+                <td>
+                    <a href="?genre=drama">ドラマ</a>
+                    <a href="?genre=bishoujo">美少女</a>
+                    <a href="?genre=idol">アイドル・芸能人</a>
+                </td>
+            </tr>
+            <tr>
+                <td class="nw">収録時間</td>
+                <td>120分</td>
+            </tr>
+            <tr>
+                <td class="nw">配信開始日</td>
+                <td>2025/01/15</td>
+            </tr>
+            <tr>
+                <td class="nw">商品番号</td>
+                <td>ABC123</td>
+            </tr>
+        </table>
+
+        <div class="image-gallery">
+            <a name="sample-image">
+                <img src="https://pics.dmm.co.jp/digital/video/abc123/abc123pl.jpg" alt="Sample 1">
+            </a>
+            <a name="sample-image">
+                <img src="https://pics.dmm.co.jp/digital/video/abc123/abc123-1.jpg" alt="Sample 2">
+            </a>
+            <a name="sample-image">
+                <img src="https://pics.dmm.co.jp/digital/video/abc123/abc123-2.jpg" alt="Sample 3">
+            </a>
+        </div>
+
+        <div class="trailer-section">
+            <a class="fn-sampleVideoBtn" href="https://cc3001.dmm.co.jp/litevideo/freepv/abc/abc123/abc123_dm_w.mp4">
+                Sample Video
+            </a>
+        </div>
+
+        <div class="cover-image">
+            <img src="https://pics.dmm.co.jp/digital/video/abc123/abc123ps.jpg" alt="Cover">
+        </div>
+    </div>
+</body>
+</html>

@@ -1498,3 +1498,41 @@ func TestDownloader_DownloadActressImages_WithNFOConfig(t *testing.T) {
 		})
 	}
 }
+
+// BenchmarkDownload measures the performance of downloading a 1MB file with mocked HTTP client
+// This benchmark is for observation only - not a pass/fail gate
+// Expected baseline: ~100ms per operation for mocked I/O
+func BenchmarkDownload(b *testing.B) {
+	// Setup: Create mock HTTP server
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Generate 1MB response body
+		data := make([]byte, 1024*1024) // 1MB
+		w.WriteHeader(http.StatusOK)
+		w.Write(data)
+	}))
+	defer server.Close()
+
+	// Setup: Configure downloader with in-memory filesystem
+	fs := afero.NewMemMapFs()
+	cfg := &config.OutputConfig{
+		DownloadCover: true,
+		FanartFormat:  "<ID>-fanart.jpg",
+	}
+	downloader := NewDownloader(http.DefaultClient, fs, cfg, "benchmark-agent")
+
+	// Setup: Create test movie
+	movie := createTestMovie()
+	movie.CoverURL = server.URL + "/cover.jpg"
+	destDir := "/tmp/benchmark"
+
+	// Reset timer to exclude setup time
+	b.ResetTimer()
+
+	// Benchmark loop
+	for i := 0; i < b.N; i++ {
+		_, err := downloader.DownloadCover(movie, destDir)
+		if err != nil {
+			b.Fatalf("DownloadCover failed: %v", err)
+		}
+	}
+}

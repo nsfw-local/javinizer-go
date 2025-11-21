@@ -1,0 +1,45 @@
+<!-- Golden file created: 2025-11-21 -->
+<!-- Source: Malformed HTML to test parser robustness -->
+<!-- Last validated: 2025-11-21 (semantic check passed) -->
+<!-- Purpose: Test handling of broken/invalid HTML structure -->
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>Malformed Movie JKL-999 | DMM.co.jp
+    <!-- Intentionally missing closing title tag -->
+</head>
+<body>
+    <div class="content">
+        <h1 id="title" class="item">マルフォームドムービー JKL-999
+        <!-- Missing closing h1 tag -->
+
+        <div class="mg-b20 lh4">
+            <p class="mg-b20">
+                Test description with unclosed paragraph tag
+        <!-- Missing </p> and </div> -->
+
+        <table class="mg-b20">
+            <tr>
+                <td class="nw">メーカー</td>
+                <td>
+                    <a href="?maker=broken">Broken Studio
+                    <!-- Missing closing </a> -->
+                </td>
+            <tr>
+                <!-- Missing closing </tr> from previous row -->
+                <td class="nw">出演者</td>
+                <td>
+                    <a href="?actress=9999">Test Actress
+                    <!-- Missing closing </a> -->
+                </td>
+            </tr>
+            <!-- Missing closing </table> -->
+
+        <div class="cover-image">
+            <img src="https://pics.dmm.co.jp/digital/video/jkl999/jkl999ps.jpg" alt="Cover"
+            <!-- Missing closing > for img tag -->
+        <!-- Missing closing </div> -->
+    <!-- Missing closing </div> for content -->
+</body>
+</html>

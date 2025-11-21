@@ -1499,3 +1499,112 @@ func TestValidatePathLength(t *testing.T) {
 		})
 	}
 }
+
+// BenchmarkTemplateRender_Simple measures the performance of rendering simple templates
+// This benchmark is for observation only - not a pass/fail gate
+// Expected baseline: ~1ms per operation for simple templates
+func BenchmarkTemplateRender_Simple(b *testing.B) {
+	// Setup: Create template engine
+	engine := NewEngine()
+
+	// Setup: Create test data
+	releaseDate := time.Date(2020, 9, 13, 0, 0, 0, 0, time.UTC)
+	ctx := &Context{
+		ID:          "IPX-535",
+		ContentID:   "ipx00535",
+		Title:       "Test Movie Title",
+		ReleaseDate: &releaseDate,
+	}
+
+	// Simple template
+	template := "<ID> - <TITLE>"
+
+	// Reset timer to exclude setup time
+	b.ResetTimer()
+
+	// Benchmark loop
+	for i := 0; i < b.N; i++ {
+		_, err := engine.Execute(template, ctx)
+		if err != nil {
+			b.Fatalf("Execute failed: %v", err)
+		}
+	}
+}
+
+// BenchmarkTemplateRender_Complex measures the performance of rendering complex templates with conditionals
+// This benchmark is for observation only - not a pass/fail gate
+// Expected baseline: <5ms per operation for complex templates
+func BenchmarkTemplateRender_Complex(b *testing.B) {
+	// Setup: Create template engine
+	engine := NewEngine()
+
+	// Setup: Create test data with all fields
+	releaseDate := time.Date(2020, 9, 13, 0, 0, 0, 0, time.UTC)
+	ctx := &Context{
+		ID:          "IPX-535",
+		ContentID:   "ipx00535",
+		Title:       "Test Movie Title",
+		ReleaseDate: &releaseDate,
+		Runtime:     120,
+		Director:    "Test Director",
+		Maker:       "Test Studio",
+		Label:       "Test Label",
+		Series:      "Test Series",
+		Actresses:   []string{"Sakura Momo", "Test Actress"},
+		Genres:      []string{"Genre1", "Genre2", "Genre3"},
+	}
+
+	// Complex template with custom functions
+	template := "<ID> [<STUDIO>] - <TITLE> (<YEAR>)"
+
+	// Reset timer to exclude setup time
+	b.ResetTimer()
+
+	// Benchmark loop
+	for i := 0; i < b.N; i++ {
+		_, err := engine.Execute(template, ctx)
+		if err != nil {
+			b.Fatalf("Execute failed: %v", err)
+		}
+	}
+}
+
+// BenchmarkTemplateRender_Parallel measures concurrent template rendering performance
+// This benchmark tests template cache thread-safety and contention under load
+// This is an optional enhancement - run with -race flag to validate thread-safety
+func BenchmarkTemplateRender_Parallel(b *testing.B) {
+	// Setup: Create template engine
+	engine := NewEngine()
+
+	// Setup: Create test data
+	releaseDate := time.Date(2020, 9, 13, 0, 0, 0, 0, time.UTC)
+	ctx := &Context{
+		ID:          "IPX-535",
+		ContentID:   "ipx00535",
+		Title:       "Test Movie Title",
+		ReleaseDate: &releaseDate,
+		Runtime:     120,
+		Director:    "Test Director",
+		Maker:       "Test Studio",
+		Label:       "Test Label",
+		Series:      "Test Series",
+		Actresses:   []string{"Sakura Momo", "Test Actress"},
+		Genres:      []string{"Genre1", "Genre2", "Genre3"},
+	}
+
+	// Template to test
+	template := "<ID> [<STUDIO>] - <TITLE> (<YEAR>)"
+
+	// Reset timer to exclude setup time
+	b.ResetTimer()
+
+	// Run parallel benchmark
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			_, err := engine.Execute(template, ctx)
+			if err != nil {
+				b.Fatalf("Execute failed: %v", err)
+			}
+		}
+	})
+}

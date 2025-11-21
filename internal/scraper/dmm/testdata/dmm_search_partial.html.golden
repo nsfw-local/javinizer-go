@@ -1,0 +1,53 @@
+<!-- Golden file created: 2025-11-21 -->
+<!-- Source: DMM search with partial data (missing actress and some optional fields) -->
+<!-- Last validated: 2025-11-21 (semantic check passed) -->
+<!-- Purpose: Test handling of incomplete metadata -->
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>Partial Movie DEF-456 | DMM.co.jp</title>
+</head>
+<body>
+    <div class="content">
+        <h1 id="title" class="item">パーシャルムービー DEF-456</h1>
+
+        <div class="mg-b20 lh4">
+            This movie has minimal metadata for testing partial data handling.
+        </div>
+
+        <table class="mg-b20">
+            <tr>
+                <td class="nw">メーカー</td>
+                <td>
+                    <a href="/article=maker/id=7890">Minimal Studio</a>
+                </td>
+            </tr>
+            <!-- No label -->
+            <!-- No series -->
+            <!-- No actresses - testing empty actress list -->
+            <tr>
+                <td class="nw">ジャンル：</td>
+                <td>
+                    <a href="?genre=documentary">ドキュメンタリー</a>
+                </td>
+            </tr>
+            <tr>
+                <td class="nw">配信開始日</td>
+                <td>2025/02/01</td>
+            </tr>
+            <tr>
+                <td class="nw">商品番号</td>
+                <td>DEF456</td>
+            </tr>
+        </table>
+
+        <div class="cover-image">
+            <img src="https://pics.dmm.co.jp/digital/video/def456/def456ps.jpg" alt="Cover">
+        </div>
+
+        <!-- No sample images -->
+        <!-- No trailer -->
+    </div>
+</body>
+</html>

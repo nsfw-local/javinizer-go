@@ -1,0 +1,67 @@
+<!-- Golden file created: 2025-11-21 -->
+<!-- Source: DMM search with multiple actresses (5+ performers) -->
+<!-- Last validated: 2025-11-21 (semantic check passed) -->
+<!-- Purpose: Test actress extraction with large cast -->
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta property="og:title" content="Multi Cast Movie GHI-789">
+    <title>Multi Cast Movie GHI-789 | DMM.co.jp</title>
+</head>
+<body>
+    <div class="content">
+        <h1 id="title" class="item">マルチキャストムービー GHI-789</h1>
+
+        <div class="mg-b20 lh4">
+            <p class="mg-b20">
+                A movie featuring multiple actresses to test bulk extraction logic.
+            </p>
+        </div>
+
+        <table class="mg-b20">
+            <tr>
+                <td class="nw">メーカー</td>
+                <td>
+                    <a href="?maker=ensemble">Ensemble Productions</a>
+                </td>
+            </tr>
+            <tr>
+                <td class="nw">出演者</td>
+                <td>
+                    <a href="?actress=1001">Actress One</a>
+                    <a href="?actress=1002">Actress Two</a>
+                    <a href="?actress=1003">Actress Three</a>
+                    <a href="?actress=1004">Actress Four</a>
+                    <a href="?actress=1005">Actress Five</a>
+                    <a href="?actress=1006">Actress Six</a>
+                    <a href="?actress=1007">Actress Seven</a>
+                </td>
+            </tr>
+            <tr>
+                <td class="nw">ジャンル：</td>
+                <td>
+                    <a href="?genre=compilation">ベスト・総集編</a>
+                    <a href="?genre=variety">バラエティ</a>
+                </td>
+            </tr>
+            <tr>
+                <td class="nw">収録時間</td>
+                <td>180分</td>
+            </tr>
+            <tr>
+                <td class="nw">配信開始日</td>
+                <td>2025/03/10</td>
+            </tr>
+            <tr>
+                <td class="nw">商品番号</td>
+                <td>GHI789</td>
+            </tr>
+        </table>
+
+        <div class="cover-image">
+            <img src="https://pics.dmm.co.jp/digital/video/ghi789/ghi789ps.jpg" alt="Cover">
+        </div>
+    </div>
+</body>
+</html>
