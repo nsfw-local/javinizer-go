@@ -46,9 +46,10 @@ func NewCommand() *cobra.Command {
 	return scrapeCmd
 }
 
-// applyFlagOverrides applies CLI flag overrides to the config.
+// ApplyFlagOverrides applies CLI flag overrides to the config.
 // This is extracted for testability (Story 5.4 - Epic 5).
-func applyFlagOverrides(cmd *cobra.Command, cfg *config.Config) {
+// Exported to enable comprehensive testing of flag parsing logic.
+func ApplyFlagOverrides(cmd *cobra.Command, cfg *config.Config) {
 	// Scrape actress flags
 	if cmd.Flags().Changed("scrape-actress") {
 		if val, _ := cmd.Flags().GetBool("scrape-actress"); val {
@@ -128,7 +129,7 @@ func runScrape(cmd *cobra.Command, args []string, configFile string) error {
 	}
 
 	// Apply CLI flag overrides to config
-	applyFlagOverrides(cmd, cfg)
+	ApplyFlagOverrides(cmd, cfg)
 
 	// Initialize dependencies
 	deps, err := commandutil.NewDependencies(cfg)
