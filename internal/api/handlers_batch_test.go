@@ -878,3 +878,236 @@ func TestRescrapeBatchMovie(t *testing.T) {
 		})
 	}
 }
+
+// TestExcludeBatchMovie tests the exclude endpoint
+func TestExcludeBatchMovie(t *testing.T) {
+	tests := []struct {
+		name           string
+		setupJob       func(*worker.JobQueue) (jobID, movieID string)
+		expectedStatus int
+	}{
+		{
+			name: "exclude existing movie by MovieID",
+			setupJob: func(jq *worker.JobQueue) (string, string) {
+				job := jq.CreateJob([]string{"/path/to/IPX-535.mp4"})
+				job.UpdateFileResult("/path/to/IPX-535.mp4", &worker.FileResult{
+					FilePath:  "/path/to/IPX-535.mp4",
+					MovieID:   "IPX-535",
+					Status:    worker.JobStatusCompleted,
+					Data:      &models.Movie{ID: "IPX-535", Title: "Test Movie"},
+					StartedAt: time.Now(),
+				})
+				return job.ID, "IPX-535"
+			},
+			expectedStatus: 200,
+		},
+		{
+			name: "exclude existing movie by Movie.ID",
+			setupJob: func(jq *worker.JobQueue) (string, string) {
+				job := jq.CreateJob([]string{"/path/to/ABP-071.mp4"})
+				job.UpdateFileResult("/path/to/ABP-071.mp4", &worker.FileResult{
+					FilePath:  "/path/to/ABP-071.mp4",
+					MovieID:   "ABP-071",
+					Status:    worker.JobStatusCompleted,
+					Data:      &models.Movie{ID: "ABP-071DOD", Title: "Test Movie"}, // Movie.ID differs from MovieID
+					StartedAt: time.Now(),
+				})
+				return job.ID, "ABP-071DOD" // Request by Movie.ID
+			},
+			expectedStatus: 200,
+		},
+		{
+			name: "exclude multi-part files",
+			setupJob: func(jq *worker.JobQueue) (string, string) {
+				job := jq.CreateJob([]string{
+					"/path/to/IPX-535-CD1.mp4",
+					"/path/to/IPX-535-CD2.mp4",
+				})
+				// Both parts have same MovieID
+				job.UpdateFileResult("/path/to/IPX-535-CD1.mp4", &worker.FileResult{
+					FilePath:  "/path/to/IPX-535-CD1.mp4",
+					MovieID:   "IPX-535",
+					Status:    worker.JobStatusCompleted,
+					Data:      &models.Movie{ID: "IPX-535"},
+					StartedAt: time.Now(),
+				})
+				job.UpdateFileResult("/path/to/IPX-535-CD2.mp4", &worker.FileResult{
+					FilePath:  "/path/to/IPX-535-CD2.mp4",
+					MovieID:   "IPX-535",
+					Status:    worker.JobStatusCompleted,
+					Data:      &models.Movie{ID: "IPX-535"},
+					StartedAt: time.Now(),
+				})
+				return job.ID, "IPX-535"
+			},
+			expectedStatus: 200,
+		},
+		{
+			name: "job not found",
+			setupJob: func(jq *worker.JobQueue) (string, string) {
+				return "nonexistent-job", "IPX-535"
+			},
+			expectedStatus: 404,
+		},
+		{
+			name: "movie not found in job",
+			setupJob: func(jq *worker.JobQueue) (string, string) {
+				job := jq.CreateJob([]string{"/path/to/ABC-123.mp4"})
+				job.UpdateFileResult("/path/to/ABC-123.mp4", &worker.FileResult{
+					FilePath:  "/path/to/ABC-123.mp4",
+					MovieID:   "ABC-123",
+					Status:    worker.JobStatusCompleted,
+					Data:      &models.Movie{ID: "ABC-123"},
+					StartedAt: time.Now(),
+				})
+				return job.ID, "NONEXISTENT-999"
+			},
+			expectedStatus: 404,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := &config.Config{}
+			deps := createTestDeps(t, cfg, "")
+
+			jobID, movieID := tt.setupJob(deps.JobQueue)
+
+			router := gin.New()
+			router.POST("/batch/:id/movies/:movieId/exclude", excludeBatchMovie(deps))
+
+			req := httptest.NewRequest("POST", "/batch/"+jobID+"/movies/"+movieID+"/exclude", nil)
+			w := httptest.NewRecorder()
+
+			router.ServeHTTP(w, req)
+
+			assert.Equal(t, tt.expectedStatus, w.Code, "Response body: %s", w.Body.String())
+		})
+	}
+}
+
+// TestUpdateBatchJob tests the update batch job endpoint
+func TestUpdateBatchJob(t *testing.T) {
+	tests := []struct {
+		name           string
+		setupJob       func(*worker.JobQueue) string
+		expectedStatus int
+	}{
+		{
+			name: "update completed job",
+			setupJob: func(jq *worker.JobQueue) string {
+				job := jq.CreateJob([]string{"/path/to/file.mp4"})
+				job.MarkCompleted()
+				return job.ID
+			},
+			expectedStatus: 200,
+		},
+		{
+			name: "update job not completed",
+			setupJob: func(jq *worker.JobQueue) string {
+				job := jq.CreateJob([]string{"/path/to/file.mp4"})
+				// Job still running (not completed)
+				return job.ID
+			},
+			expectedStatus: 400,
+		},
+		{
+			name: "job not found",
+			setupJob: func(jq *worker.JobQueue) string {
+				return "nonexistent-job"
+			},
+			expectedStatus: 404,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			initTestWebSocket(t)
+
+			cfg := &config.Config{}
+			deps := createTestDeps(t, cfg, "")
+			jobID := tt.setupJob(deps.JobQueue)
+
+			router := gin.New()
+			router.POST("/batch/:id/update", updateBatchJob(deps))
+
+			req := httptest.NewRequest("POST", "/batch/"+jobID+"/update", nil)
+			w := httptest.NewRecorder()
+
+			router.ServeHTTP(w, req)
+
+			assert.Equal(t, tt.expectedStatus, w.Code, "Response body: %s", w.Body.String())
+		})
+	}
+}
+
+// TestOrganizeJobSecurityValidation tests security validation in organize endpoint
+func TestOrganizeJobSecurityValidation(t *testing.T) {
+	tempDir := t.TempDir()
+	allowedDir := filepath.Join(tempDir, "allowed")
+	deniedDir := filepath.Join(tempDir, "denied")
+	require.NoError(t, os.Mkdir(allowedDir, 0755))
+	require.NoError(t, os.Mkdir(deniedDir, 0755))
+
+	tests := []struct {
+		name           string
+		destination    string
+		expectedStatus int
+	}{
+		{
+			name:           "access allowed directory",
+			destination:    allowedDir,
+			expectedStatus: 200,
+		},
+		{
+			name:           "access denied directory",
+			destination:    deniedDir,
+			expectedStatus: 403,
+		},
+		{
+			name:           "path traversal attempt",
+			destination:    filepath.Join(allowedDir, "..", "denied"),
+			expectedStatus: 403,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			initTestWebSocket(t)
+
+			cfg := &config.Config{
+				Matching: config.MatchingConfig{
+					RegexEnabled: false,
+				},
+				API: config.APIConfig{
+					Security: config.SecurityConfig{
+						AllowedDirectories: []string{allowedDir},
+						DeniedDirectories:  []string{deniedDir},
+					},
+				},
+			}
+
+			deps := createTestDeps(t, cfg, "")
+
+			// Create completed job
+			job := deps.JobQueue.CreateJob([]string{"/path/to/file.mp4"})
+			job.MarkCompleted()
+
+			router := gin.New()
+			router.POST("/batch/:id/organize", organizeJob(deps))
+
+			body, err := json.Marshal(OrganizeRequest{
+				Destination: tt.destination,
+			})
+			require.NoError(t, err)
+
+			req := httptest.NewRequest("POST", "/batch/"+job.ID+"/organize", bytes.NewBuffer(body))
+			req.Header.Set("Content-Type", "application/json")
+			w := httptest.NewRecorder()
+
+			router.ServeHTTP(w, req)
+
+			assert.Equal(t, tt.expectedStatus, w.Code, "Response body: %s", w.Body.String())
+		})
+	}
+}

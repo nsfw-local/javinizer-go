@@ -130,9 +130,9 @@ bench:
 # Uses go run to execute go-acc from project dependencies (no global install needed)
 # Version is pinned to match go.mod for reproducible builds
 # Uses -count=1 to disable test caching and ensure fresh coverage data
-# Excludes: mocks (generated code), tui (interactive UI - manual testing only)
+# Excludes: mocks (generated), tui (interactive UI), docs (generated API docs), testutil (test helpers)
 coverage:
-	@go run github.com/ory/go-acc@v0.2.8 --covermode count --ignore mocks,tui -o coverage.out ./... -- -count=1
+	@go run github.com/ory/go-acc@v0.2.8 --covermode count --ignore mocks,tui,docs,testutil -o coverage.out ./... -- -count=1
 
 # Open coverage report in browser
 coverage-html: coverage

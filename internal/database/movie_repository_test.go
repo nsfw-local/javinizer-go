@@ -606,4 +606,40 @@ func TestMovieRepository_EnsureActressesExist(t *testing.T) {
 		require.NoError(t, err)
 		assert.Len(t, found.Actresses, 0)
 	})
+
+	t.Run("Actress data is merged when new data fills gaps", func(t *testing.T) {
+		// First movie creates actress with minimal data
+		movie1 := createTestMovie("IPX-089")
+		movie1.Actresses = []models.Actress{
+			{DMMID: 55555, JapaneseName: "テスト女優"},
+		}
+		err := repo.Upsert(movie1)
+		require.NoError(t, err)
+
+		// Second movie provides additional data for the same actress
+		movie2 := createTestMovie("IPX-090")
+		movie2.Actresses = []models.Actress{
+			{DMMID: 55555, JapaneseName: "テスト女優", ThumbURL: "http://example.com/thumb.jpg", FirstName: "Test", LastName: "Actress"},
+		}
+		err = repo.Upsert(movie2)
+		require.NoError(t, err)
+
+		// Verify actress data was merged
+		actressRepo := NewActressRepository(db)
+		actresses, err := actressRepo.List(100, 0)
+		require.NoError(t, err)
+
+		var foundActress *models.Actress
+		for i := range actresses {
+			if actresses[i].DMMID == 55555 {
+				foundActress = &actresses[i]
+				break
+			}
+		}
+
+		require.NotNil(t, foundActress, "Should find actress with DMMID 55555")
+		assert.Equal(t, "http://example.com/thumb.jpg", foundActress.ThumbURL)
+		assert.Equal(t, "Test", foundActress.FirstName)
+		assert.Equal(t, "Actress", foundActress.LastName)
+	})
 }

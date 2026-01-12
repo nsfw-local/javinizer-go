@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/gin-gonic/gin"
 	"github.com/javinizer/javinizer-go/internal/aggregator"
 	"github.com/javinizer/javinizer-go/internal/config"
 	"github.com/javinizer/javinizer-go/internal/database"
@@ -463,4 +464,183 @@ func TestNewServer_InvalidRoutes(t *testing.T) {
 			assert.Equal(t, 404, w.Code)
 		})
 	}
+}
+
+func TestServerDependencies_Shutdown(t *testing.T) {
+	cfg := &config.Config{
+		Logging: config.LoggingConfig{
+			Level: "info",
+		},
+		Matching: config.MatchingConfig{
+			RegexEnabled: false,
+		},
+	}
+
+	registry := models.NewScraperRegistry()
+	mat, err := matcher.NewMatcher(&cfg.Matching)
+	require.NoError(t, err)
+
+	deps := &ServerDependencies{
+		ConfigFile:  "/tmp/config.yaml",
+		Registry:    registry,
+		Aggregator:  aggregator.New(cfg),
+		MovieRepo:   newMockMovieRepo(),
+		ActressRepo: newMockActressRepo(),
+		Matcher:     mat,
+		JobQueue:    worker.NewJobQueue(),
+	}
+	deps.SetConfig(cfg)
+
+	// Create server to initialize wsCancel
+	_ = NewServer(deps)
+
+	// Test that Shutdown doesn't panic
+	assert.NotPanics(t, func() {
+		deps.Shutdown()
+	})
+
+	// Test calling Shutdown again (should be idempotent)
+	assert.NotPanics(t, func() {
+		deps.Shutdown()
+	})
+}
+
+func TestServerDependencies_ShutdownWithNilCancel(t *testing.T) {
+	// Test Shutdown with nil wsCancel
+	deps := &ServerDependencies{}
+
+	// Should not panic even if wsCancel is nil
+	assert.NotPanics(t, func() {
+		deps.Shutdown()
+	})
+}
+
+func TestServerDependencies_GetSetConfig(t *testing.T) {
+	deps := &ServerDependencies{}
+
+	cfg := &config.Config{
+		Server: config.ServerConfig{
+			Host: "localhost",
+			Port: 9090,
+		},
+	}
+
+	// Test SetConfig
+	deps.SetConfig(cfg)
+
+	// Test GetConfig
+	got := deps.GetConfig()
+	assert.Equal(t, cfg.Server.Host, got.Server.Host)
+	assert.Equal(t, cfg.Server.Port, got.Server.Port)
+}
+
+func TestServerDependencies_GetConfigPanic(t *testing.T) {
+	deps := &ServerDependencies{}
+
+	// GetConfig should panic when config is not set
+	assert.Panics(t, func() {
+		deps.GetConfig()
+	})
+}
+
+func TestServerDependencies_SetConfigNilPanic(t *testing.T) {
+	deps := &ServerDependencies{}
+
+	// SetConfig should panic when given nil config
+	assert.Panics(t, func() {
+		deps.SetConfig(nil)
+	})
+}
+
+// TestIsSameOrigin and TestIsOriginAllowed are in handlers_security_test.go
+
+func TestAcceptsHTML(t *testing.T) {
+	tests := []struct {
+		name     string
+		accept   string
+		expected bool
+	}{
+		{
+			name:     "empty accept header",
+			accept:   "",
+			expected: false,
+		},
+		{
+			name:     "text/html only",
+			accept:   "text/html",
+			expected: true,
+		},
+		{
+			name:     "text/html with quality",
+			accept:   "text/html;q=0.9",
+			expected: true,
+		},
+		{
+			name:     "text/html with q=0",
+			accept:   "text/html;q=0",
+			expected: false,
+		},
+		{
+			name:     "application/json only",
+			accept:   "application/json",
+			expected: false,
+		},
+		{
+			name:     "mixed with html",
+			accept:   "text/html, application/json",
+			expected: true,
+		},
+		{
+			name:     "wildcard",
+			accept:   "*/*",
+			expected: false,
+		},
+		{
+			name:     "browser-like accept header",
+			accept:   "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+			expected: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			router := setupTestRouter()
+			router.GET("/test", func(c *gin.Context) {
+				if acceptsHTML(c) {
+					c.String(200, "html")
+				} else {
+					c.String(200, "other")
+				}
+			})
+
+			req := httptest.NewRequest("GET", "/test", nil)
+			if tt.accept != "" {
+				req.Header.Set("Accept", tt.accept)
+			}
+			w := httptest.NewRecorder()
+
+			router.ServeHTTP(w, req)
+
+			if tt.expected {
+				assert.Equal(t, "html", w.Body.String())
+			} else {
+				assert.Equal(t, "other", w.Body.String())
+			}
+		})
+	}
+}
+
+func TestResolveSwaggerPath(t *testing.T) {
+	// Test that resolveSwaggerPath returns a valid path
+	path := resolveSwaggerPath()
+
+	// Should return either Docker or local path
+	assert.True(t,
+		path == "/app/docs/swagger/swagger.json" || path == "./docs/swagger/swagger.json",
+		"Expected Docker or local swagger path, got: %s", path)
+}
+
+func setupTestRouter() *gin.Engine {
+	gin.SetMode(gin.TestMode)
+	return gin.New()
 }
