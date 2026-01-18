@@ -743,9 +743,13 @@ func processOrganizeJob(job *worker.BatchJob, mat *matcher.Matcher, destination 
 		Message:  fmt.Sprintf("Organized %d files, %d failed", organized, failed),
 	})
 
-	// Cleanup temp posters after organize completes
-	// Files have been copied to their final organized locations
-	go cleanupJobTempPosters(job.ID)
+	// Cleanup temp posters only if ALL files succeeded
+	// If any failed, keep temp posters so user can retry without re-scraping
+	if failed == 0 {
+		go cleanupJobTempPosters(job.ID)
+	} else {
+		logging.Debugf("[Job %s] Keeping temp posters for %d failed files (retry possible)", job.ID, failed)
+	}
 }
 
 // generatePreview generates an organize preview response for a movie
