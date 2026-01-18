@@ -252,14 +252,14 @@
 
 		<!-- Global Priority -->
 		<div>
-			<label class="block text-sm font-medium mb-3">
+			<span class="block text-sm font-medium mb-3">
 				Global Scraper Priority
 				{#if mode === 'simple'}
 					<span class="text-xs text-muted-foreground ml-2">
 						(applies to all fields)
 					</span>
 				{/if}
-			</label>
+			</span>
 			<DraggableList
 				items={filterEnabledScrapers(getGlobalPriority())}
 				onReorder={updateGlobalPriority}

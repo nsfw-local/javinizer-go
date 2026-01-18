@@ -320,12 +320,12 @@
 			<SettingsSection title="Server Settings" description="Configure API server host and port" defaultExpanded={false}>
 				<div class="grid grid-cols-2 gap-4">
 					<div>
-						<label class="block text-sm font-medium mb-2">Host</label>
-						<input type="text" bind:value={config.server.host} class={inputClass} placeholder="localhost" />
+						<label class="block text-sm font-medium mb-2" for="server-host">Host</label>
+						<input id="server-host" type="text" bind:value={config.server.host} class={inputClass} placeholder="localhost" />
 					</div>
 					<div>
-						<label class="block text-sm font-medium mb-2">Port</label>
-						<input type="number" bind:value={config.server.port} class={inputClass} placeholder="8080" />
+						<label class="block text-sm font-medium mb-2" for="server-port">Port</label>
+						<input id="server-port" type="number" bind:value={config.server.port} class={inputClass} placeholder="8080" />
 					</div>
 				</div>
 			</SettingsSection>
@@ -334,7 +334,7 @@
 			<SettingsSection title="Scraper Settings" description="Enable/disable scrapers and configure user agent. Scraper priority is managed in Metadata Priority section." defaultExpanded={false}>
 				<div class="space-y-4">
 					<div>
-						<label class="block text-sm font-medium mb-2">Available Scrapers</label>
+						<span class="block text-sm font-medium mb-2">Available Scrapers</span>
 						<div class="space-y-2">
 							{#each scrapers as scraper, index}
 								<div class="rounded-lg border {scraper.enabled ? 'bg-background' : 'bg-muted/30'}">
@@ -402,9 +402,10 @@
 															</p>
 														{:else if option.type === 'number'}
 															<div>
-																<label class="block text-sm font-medium mb-1">{option.label}</label>
+																<label class="block text-sm font-medium mb-1" for="option-{scraper.name}-{option.key}">{option.label}</label>
 																<div class="flex items-center gap-2">
 																	<input
+																		id="option-{scraper.name}-{option.key}"
 																		type="number"
 																		value={getOptionValue(scraper.name, option.key)}
 																		oninput={(e) => setOptionValue(scraper.name, option.key, parseInt(e.currentTarget.value))}
@@ -432,8 +433,8 @@
 					</div>
 
 					<div>
-						<label class="block text-sm font-medium mb-2">User Agent</label>
-						<input type="text" bind:value={config.scrapers.user_agent} class={inputClass} />
+						<label class="block text-sm font-medium mb-2" for="user-agent">User Agent</label>
+						<input id="user-agent" type="text" bind:value={config.scrapers.user_agent} class={inputClass} />
 					</div>
 				</div>
 			</SettingsSection>
@@ -490,11 +491,12 @@
 			<SettingsSection title="Output Settings" description="Configure output paths, templates, and download options" defaultExpanded={false}>
 				<div class="space-y-4">
 					<div>
-						<label class="block text-sm font-medium mb-2">Destination Path</label>
+						<label class="block text-sm font-medium mb-2" for="destination-path">Destination Path</label>
 						<p class="text-sm text-muted-foreground mb-2">
 							Note: Destination path is currently not configurable via API
 						</p>
 						<input
+							id="destination-path"
 							type="text"
 							value="Configured in config.yaml"
 							class={inputClass}
@@ -532,8 +534,9 @@
 						/>
 
 						<div class="py-4 border-b border-border">
-							<label class="block text-sm font-medium mb-2">Delimiter</label>
+							<label class="block text-sm font-medium mb-2" for="delimiter">Delimiter</label>
 							<input
+								id="delimiter"
 								type="text"
 								bind:value={config.output.delimiter}
 								class={inputClass}
@@ -546,8 +549,9 @@
 					</SettingsSubsection>
 
 					<div>
-						<label class="block text-sm font-medium mb-2">Subfolder Format</label>
+						<label class="block text-sm font-medium mb-2" for="subfolder-format">Subfolder Format</label>
 						<input
+							id="subfolder-format"
 							type="text"
 							value={config.output.subfolder_format.join(', ')}
 							onchange={(e) => {
@@ -603,8 +607,9 @@
 					/>
 
 					<div>
-						<label class="block text-sm font-medium mb-2">Folder Naming Template</label>
+						<label class="block text-sm font-medium mb-2" for="folder-format">Folder Naming Template</label>
 						<input
+							id="folder-format"
 							type="text"
 							bind:value={config.output.folder_format}
 							class="{inputClass} font-mono text-sm"
@@ -616,8 +621,9 @@
 					</div>
 
 					<div>
-						<label class="block text-sm font-medium mb-2">File Naming Template</label>
+						<label class="block text-sm font-medium mb-2" for="file-format">File Naming Template</label>
 						<input
+							id="file-format"
 							type="text"
 							bind:value={config.output.file_format}
 							class="{inputClass} font-mono text-sm"
@@ -705,8 +711,8 @@
 			<!-- Database Settings -->
 			<SettingsSection title="Database Settings" description="Configure database options and behavior" defaultExpanded={false}>
 				<div class="mb-4">
-					<label class="block text-sm font-medium mb-2">Database Type</label>
-					<select bind:value={config.database.type} class={inputClass}>
+					<label class="block text-sm font-medium mb-2" for="database-type">Database Type</label>
+					<select id="database-type" bind:value={config.database.type} class={inputClass}>
 						<option value="sqlite">SQLite</option>
 						<option value="postgres">PostgreSQL</option>
 						<option value="mysql">MySQL</option>
@@ -717,8 +723,9 @@
 				</div>
 
 				<div class="mb-4">
-					<label class="block text-sm font-medium mb-2">Database Path (DSN)</label>
+					<label class="block text-sm font-medium mb-2" for="database-dsn">Database Path (DSN)</label>
 					<input
+						id="database-dsn"
 						type="text"
 						bind:value={config.database.dsn}
 						class={inputClass}
@@ -1090,10 +1097,11 @@
 			<SettingsSection title="Performance Settings" description="Configure worker pool and performance tuning options" defaultExpanded={false}>
 				<div class="space-y-4">
 					<div>
-						<label class="block text-sm font-medium mb-2">
+						<label class="block text-sm font-medium mb-2" for="max-workers">
 							Max Workers (concurrent tasks)
 						</label>
 						<input
+							id="max-workers"
 							type="number"
 							bind:value={config.performance.max_workers}
 							class={inputClass}
@@ -1106,8 +1114,9 @@
 					</div>
 
 					<div>
-						<label class="block text-sm font-medium mb-2">Worker Timeout (seconds)</label>
+						<label class="block text-sm font-medium mb-2" for="worker-timeout">Worker Timeout (seconds)</label>
 						<input
+							id="worker-timeout"
 							type="number"
 							bind:value={config.performance.worker_timeout}
 							class={inputClass}
@@ -1117,8 +1126,9 @@
 					</div>
 
 					<div>
-						<label class="block text-sm font-medium mb-2">Buffer Size</label>
+						<label class="block text-sm font-medium mb-2" for="buffer-size">Buffer Size</label>
 						<input
+							id="buffer-size"
 							type="number"
 							bind:value={config.performance.buffer_size}
 							class={inputClass}
@@ -1131,8 +1141,9 @@
 					</div>
 
 					<div>
-						<label class="block text-sm font-medium mb-2">UI Update Interval (ms)</label>
+						<label class="block text-sm font-medium mb-2" for="update-interval">UI Update Interval (ms)</label>
 						<input
+							id="update-interval"
 							type="number"
 							bind:value={config.performance.update_interval}
 							class={inputClass}
@@ -1151,8 +1162,9 @@
 			<SettingsSection title="File Matching Settings" description="Configure file scanning, extensions, and ID extraction patterns" defaultExpanded={false}>
 				<div class="space-y-4">
 					<div>
-						<label class="block text-sm font-medium mb-2">File Extensions</label>
+						<label class="block text-sm font-medium mb-2" for="file-extensions">File Extensions</label>
 						<input
+							id="file-extensions"
 							type="text"
 							value={config.file_matching.extensions.join(', ')}
 							onchange={(e) => {
@@ -1169,8 +1181,9 @@
 					</div>
 
 					<div>
-						<label class="block text-sm font-medium mb-2">Minimum File Size (MB)</label>
+						<label class="block text-sm font-medium mb-2" for="min-size-mb">Minimum File Size (MB)</label>
 						<input
+							id="min-size-mb"
 							type="number"
 							bind:value={config.file_matching.min_size_mb}
 							class={inputClass}
@@ -1183,8 +1196,9 @@
 					</div>
 
 					<div>
-						<label class="block text-sm font-medium mb-2">Exclude Patterns</label>
+						<label class="block text-sm font-medium mb-2" for="exclude-patterns">Exclude Patterns</label>
 						<input
+							id="exclude-patterns"
 							type="text"
 							value={config.file_matching.exclude_patterns.join(', ')}
 							onchange={(e) => {
@@ -1210,8 +1224,9 @@
 
 					{#if config.file_matching.regex_enabled}
 						<div>
-							<label class="block text-sm font-medium mb-2">Regex Pattern</label>
+							<label class="block text-sm font-medium mb-2" for="regex-pattern">Regex Pattern</label>
 							<input
+								id="regex-pattern"
 								type="text"
 								bind:value={config.file_matching.regex_pattern}
 								class="{inputClass} font-mono text-sm"
@@ -1228,8 +1243,8 @@
 			<SettingsSection title="Logging Settings" description="Configure logging level, format, and output destination" defaultExpanded={false}>
 				<div class="space-y-4">
 					<div>
-						<label class="block text-sm font-medium mb-2">Log Level</label>
-						<select bind:value={config.logging.level} class={inputClass}>
+						<label class="block text-sm font-medium mb-2" for="log-level">Log Level</label>
+						<select id="log-level" bind:value={config.logging.level} class={inputClass}>
 							<option value="debug">Debug</option>
 							<option value="info">Info</option>
 							<option value="warn">Warning</option>
@@ -1238,16 +1253,17 @@
 					</div>
 
 					<div>
-						<label class="block text-sm font-medium mb-2">Log Format</label>
-						<select bind:value={config.logging.format} class={inputClass}>
+						<label class="block text-sm font-medium mb-2" for="log-format">Log Format</label>
+						<select id="log-format" bind:value={config.logging.format} class={inputClass}>
 							<option value="text">Text</option>
 							<option value="json">JSON</option>
 						</select>
 					</div>
 
 					<div>
-						<label class="block text-sm font-medium mb-2">Log Output</label>
+						<label class="block text-sm font-medium mb-2" for="log-output">Log Output</label>
 						<input
+							id="log-output"
 							type="text"
 							bind:value={config.logging.output}
 							class={inputClass}

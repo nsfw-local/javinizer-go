@@ -1,0 +1,2 @@
+- Increase the test coverage to >90%.
+- Exclude all generated codes or documentations etc that are not relevant.

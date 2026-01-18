@@ -318,8 +318,9 @@
 					<!-- Left: Form -->
 					<div class="space-y-4">
 						<div>
-							<label class="text-sm font-medium mb-1 block">First Name</label>
+							<label class="text-sm font-medium mb-1 block" for="actress-first-name">First Name</label>
 							<input
+								id="actress-first-name"
 								type="text"
 								bind:value={editingActress.first_name}
 								placeholder="e.g., Yume"
@@ -328,8 +329,9 @@
 						</div>
 
 						<div>
-							<label class="text-sm font-medium mb-1 block">Last Name</label>
+							<label class="text-sm font-medium mb-1 block" for="actress-last-name">Last Name</label>
 							<input
+								id="actress-last-name"
 								type="text"
 								bind:value={editingActress.last_name}
 								placeholder="e.g., Nishimiya"
@@ -338,8 +340,9 @@
 						</div>
 
 						<div>
-							<label class="text-sm font-medium mb-1 block">Japanese Name</label>
+							<label class="text-sm font-medium mb-1 block" for="actress-japanese-name">Japanese Name</label>
 							<input
+								id="actress-japanese-name"
 								type="text"
 								bind:value={editingActress.japanese_name}
 								placeholder="e.g., 西宮ゆめ"
@@ -348,8 +351,9 @@
 						</div>
 
 						<div>
-							<label class="text-sm font-medium mb-1 block">Thumbnail URL</label>
+							<label class="text-sm font-medium mb-1 block" for="actress-thumb-url">Thumbnail URL</label>
 							<input
+								id="actress-thumb-url"
 								type="url"
 								bind:value={editingActress.thumb_url}
 								placeholder="https://..."
@@ -360,7 +364,7 @@
 
 					<!-- Right: Preview -->
 					<div>
-						<label class="text-sm font-medium mb-1 block">Preview</label>
+						<span class="text-sm font-medium mb-1 block">Preview</span>
 						<Card class="p-3">
 							{#if editingActress.thumb_url}
 								<img
