@@ -13,6 +13,7 @@ import (
 	"github.com/javinizer/javinizer-go/internal/database"
 	"github.com/javinizer/javinizer-go/internal/downloader"
 	"github.com/javinizer/javinizer-go/internal/fsutil"
+	"github.com/javinizer/javinizer-go/internal/history"
 	"github.com/javinizer/javinizer-go/internal/httpclient"
 	"github.com/javinizer/javinizer-go/internal/logging"
 	"github.com/javinizer/javinizer-go/internal/matcher"
@@ -159,6 +160,26 @@ func processBatchJob(job *worker.BatchJob, registry *models.ScraperRegistry, agg
 	// Mark job as completed (don't auto-process update mode - wait for user to review and click "Update")
 	job.MarkCompleted()
 
+	// Log history for all scrape operations
+	historyLogger := history.NewLogger(db)
+	status := job.GetStatus()
+	for filePath, fileResult := range status.Results {
+		if fileResult == nil {
+			continue
+		}
+		var scrapeErr error
+		if fileResult.Status == worker.JobStatusFailed && fileResult.Error != "" {
+			scrapeErr = fmt.Errorf("%s", fileResult.Error)
+		}
+		movieID := fileResult.MovieID
+		if movieID == "" {
+			movieID = filepath.Base(filePath)
+		}
+		if err := historyLogger.LogScrape(movieID, filePath, nil, scrapeErr); err != nil {
+			logging.Warnf("Failed to log history for %s: %v", filePath, err)
+		}
+	}
+
 	// NOTE: We do NOT cleanup temp posters here!
 	// Users need them to view the review page after job completion.
 	// Temp posters are cleaned up:
@@ -263,6 +284,28 @@ func downloadMediaFiles(dl *downloader.Downloader, movie *models.Movie, destDir 
 	}
 }
 
+// downloadMediaFilesWithHistory downloads all configured media files and logs to history
+func downloadMediaFilesWithHistory(dl *downloader.Downloader, movie *models.Movie, destDir string, cfg *config.Config, historyLogger *history.Logger) {
+	// Use DownloadAll to get results for history logging
+	results, err := dl.DownloadAll(movie, destDir, 0)
+	if err != nil {
+		logging.Errorf("Failed to download media for %s: %v", movie.ID, err)
+		return
+	}
+
+	for _, result := range results {
+		if result.Downloaded {
+			logging.Infof("Downloaded %s: %s (%d bytes)", result.Type, result.LocalPath, result.Size)
+		}
+		// Log download to history (both successful and failed, skip if no URL)
+		if result.URL != "" {
+			if logErr := historyLogger.LogDownload(movie.ID, result.URL, result.LocalPath, string(result.Type), result.Error); logErr != nil {
+				logging.Warnf("Failed to log download history for %s: %v", movie.ID, logErr)
+			}
+		}
+	}
+}
+
 // processUpdateJob handles update operation triggered from review page
 // Generates NFOs and downloads media files in place without moving video files
 func processUpdateJob(job *worker.BatchJob, cfg *config.Config, db *database.DB) {
@@ -278,6 +321,7 @@ func processUpdateJob(job *worker.BatchJob, cfg *config.Config, db *database.DB)
 func processUpdateMode(job *worker.BatchJob, cfg *config.Config, db *database.DB, ctx context.Context) {
 	// Initialize components
 	nfoGen := nfo.NewGenerator(afero.NewOsFs(), nfo.ConfigFromAppConfig(&cfg.Metadata.NFO, &cfg.Output, &cfg.Metadata, db))
+	historyLogger := history.NewLogger(db)
 
 	// Initialize HTTP client for downloader
 	httpClient, err := downloader.NewHTTPClientForDownloader(&cfg.Output)
@@ -473,10 +517,11 @@ func processUpdateMode(job *worker.BatchJob, cfg *config.Config, db *database.DB
 		// Note: partSuffix already computed above for NFO template lookup
 
 		// Generate NFO in source directory (with merged data if applicable)
-		if err := nfoGen.Generate(movieToWrite, sourceDir, partSuffix, filePath); err != nil {
-			logging.Warnf("Failed to generate NFO for %s: %v", movieToWrite.ID, err)
+		nfoErr := nfoGen.Generate(movieToWrite, sourceDir, partSuffix, filePath)
+		if nfoErr != nil {
+			logging.Warnf("Failed to generate NFO for %s: %v", movieToWrite.ID, nfoErr)
 			hasErrors = true
-			errorMsg = fmt.Sprintf("NFO generation failed: %v", err)
+			errorMsg = fmt.Sprintf("NFO generation failed: %v", nfoErr)
 		} else {
 			if mergeStats != nil {
 				logging.Infof("Generated merged NFO in: %s (%d fields from scraper, %d from existing NFO)",
@@ -484,6 +529,11 @@ func processUpdateMode(job *worker.BatchJob, cfg *config.Config, db *database.DB
 			} else {
 				logging.Infof("Generated NFO in: %s", sourceDir)
 			}
+		}
+
+		// Log NFO generation to history
+		if logErr := historyLogger.LogNFO(movie.ID, nfoPath, nfoErr); logErr != nil {
+			logging.Warnf("Failed to log NFO history for %s: %v", movie.ID, logErr)
 		}
 
 		// Download all media files to source directory
@@ -501,6 +551,12 @@ func processUpdateMode(job *worker.BatchJob, cfg *config.Config, db *database.DB
 			for _, result := range results {
 				if result.Downloaded {
 					logging.Infof("Downloaded %s: %s (%d bytes)", result.Type, result.LocalPath, result.Size)
+				}
+				// Log download to history (both successful and failed)
+				if result.URL != "" {
+					if logErr := historyLogger.LogDownload(movie.ID, result.URL, result.LocalPath, string(result.Type), result.Error); logErr != nil {
+						logging.Warnf("Failed to log download history for %s: %v", movie.ID, logErr)
+					}
 				}
 			}
 		}
@@ -540,8 +596,9 @@ func processUpdateMode(job *worker.BatchJob, cfg *config.Config, db *database.DB
 
 // processOrganizeJob processes file organization for a completed scrape job
 func processOrganizeJob(job *worker.BatchJob, mat *matcher.Matcher, destination string, copyOnly bool, db *database.DB, cfg *config.Config) {
-	// Initialize organizer, downloader, and NFO generator
+	// Initialize organizer, downloader, NFO generator, and history logger
 	org := organizer.NewOrganizer(afero.NewOsFs(), &cfg.Output)
+	historyLogger := history.NewLogger(db)
 
 	// Initialize HTTP client for downloader
 	httpClient, err := downloader.NewHTTPClientForDownloader(&cfg.Output)
@@ -610,6 +667,11 @@ func processOrganizeJob(job *worker.BatchJob, mat *matcher.Matcher, destination 
 			logging.Errorf("Failed to organize %s: %v", filePath, err)
 			failed++
 
+			// Log failed organize operation
+			if logErr := historyLogger.LogOrganize(movie.ID, filePath, "", false, err); logErr != nil {
+				logging.Warnf("Failed to log history for %s: %v", filePath, logErr)
+			}
+
 			wsHub.BroadcastProgress(&ws.ProgressMessage{
 				JobID:    job.ID,
 				FilePath: filePath,
@@ -620,13 +682,20 @@ func processOrganizeJob(job *worker.BatchJob, mat *matcher.Matcher, destination 
 			continue
 		}
 
+		// Log successful organize operation
+		if result.Moved {
+			if logErr := historyLogger.LogOrganize(movie.ID, filePath, result.NewPath, false, nil); logErr != nil {
+				logging.Warnf("Failed to log history for %s: %v", filePath, logErr)
+			}
+		}
+
 		// Copy temp cropped poster and download all media files
 		if result.Moved {
 			// Copy temp cropped poster BEFORE downloads (so downloader skips it)
 			copyTempCroppedPoster(job, movie, result.FolderPath, cfg, "Organize")
 
-			// Download all media files
-			downloadMediaFiles(dl, movie, result.FolderPath, cfg)
+			// Download all media files and log to history
+			downloadMediaFilesWithHistory(dl, movie, result.FolderPath, cfg, historyLogger)
 		}
 
 		// Generate NFO file
@@ -643,8 +712,15 @@ func processOrganizeJob(job *worker.BatchJob, mat *matcher.Matcher, destination 
 			if videoFilePath == "" {
 				videoFilePath = result.OriginalPath
 			}
-			if err := nfoGen.Generate(movie, result.FolderPath, partSuffix, videoFilePath); err != nil {
-				logging.Errorf("Failed to generate NFO for %s: %v", movie.ID, err)
+			nfoErr := nfoGen.Generate(movie, result.FolderPath, partSuffix, videoFilePath)
+			if nfoErr != nil {
+				logging.Errorf("Failed to generate NFO for %s: %v", movie.ID, nfoErr)
+			}
+
+			// Log NFO generation to history
+			nfoPath := filepath.Join(result.FolderPath, movie.ID+".nfo")
+			if logErr := historyLogger.LogNFO(movie.ID, nfoPath, nfoErr); logErr != nil {
+				logging.Warnf("Failed to log NFO history for %s: %v", movie.ID, logErr)
 			}
 		}
 

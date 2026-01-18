@@ -135,6 +135,9 @@ func Run(cmd *cobra.Command, configFile string, hostFlag string, portFlag int) (
 	// Initialize job queue
 	jobQueue := worker.NewJobQueue()
 
+	// Initialize history repository
+	historyRepo := database.NewHistoryRepository(db)
+
 	// Create server dependencies
 	apiDeps := &api.ServerDependencies{
 		ConfigFile:  configFile,
@@ -143,6 +146,7 @@ func Run(cmd *cobra.Command, configFile string, hostFlag string, portFlag int) (
 		Aggregator:  agg,
 		MovieRepo:   movieRepo,
 		ActressRepo: actressRepo,
+		HistoryRepo: historyRepo,
 		Matcher:     mat,
 		JobQueue:    jobQueue,
 	}

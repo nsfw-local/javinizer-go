@@ -272,3 +272,54 @@ export interface Config {
 	// Other config fields can be added here as needed
 	[key: string]: any;
 }
+
+// History types
+export interface HistoryRecord {
+	id: number;
+	movie_id: string;
+	operation: 'scrape' | 'organize' | 'download' | 'nfo';
+	original_path: string;
+	new_path: string;
+	status: 'success' | 'failed' | 'reverted';
+	error_message: string;
+	metadata: string;
+	dry_run: boolean;
+	created_at: string;
+}
+
+export interface HistoryStats {
+	total: number;
+	success: number;
+	failed: number;
+	reverted: number;
+	by_operation: {
+		scrape: number;
+		organize: number;
+		download: number;
+		nfo: number;
+	};
+}
+
+export interface HistoryListResponse {
+	records: HistoryRecord[];
+	total: number;
+	limit: number;
+	offset: number;
+}
+
+export interface HistoryListParams {
+	limit?: number;
+	offset?: number;
+	operation?: string;
+	status?: string;
+	movie_id?: string;
+}
+
+export interface DeleteHistoryBulkParams {
+	older_than_days?: number;
+	movie_id?: string;
+}
+
+export interface DeleteHistoryBulkResponse {
+	deleted: number;
+}

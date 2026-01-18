@@ -19,7 +19,12 @@ import type {
 	ScrapeRequest,
 	BatchRescrapeRequest,
 	BatchRescrapeResponse,
-	Config
+	Config,
+	HistoryListResponse,
+	HistoryListParams,
+	HistoryStats,
+	DeleteHistoryBulkParams,
+	DeleteHistoryBulkResponse
 } from './types';
 
 // Build API base URL dynamically from browser location
@@ -211,6 +216,37 @@ class APIClient {
 	// Get server configuration
 	async getConfig(): Promise<Config> {
 		return this.request<Config>('/api/v1/config');
+	}
+
+	// Get history records with optional filtering
+	async getHistory(params?: HistoryListParams): Promise<HistoryListResponse> {
+		const queryParams = new URLSearchParams();
+		if (params?.limit) queryParams.set('limit', params.limit.toString());
+		if (params?.offset) queryParams.set('offset', params.offset.toString());
+		if (params?.operation) queryParams.set('operation', params.operation);
+		if (params?.status) queryParams.set('status', params.status);
+		if (params?.movie_id) queryParams.set('movie_id', params.movie_id);
+		const query = queryParams.toString() ? `?${queryParams}` : '';
+		return this.request<HistoryListResponse>(`/api/v1/history${query}`);
+	}
+
+	// Get history statistics
+	async getHistoryStats(): Promise<HistoryStats> {
+		return this.request<HistoryStats>('/api/v1/history/stats');
+	}
+
+	// Delete a single history record
+	async deleteHistory(id: number): Promise<void> {
+		await this.request(`/api/v1/history/${id}`, { method: 'DELETE' });
+	}
+
+	// Delete history records in bulk
+	async deleteHistoryBulk(params: DeleteHistoryBulkParams): Promise<DeleteHistoryBulkResponse> {
+		const queryParams = new URLSearchParams();
+		if (params.older_than_days) queryParams.set('older_than_days', params.older_than_days.toString());
+		if (params.movie_id) queryParams.set('movie_id', params.movie_id);
+		const query = queryParams.toString() ? `?${queryParams}` : '';
+		return this.request<DeleteHistoryBulkResponse>(`/api/v1/history${query}`, { method: 'DELETE' });
 	}
 }
 

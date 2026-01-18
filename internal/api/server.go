@@ -44,6 +44,7 @@ type ServerDependencies struct {
 	Aggregator  *aggregator.Aggregator
 	MovieRepo   *database.MovieRepository
 	ActressRepo *database.ActressRepository
+	HistoryRepo *database.HistoryRepository
 	Matcher     *matcher.Matcher
 	JobQueue    *worker.JobQueue
 	wsCancel    context.CancelFunc // Cancel function for WebSocket hub context
@@ -367,6 +368,12 @@ func NewServer(deps *ServerDependencies) *gin.Engine {
 		v1.GET("/temp/posters/:jobId/:filename", serveTempPoster())
 		// Persistent resource endpoints (for cropped posters stored in database)
 		v1.GET("/posters/:filename", serveCroppedPoster())
+
+		// History endpoints
+		v1.GET("/history", getHistory(deps.HistoryRepo))
+		v1.GET("/history/stats", getHistoryStats(deps.HistoryRepo))
+		v1.DELETE("/history/:id", deleteHistory(deps.HistoryRepo))
+		v1.DELETE("/history", deleteHistoryBulk(deps.HistoryRepo))
 	}
 
 	// Serve frontend static files (for Docker deployment)
