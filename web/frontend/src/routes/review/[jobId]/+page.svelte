@@ -8,6 +8,7 @@
 	import { websocketStore } from '$lib/stores/websocket';
 	import Button from '$lib/components/ui/Button.svelte';
 	import Card from '$lib/components/ui/Card.svelte';
+	import FileBrowser from '$lib/components/FileBrowser.svelte';
 	import MovieEditor from '$lib/components/MovieEditor.svelte';
 	import ActressEditor from '$lib/components/ActressEditor.svelte';
 	import ScreenshotManager from '$lib/components/ScreenshotManager.svelte';
@@ -43,6 +44,7 @@
 	let destinationPath = $state('');
 	let copyOnly = $state(false);
 	let showDestinationBrowser = $state(false);
+	let tempDestinationPath = $state('');
 	let showTrailerModal = $state(false);
 	let preview: OrganizePreviewResponse | null = $state(null);
 	let isUpdateMode = $derived($page.url.searchParams.get('update') === 'true');
@@ -545,8 +547,26 @@
 	}
 
 	function openDestinationBrowser() {
-		// TODO: Implement browse dialog
+		tempDestinationPath = destinationPath;
 		showDestinationBrowser = true;
+	}
+
+	function handleDestinationSelect(files: string[]) {
+		// This is called when navigating - we'll ignore file selections
+		// and just track the current path from the browser
+	}
+
+	function handleDestinationPathChange(path: string) {
+		tempDestinationPath = path;
+	}
+
+	function confirmDestination() {
+		destinationPath = tempDestinationPath;
+		showDestinationBrowser = false;
+	}
+
+	function cancelDestination() {
+		showDestinationBrowser = false;
 	}
 
 	function hasChanges(filePath: string): boolean {
@@ -1445,3 +1465,60 @@
 	</div>
 {/if}
 
+<!-- Destination Browser Modal -->
+{#if showDestinationBrowser}
+	<div class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+		<div class="bg-background rounded-lg shadow-xl max-w-4xl w-full max-h-[80vh] flex flex-col">
+			<!-- Modal Header -->
+			<div class="p-6 border-b flex items-center justify-between">
+				<div>
+					<h2 class="text-xl font-bold">Select Destination Folder</h2>
+					<p class="text-sm text-muted-foreground mt-1">
+						Navigate to and select the folder where files will be organized
+					</p>
+				</div>
+				<button
+					onclick={cancelDestination}
+					class="text-muted-foreground hover:text-foreground transition-colors"
+				>
+					✕
+				</button>
+			</div>
+
+			<!-- Modal Body -->
+			<div class="flex-1 overflow-auto p-6">
+				<FileBrowser
+					initialPath={destinationPath || '/'}
+					onFileSelect={handleDestinationSelect}
+					onPathChange={handleDestinationPathChange}
+					multiSelect={false}
+					folderOnly={true}
+				/>
+			</div>
+
+			<!-- Modal Footer -->
+			<div class="p-6 border-t space-y-3">
+				<div class="flex items-center gap-2">
+					<span class="text-sm font-medium text-muted-foreground">Selected Path:</span>
+					<code
+						class="flex-1 px-3 py-1.5 bg-accent rounded text-sm font-mono text-foreground overflow-x-auto"
+					>
+						{tempDestinationPath || destinationPath || '/'}
+					</code>
+				</div>
+				<div class="flex items-center justify-end gap-2">
+					<Button variant="outline" onclick={cancelDestination}>
+						{#snippet children()}
+							Cancel
+						{/snippet}
+					</Button>
+					<Button onclick={confirmDestination}>
+						{#snippet children()}
+							Use This Folder
+						{/snippet}
+					</Button>
+				</div>
+			</div>
+		</div>
+	</div>
+{/if}
