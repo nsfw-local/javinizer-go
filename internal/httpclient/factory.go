@@ -33,6 +33,8 @@ func NewTransport(proxyConfig *config.ProxyConfig) (*http.Transport, error) {
 	// Clone default transport to preserve Go's safety timeouts
 	// (DialContext timeout, TLSHandshakeTimeout, ExpectContinueTimeout, etc.)
 	transport := http.DefaultTransport.(*http.Transport).Clone()
+	// Enforce config-only proxy behavior: never inherit HTTP(S)_PROXY from environment.
+	transport.Proxy = nil
 
 	if proxyConfig != nil && proxyConfig.Enabled && proxyConfig.URL != "" {
 		proxyURL, err := url.Parse(proxyConfig.URL)
@@ -171,6 +173,10 @@ func NewFlareSolverr(cfg *config.FlareSolverrConfig) (*FlareSolverr, error) {
 	client := resty.New()
 	client.SetTimeout(time.Duration(cfg.Timeout) * time.Second)
 	client.SetRetryCount(cfg.MaxRetries)
+	// FlareSolverr API calls should not inherit proxy env vars.
+	if transport, err := NewTransport(nil); err == nil {
+		client.SetTransport(transport)
+	}
 
 	return &FlareSolverr{
 		client:     client,

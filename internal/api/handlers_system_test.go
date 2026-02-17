@@ -3,7 +3,10 @@ package api
 import (
 	"bytes"
 	"encoding/json"
+	"io"
+	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/gin-gonic/gin"
@@ -226,14 +229,24 @@ func TestGetAvailableScrapers(t *testing.T) {
 				assert.Equal(t, "javdb", resp.Scrapers[0].Name)
 				assert.Equal(t, "JavDB", resp.Scrapers[0].DisplayName)
 				assert.True(t, resp.Scrapers[0].Enabled)
-				assert.Len(t, resp.Scrapers[0].Options, 2)
+				assert.Len(t, resp.Scrapers[0].Options, 12)
 
 				optionKeys := make(map[string]bool)
 				for _, opt := range resp.Scrapers[0].Options {
 					optionKeys[opt.Key] = true
 				}
 				assert.True(t, optionKeys["request_delay"])
+				assert.True(t, optionKeys["base_url"])
 				assert.True(t, optionKeys["use_flaresolverr"])
+				assert.True(t, optionKeys["proxy.enabled"])
+				assert.True(t, optionKeys["proxy.url"])
+				assert.True(t, optionKeys["proxy.username"])
+				assert.True(t, optionKeys["proxy.password"])
+				assert.True(t, optionKeys["proxy.flaresolverr.enabled"])
+				assert.True(t, optionKeys["proxy.flaresolverr.url"])
+				assert.True(t, optionKeys["proxy.flaresolverr.timeout"])
+				assert.True(t, optionKeys["proxy.flaresolverr.max_retries"])
+				assert.True(t, optionKeys["proxy.flaresolverr.session_ttl"])
 			},
 		},
 	}
@@ -270,6 +283,146 @@ func TestGetAvailableScrapers(t *testing.T) {
 			}
 		})
 	}
+}
+
+func startTestForwardProxy(t *testing.T) *httptest.Server {
+	t.Helper()
+
+	client := &http.Client{}
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		targetURL := r.RequestURI
+		if !strings.HasPrefix(targetURL, "http://") && !strings.HasPrefix(targetURL, "https://") {
+			targetURL = r.URL.String()
+		}
+
+		req, err := http.NewRequest(r.Method, targetURL, r.Body)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		req.Header = r.Header.Clone()
+
+		resp, err := client.Do(req)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadGateway)
+			return
+		}
+		defer resp.Body.Close()
+
+		for k, vals := range resp.Header {
+			for _, v := range vals {
+				w.Header().Add(k, v)
+			}
+		}
+		w.WriteHeader(resp.StatusCode)
+		_, _ = io.Copy(w, resp.Body)
+	}))
+}
+
+func TestTestProxy(t *testing.T) {
+	t.Run("direct proxy success", func(t *testing.T) {
+		target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte("ok"))
+		}))
+		defer target.Close()
+
+		proxy := startTestForwardProxy(t)
+		defer proxy.Close()
+
+		deps := &ServerDependencies{}
+		deps.SetConfig(config.DefaultConfig())
+
+		router := gin.New()
+		router.POST("/proxy/test", testProxy(deps))
+
+		reqBody := ProxyTestRequest{
+			Mode:      "direct",
+			TargetURL: target.URL,
+			Proxy: config.ProxyConfig{
+				Enabled: true,
+				URL:     proxy.URL,
+			},
+		}
+		body, err := json.Marshal(reqBody)
+		require.NoError(t, err)
+
+		req := httptest.NewRequest(http.MethodPost, "/proxy/test", bytes.NewBuffer(body))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+
+		router.ServeHTTP(w, req)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+		var resp ProxyTestResponse
+		err = json.Unmarshal(w.Body.Bytes(), &resp)
+		require.NoError(t, err)
+		assert.True(t, resp.Success)
+		assert.Equal(t, "direct", resp.Mode)
+		assert.Equal(t, http.StatusOK, resp.StatusCode)
+		assert.Contains(t, resp.Message, "succeeded")
+	})
+
+	t.Run("flaresolverr success", func(t *testing.T) {
+		fs := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"status":"ok","solution":{"response":"<html>ok</html>","cookies":[{"name":"cf_clearance","value":"abc"}],"userAgent":"ua"}}`))
+		}))
+		defer fs.Close()
+
+		deps := &ServerDependencies{}
+		deps.SetConfig(config.DefaultConfig())
+
+		router := gin.New()
+		router.POST("/proxy/test", testProxy(deps))
+
+		reqBody := ProxyTestRequest{
+			Mode:      "flaresolverr",
+			TargetURL: "https://javdb.com",
+			Proxy: config.ProxyConfig{
+				FlareSolverr: config.FlareSolverrConfig{
+					Enabled:    true,
+					URL:        fs.URL,
+					Timeout:    30,
+					MaxRetries: 0,
+					SessionTTL: 300,
+				},
+			},
+		}
+		body, err := json.Marshal(reqBody)
+		require.NoError(t, err)
+
+		req := httptest.NewRequest(http.MethodPost, "/proxy/test", bytes.NewBuffer(body))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+
+		router.ServeHTTP(w, req)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+		var resp ProxyTestResponse
+		err = json.Unmarshal(w.Body.Bytes(), &resp)
+		require.NoError(t, err)
+		assert.True(t, resp.Success)
+		assert.Equal(t, "flaresolverr", resp.Mode)
+		assert.Equal(t, fs.URL, resp.FlareSolverrURL)
+	})
+
+	t.Run("invalid mode", func(t *testing.T) {
+		deps := &ServerDependencies{}
+		deps.SetConfig(config.DefaultConfig())
+
+		router := gin.New()
+		router.POST("/proxy/test", testProxy(deps))
+
+		body := []byte(`{"mode":"invalid","proxy":{"enabled":true,"url":"http://proxy.example.com:8080"}}`)
+		req := httptest.NewRequest(http.MethodPost, "/proxy/test", bytes.NewBuffer(body))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+
+		router.ServeHTTP(w, req)
+
+		assert.Equal(t, http.StatusBadRequest, w.Code)
+	})
 }
 
 func TestUpdateConfig(t *testing.T) {

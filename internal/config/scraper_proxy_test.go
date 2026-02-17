@@ -42,4 +42,21 @@ func TestResolveScraperProxy(t *testing.T) {
 		resolved := ResolveScraperProxy(global, override)
 		assert.Equal(t, *override, *resolved)
 	})
+
+	t.Run("inherits global flaresolverr when scraper override omits it", func(t *testing.T) {
+		override := &ProxyConfig{
+			Enabled:  true,
+			URL:      "http://scraper-proxy.example.com:8080",
+			Username: "scraper-user",
+			Password: "scraper-pass",
+			// FlareSolverr block intentionally omitted (zero-value)
+		}
+
+		resolved := ResolveScraperProxy(global, override)
+		assert.Equal(t, override.Enabled, resolved.Enabled)
+		assert.Equal(t, override.URL, resolved.URL)
+		assert.Equal(t, override.Username, resolved.Username)
+		assert.Equal(t, override.Password, resolved.Password)
+		assert.Equal(t, global.FlareSolverr, resolved.FlareSolverr)
+	})
 }

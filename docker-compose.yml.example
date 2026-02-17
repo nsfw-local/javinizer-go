@@ -49,12 +49,6 @@ services:
       # Timezone
       - TZ=${TZ:-UTC}
 
-      # Optional container-level proxy passthrough
-      - HTTP_PROXY=${HTTP_PROXY:-}
-      - HTTPS_PROXY=${HTTPS_PROXY:-}
-      - NO_PROXY=${NO_PROXY:-localhost,127.0.0.1,flaresolverr}
-      - ALL_PROXY=${ALL_PROXY:-}
-
     healthcheck:
       test: ["CMD", "wget", "--method=GET", "-O", "/dev/null", "-q", "http://localhost:8080/health"]
       interval: 30s
@@ -89,10 +83,6 @@ services:
       - LOG_LEVEL=${LOG_LEVEL:-debug}
       - UMASK=${UMASK:-002}
       - TZ=${TZ:-UTC}
-      - HTTP_PROXY=${HTTP_PROXY:-}
-      - HTTPS_PROXY=${HTTPS_PROXY:-}
-      - NO_PROXY=${NO_PROXY:-localhost,127.0.0.1,flaresolverr}
-      - ALL_PROXY=${ALL_PROXY:-}
 
   # Optional: FlareSolverr for Cloudflare-protected sources (e.g., JavDB/JavLibrary)
   flaresolverr:
@@ -106,7 +96,3 @@ services:
       - LOG_HTML=${FLARESOLVERR_LOG_HTML:-false}
       - CAPTCHA_SOLVER=${FLARESOLVERR_CAPTCHA_SOLVER:-none}
       - TZ=${TZ:-UTC}
-      # Optional upstream proxy for FlareSolverr browser traffic
-      - PROXY_URL=${FLARESOLVERR_PROXY_URL:-}
-      - PROXY_USERNAME=${FLARESOLVERR_PROXY_USERNAME:-}
-      - PROXY_PASSWORD=${FLARESOLVERR_PROXY_PASSWORD:-}

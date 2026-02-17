@@ -69,6 +69,7 @@ func TestNewServer(t *testing.T) {
 		"/api/v1/actresses/search",
 		"/api/v1/config",
 		"/api/v1/scrapers",
+		"/api/v1/proxy/test",
 		"/api/v1/scan",
 		"/api/v1/browse",
 		"/api/v1/cwd",

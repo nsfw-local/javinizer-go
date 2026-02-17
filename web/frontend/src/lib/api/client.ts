@@ -20,6 +20,8 @@ import type {
 	BatchRescrapeRequest,
 	BatchRescrapeResponse,
 	Config,
+	ProxyTestRequest,
+	ProxyTestResponse,
 	HistoryListResponse,
 	HistoryListParams,
 	HistoryStats,
@@ -216,6 +218,14 @@ class APIClient {
 	// Get server configuration
 	async getConfig(): Promise<Config> {
 		return this.request<Config>('/api/v1/config');
+	}
+
+	// Test proxy or FlareSolverr connectivity
+	async testProxy(request: ProxyTestRequest): Promise<ProxyTestResponse> {
+		return this.request<ProxyTestResponse>('/api/v1/proxy/test', {
+			method: 'POST',
+			body: JSON.stringify(request)
+		});
 	}
 
 	// Get history records with optional filtering

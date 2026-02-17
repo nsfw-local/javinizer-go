@@ -1,6 +1,7 @@
 package api
 
 import (
+	"github.com/javinizer/javinizer-go/internal/config"
 	"github.com/javinizer/javinizer-go/internal/models"
 )
 
@@ -90,6 +91,25 @@ type ScraperInfo struct {
 // AvailableScrapersResponse represents the list of available scrapers
 type AvailableScrapersResponse struct {
 	Scrapers []ScraperInfo `json:"scrapers"`
+}
+
+// ProxyTestRequest represents a proxy connectivity test request.
+type ProxyTestRequest struct {
+	Mode      string             `json:"mode" binding:"required,oneof=direct flaresolverr"` // direct or flaresolverr
+	Proxy     config.ProxyConfig `json:"proxy"`
+	TargetURL string             `json:"target_url,omitempty"` // Optional override target URL
+}
+
+// ProxyTestResponse represents proxy connectivity test results.
+type ProxyTestResponse struct {
+	Success         bool   `json:"success"`
+	Mode            string `json:"mode"`
+	TargetURL       string `json:"target_url"`
+	StatusCode      int    `json:"status_code,omitempty"`
+	DurationMS      int64  `json:"duration_ms"`
+	Message         string `json:"message"`
+	ProxyURL        string `json:"proxy_url,omitempty"`        // Redacted proxy URL
+	FlareSolverrURL string `json:"flaresolverr_url,omitempty"` // FlareSolverr endpoint used
 }
 
 // ScanRequest represents a directory scan request

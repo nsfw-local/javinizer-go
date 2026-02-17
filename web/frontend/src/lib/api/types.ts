@@ -240,6 +240,7 @@ export interface ScraperOption {
 	min?: number; // For number type
 	max?: number; // For number type
 	unit?: string; // For number type (e.g., 'seconds', 'MB')
+	choices?: { value: string; label: string }[]; // For select type
 }
 
 export interface ScraperInfo {
@@ -258,6 +259,23 @@ export interface Scraper {
 
 export interface AvailableScrapersResponse {
 	scrapers: ScraperInfo[];
+}
+
+export interface ProxyTestRequest {
+	mode: 'direct' | 'flaresolverr';
+	proxy: any;
+	target_url?: string;
+}
+
+export interface ProxyTestResponse {
+	success: boolean;
+	mode: 'direct' | 'flaresolverr';
+	target_url: string;
+	status_code?: number;
+	duration_ms: number;
+	message: string;
+	proxy_url?: string;
+	flaresolverr_url?: string;
 }
 
 // Config types

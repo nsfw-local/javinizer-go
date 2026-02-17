@@ -348,6 +348,7 @@ func NewServer(deps *ServerDependencies) *gin.Engine {
 		v1.GET("/config", getConfig(deps))
 		v1.PUT("/config", updateConfig(deps))
 		v1.GET("/scrapers", getAvailableScrapers(deps))
+		v1.POST("/proxy/test", testProxy(deps))
 
 		// File endpoints
 		v1.GET("/cwd", getCurrentWorkingDirectory(deps))

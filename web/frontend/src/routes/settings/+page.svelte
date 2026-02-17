@@ -26,6 +26,8 @@
 	let config: any = $state(null);
 	let loading = $state(true);
 	let saving = $state(false);
+	let testingProxy = $state(false);
+	let testingFlareSolverr = $state(false);
 	let error = $state<string | null>(null);
 	let showConfirmModal = $state(false);
 	let scrapers = $state<ScraperItem[]>([]);
@@ -131,14 +133,37 @@
 
 	// Helper to get option value from config (using snake_case keys)
 	function getOptionValue(scraperName: string, optionKey: string): any {
-		return config?.scrapers?.[scraperName]?.[optionKey];
+		return getNestedValue(config?.scrapers?.[scraperName], optionKey);
+	}
+
+	function getNestedValue(obj: any, path: string): any {
+		if (!obj) return undefined;
+		return path.split('.').reduce((acc: any, key: string) => acc?.[key], obj);
+	}
+
+	function setNestedValue(obj: any, path: string, value: any): void {
+		const keys = path.split('.');
+		let current = obj;
+		for (let i = 0; i < keys.length - 1; i++) {
+			const key = keys[i];
+			if (!current[key] || typeof current[key] !== 'object') {
+				current[key] = {};
+			}
+			current = current[key];
+		}
+		current[keys[keys.length - 1]] = value;
+	}
+
+	function parseOptionNumber(value: string): number | undefined {
+		const parsed = parseInt(value, 10);
+		return Number.isNaN(parsed) ? undefined : parsed;
 	}
 
 	// Helper to set option value in config (using snake_case keys)
 	function setOptionValue(scraperName: string, optionKey: string, value: any) {
 		if (!config?.scrapers) return;
 		if (!config.scrapers[scraperName]) config.scrapers[scraperName] = {};
-		config.scrapers[scraperName][optionKey] = value;
+		setNestedValue(config.scrapers[scraperName], optionKey, value);
 		// Trigger reactivity by reassigning the config object with a deep clone
 		config = JSON.parse(JSON.stringify(config));
 	}
@@ -303,6 +328,52 @@
 	function cancelSave() {
 		showConfirmModal = false;
 	}
+
+	async function runProxyTest(mode: 'direct' | 'flaresolverr') {
+		if (!config?.scrapers?.proxy) {
+			toastStore.error('Scraper proxy configuration is missing', 5000);
+			return;
+		}
+
+		const proxyConfig = JSON.parse(JSON.stringify(config.scrapers.proxy));
+
+		if (mode === 'direct' && (!proxyConfig.enabled || !proxyConfig.url)) {
+			toastStore.error('Enable scraper proxy and set proxy URL before testing', 5000);
+			return;
+		}
+		if (mode === 'flaresolverr' && (!proxyConfig.flaresolverr?.enabled || !proxyConfig.flaresolverr?.url)) {
+			toastStore.error('Enable FlareSolverr and set FlareSolverr URL before testing', 5000);
+			return;
+		}
+
+		if (mode === 'direct') {
+			testingProxy = true;
+		} else {
+			testingFlareSolverr = true;
+		}
+
+		try {
+			const result = await apiClient.testProxy({
+				mode,
+				proxy: proxyConfig
+			});
+
+			if (result.success) {
+				toastStore.success(`${mode === 'direct' ? 'Proxy' : 'FlareSolverr'} test passed (${result.duration_ms}ms): ${result.message}`, 7000);
+			} else {
+				toastStore.error(`${mode === 'direct' ? 'Proxy' : 'FlareSolverr'} test failed (${result.duration_ms}ms): ${result.message}`, 7000);
+			}
+		} catch (e) {
+			const msg = e instanceof Error ? e.message : 'Proxy test failed';
+			toastStore.error(msg, 7000);
+		} finally {
+			if (mode === 'direct') {
+				testingProxy = false;
+			} else {
+				testingFlareSolverr = false;
+			}
+		}
+	}
 </script>
 
 <div class="container mx-auto px-4 py-8">
@@ -458,6 +529,20 @@
 																	{option.description}
 																</p>
 															</div>
+														{:else if option.type === 'string' || option.type === 'password'}
+															<div>
+																<label class="block text-sm font-medium mb-1" for="option-{scraper.name}-{option.key}">{option.label}</label>
+																<input
+																	id="option-{scraper.name}-{option.key}"
+																	type={option.type === 'password' ? 'password' : 'text'}
+																	value={getOptionValue(scraper.name, option.key) ?? ''}
+																	oninput={(e) => setOptionValue(scraper.name, option.key, e.currentTarget.value)}
+																	class="w-full max-w-md px-3 py-2 border rounded-md focus:ring-2 focus:ring-primary focus:border-primary transition-all bg-background text-sm"
+																/>
+																<p class="text-xs text-muted-foreground mt-1">
+																	{option.description}
+																</p>
+															</div>
 														{:else if option.type === 'number'}
 															<div>
 																<label class="block text-sm font-medium mb-1" for="option-{scraper.name}-{option.key}">{option.label}</label>
@@ -465,8 +550,8 @@
 																	<input
 																		id="option-{scraper.name}-{option.key}"
 																		type="number"
-																		value={getOptionValue(scraper.name, option.key)}
-																		oninput={(e) => setOptionValue(scraper.name, option.key, parseInt(e.currentTarget.value))}
+																		value={getOptionValue(scraper.name, option.key) ?? ''}
+																		oninput={(e) => setOptionValue(scraper.name, option.key, parseOptionNumber(e.currentTarget.value))}
 																		min={option.min || 0}
 																		max={option.max || 999}
 																		class="w-32 px-3 py-2 border rounded-md focus:ring-2 focus:ring-primary focus:border-primary transition-all bg-background text-sm"
@@ -1104,6 +1189,15 @@
 							config.scrapers.proxy.password = val;
 						}}
 					/>
+
+					<div class="pt-2">
+						<Button variant="outline" size="sm" onclick={() => runProxyTest('direct')} disabled={testingProxy || loading || saving}>
+							{#snippet children()}
+								<RefreshCw class={`h-4 w-4 mr-2 ${testingProxy ? 'animate-spin' : ''}`} />
+								{testingProxy ? 'Testing Proxy...' : 'Test Scraper Proxy'}
+							{/snippet}
+						</Button>
+					</div>
 				</SettingsSubsection>
 
 				<SettingsSubsection title="FlareSolverr">
@@ -1170,6 +1264,15 @@
 							config.scrapers.proxy.flaresolverr.session_ttl = val;
 						}}
 					/>
+
+					<div class="pt-2">
+						<Button variant="outline" size="sm" onclick={() => runProxyTest('flaresolverr')} disabled={testingFlareSolverr || loading || saving}>
+							{#snippet children()}
+								<RefreshCw class={`h-4 w-4 mr-2 ${testingFlareSolverr ? 'animate-spin' : ''}`} />
+								{testingFlareSolverr ? 'Testing FlareSolverr...' : 'Test FlareSolverr'}
+							{/snippet}
+						</Button>
+					</div>
 				</SettingsSubsection>
 
 				<SettingsSubsection title="Download Proxy">

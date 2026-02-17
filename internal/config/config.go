@@ -583,8 +583,21 @@ func ResolveScraperProxy(global ProxyConfig, scraperOverride *ProxyConfig) *Prox
 	resolved := global
 	if scraperOverride != nil {
 		resolved = *scraperOverride
+		// If scraper-specific proxy override omits FlareSolverr settings entirely,
+		// inherit the global FlareSolverr config so URL/timeout are not lost.
+		if isZeroFlareSolverrConfig(scraperOverride.FlareSolverr) {
+			resolved.FlareSolverr = global.FlareSolverr
+		}
 	}
 	return &resolved
+}
+
+func isZeroFlareSolverrConfig(cfg FlareSolverrConfig) bool {
+	return !cfg.Enabled &&
+		cfg.URL == "" &&
+		cfg.Timeout == 0 &&
+		cfg.MaxRetries == 0 &&
+		cfg.SessionTTL == 0
 }
 
 func validateFlareSolverrConfig(path string, cfg FlareSolverrConfig) error {
