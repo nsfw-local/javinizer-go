@@ -28,6 +28,7 @@
 	let saving = $state(false);
 	let testingProxy = $state(false);
 	let testingFlareSolverr = $state(false);
+	let testingDownloadProxy = $state(false);
 	let error = $state<string | null>(null);
 	let showConfirmModal = $state(false);
 	let scrapers = $state<ScraperItem[]>([]);
@@ -420,6 +421,38 @@
 			} else {
 				testingFlareSolverr = false;
 			}
+		}
+	}
+
+	async function runDownloadProxyTest() {
+		if (!config?.output?.download_proxy) {
+			toastStore.error('Download proxy configuration is missing', 5000);
+			return;
+		}
+
+		const proxyConfig = JSON.parse(JSON.stringify(config.output.download_proxy));
+		if (!proxyConfig.enabled || !proxyConfig.url) {
+			toastStore.error('Enable download proxy and set proxy URL before testing', 5000);
+			return;
+		}
+
+		testingDownloadProxy = true;
+		try {
+			const result = await apiClient.testProxy({
+				mode: 'direct',
+				proxy: proxyConfig
+			});
+
+			if (result.success) {
+				toastStore.success(`Download proxy test passed (${result.duration_ms}ms): ${result.message}`, 7000);
+			} else {
+				toastStore.error(`Download proxy test failed (${result.duration_ms}ms): ${result.message}`, 7000);
+			}
+		} catch (e) {
+			const msg = e instanceof Error ? e.message : 'Download proxy test failed';
+			toastStore.error(msg, 7000);
+		} finally {
+			testingDownloadProxy = false;
 		}
 	}
 </script>
@@ -1380,6 +1413,15 @@
 							config.output.download_proxy.password = val;
 						}}
 					/>
+
+					<div class="pt-2">
+						<Button variant="outline" size="sm" onclick={runDownloadProxyTest} disabled={testingDownloadProxy || loading || saving || !(config.output.download_proxy?.enabled ?? false)}>
+							{#snippet children()}
+								<RefreshCw class={`h-4 w-4 mr-2 ${testingDownloadProxy ? 'animate-spin' : ''}`} />
+								{testingDownloadProxy ? 'Testing Download Proxy...' : 'Test Download Proxy'}
+							{/snippet}
+						</Button>
+					</div>
 				</SettingsSubsection>
 			</SettingsSection>
 
