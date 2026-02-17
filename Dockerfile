@@ -81,13 +81,19 @@ RUN apk add --no-cache \
     harfbuzz \
     ttf-freefont
 
-# Create non-root user with configurable UID/GID (defaults to 1000)
-# Can be overridden at build time to match host user permissions
+# Create non-root user with configurable UID/GID (defaults to 1000).
+# On macOS, common host GIDs (e.g., 20) may already exist in Alpine, so we
+# reuse existing UID/GID entries when present instead of failing the build.
 ARG USER_ID=1000
 ARG GROUP_ID=1000
 
-RUN addgroup -g ${GROUP_ID} javinizer && \
-    adduser -u ${USER_ID} -G javinizer -s /bin/sh -D javinizer
+RUN if ! awk -F: -v gid="${GROUP_ID}" '$3 == gid { found=1; exit } END { exit !found }' /etc/group; then \
+      addgroup -g "${GROUP_ID}" javinizer; \
+    fi && \
+    GROUP_NAME="$(awk -F: -v gid="${GROUP_ID}" '$3 == gid { print $1; exit }' /etc/group)" && \
+    if ! awk -F: -v uid="${USER_ID}" '$3 == uid { found=1; exit } END { exit !found }' /etc/passwd; then \
+      adduser -u "${USER_ID}" -G "${GROUP_NAME}" -s /bin/sh -D javinizer; \
+    fi
 
 # Copy binary to /usr/local/bin for system-wide access
 COPY --from=go-builder /build/javinizer /usr/local/bin/javinizer
@@ -112,7 +118,7 @@ RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
 # Create directory structure for volumes
 RUN mkdir -p /javinizer/logs /javinizer/cache /media && \
-    chown -R javinizer:javinizer /javinizer /media /app
+    chown -R ${USER_ID}:${GROUP_ID} /javinizer /media /app
 
 # Environment variables
 ENV JAVINIZER_HOME=/javinizer \
@@ -123,8 +129,8 @@ ENV JAVINIZER_HOME=/javinizer \
     CHROME_PATH=/usr/bin/chromium-browser \
     PATH="/usr/local/bin:${PATH}"
 
-# Switch to non-root user
-USER javinizer
+# Switch to non-root user (numeric UID/GID to support reused existing accounts)
+USER ${USER_ID}:${GROUP_ID}
 
 # Expose API/web port
 EXPOSE 8080
