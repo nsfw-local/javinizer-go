@@ -179,6 +179,7 @@ func rescrapeBatchMovie(deps *ServerDependencies) gin.HandlerFunc {
 				httpClient,
 				cfg.Scrapers.UserAgent,
 				cfg.Scrapers.Referer,
+				downloader.ResolveMediaReferer,
 			)
 			if posterErr != nil {
 				logging.Warnf("Failed to generate cropped poster: %v", posterErr)

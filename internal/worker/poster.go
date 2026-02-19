@@ -19,6 +19,10 @@ import (
 	"github.com/javinizer/javinizer-go/internal/models"
 )
 
+// RefererResolver resolves an effective Referer for a download URL.
+// This is injected by callers so poster generation does not hardcode host rules.
+type RefererResolver func(downloadURL, configuredReferer string) string
+
 // GenerateTempPoster downloads and crops a poster temporarily for the review page
 // Returns the relative API URL path for the temp poster
 // Updates movie.ShouldCropPoster to false since the temp image is already cropped
@@ -41,6 +45,7 @@ func GenerateTempPoster(
 	httpClient httpclientiface.HTTPClient,
 	userAgent string,
 	referer string,
+	refererResolver RefererResolver,
 ) (tempRelativeURL string, err error) {
 	// Determine poster URL to download
 	originalPosterURL := movie.PosterURL
@@ -72,9 +77,8 @@ func GenerateTempPoster(
 	if userAgent != "" {
 		req.Header.Set("User-Agent", userAgent)
 	}
-	// Set Referer header for CDN compatibility.
-	// Some CDNs (e.g., JavDB static assets) require site-specific referers.
-	if effectiveReferer := resolvePosterReferer(originalPosterURL, referer); effectiveReferer != "" {
+	req.Header.Set("Accept", "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8")
+	if effectiveReferer := resolvePosterReferer(originalPosterURL, referer, refererResolver); effectiveReferer != "" {
 		req.Header.Set("Referer", effectiveReferer)
 	}
 
@@ -163,6 +167,7 @@ func GenerateCroppedPoster(
 	httpClient httpclientiface.HTTPClient,
 	userAgent string,
 	referer string,
+	refererResolver RefererResolver,
 ) (croppedURL string, err error) {
 	// Determine poster URL to download
 	originalPosterURL := movie.PosterURL
@@ -193,7 +198,8 @@ func GenerateCroppedPoster(
 	if userAgent != "" {
 		req.Header.Set("User-Agent", userAgent)
 	}
-	if effectiveReferer := resolvePosterReferer(originalPosterURL, referer); effectiveReferer != "" {
+	req.Header.Set("Accept", "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8")
+	if effectiveReferer := resolvePosterReferer(originalPosterURL, referer, refererResolver); effectiveReferer != "" {
 		req.Header.Set("Referer", effectiveReferer)
 	}
 
@@ -274,23 +280,18 @@ func GenerateCroppedPoster(
 	return croppedURL, nil
 }
 
-// resolvePosterReferer chooses the most compatible Referer for poster downloads.
-// Priority:
-// 1) Known host overrides (e.g., JavDB static hosts require javdb referer)
-// 2) Configured referer
-// 3) URL origin fallback
-func resolvePosterReferer(downloadURL, configuredReferer string) string {
+// resolvePosterReferer resolves Referer via injected hook first, then falls back
+// to configured/origin behavior.
+func resolvePosterReferer(downloadURL, configuredReferer string, resolver RefererResolver) string {
+	if resolver != nil {
+		if injected := strings.TrimSpace(resolver(downloadURL, configuredReferer)); injected != "" {
+			return injected
+		}
+	}
+
 	parsedURL, err := url.Parse(downloadURL)
 	if err != nil {
 		return configuredReferer
-	}
-
-	host := strings.ToLower(parsedURL.Hostname())
-	switch {
-	case strings.HasSuffix(host, "jdbstatic.com"), strings.HasSuffix(host, "javdb.com"):
-		return "https://javdb.com/"
-	case strings.HasSuffix(host, "javbus.com"), strings.HasSuffix(host, "javbus.org"):
-		return "https://www.javbus.com/"
 	}
 
 	if configuredReferer != "" {

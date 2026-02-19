@@ -5,7 +5,8 @@ import (
 	"image"
 	"image/jpeg"
 
-	_ "image/png" // Register PNG decoder
+	_ "golang.org/x/image/webp" // Register WebP decoder
+	_ "image/png"               // Register PNG decoder
 
 	"github.com/spf13/afero"
 	"golang.org/x/image/draw"

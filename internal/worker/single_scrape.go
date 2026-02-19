@@ -13,6 +13,7 @@ import (
 	"github.com/javinizer/javinizer-go/internal/aggregator"
 	"github.com/javinizer/javinizer-go/internal/config"
 	"github.com/javinizer/javinizer-go/internal/database"
+	"github.com/javinizer/javinizer-go/internal/downloader"
 	httpclientiface "github.com/javinizer/javinizer-go/internal/httpclient"
 	"github.com/javinizer/javinizer-go/internal/logging"
 	"github.com/javinizer/javinizer-go/internal/matcher"
@@ -61,6 +62,39 @@ func scraperListContains(scrapers []string, target string) bool {
 		}
 	}
 	return false
+}
+
+func appendUniqueInput(inputs []string, input string) []string {
+	input = strings.TrimSpace(input)
+	if input == "" {
+		return inputs
+	}
+	for _, existing := range inputs {
+		if strings.EqualFold(existing, input) {
+			return inputs
+		}
+	}
+	return append(inputs, input)
+}
+
+func resolveScraperQueryForInputs(scraper models.Scraper, inputs ...string) (string, bool) {
+	seen := make(map[string]struct{}, len(inputs))
+	for _, input := range inputs {
+		input = strings.TrimSpace(input)
+		if input == "" {
+			continue
+		}
+		key := strings.ToLower(input)
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+
+		if mappedQuery, ok := models.ResolveSearchQueryForScraper(scraper, input); ok {
+			return mappedQuery, true
+		}
+	}
+	return "", false
 }
 
 // RunBatchScrapeOnce performs a single scrape operation for a file within a batch job context
@@ -121,7 +155,9 @@ func RunBatchScrapeOnce(
 
 	// Step 1: Determine the query (use queryOverride if provided, otherwise extract from filename)
 	var movieID string
+	var rawFilenameQuery string
 	var matchResultPtr *matcher.MatchResult // Store full match result for multi-part info
+	matcherMissFallback := false
 
 	if queryOverride != "" {
 		movieID = queryOverride
@@ -135,29 +171,40 @@ func RunBatchScrapeOnce(
 			Extension: filepath.Ext(filePath),
 			Dir:       filepath.Dir(filePath),
 		}
+		rawFilenameQuery = strings.TrimSpace(strings.TrimSuffix(fileInfo.Name, fileInfo.Extension))
 
 		matchResults := fileMatcher.Match([]scanner.FileInfo{fileInfo})
 		if len(matchResults) == 0 {
-			errMsg := "Could not extract movie ID from filename"
-			logging.Debugf("[Batch %s] File %d: %s", job.ID, fileIndex, errMsg)
+			// Matcher couldn't extract a standard ID. Fall back to using the raw
+			// filename (without extension) so scraper-specific query resolvers can
+			// route non-standard formats to the right scraper.
+			movieID = rawFilenameQuery
+			if movieID == "" {
+				errMsg := "Could not extract movie ID from filename"
+				logging.Debugf("[Batch %s] File %d: %s", job.ID, fileIndex, errMsg)
 
-			return nil, &FileResult{
-				FilePath:  filePath,
-				Status:    JobStatusFailed,
-				Error:     errMsg,
-				StartedAt: startTime,
-			}, errors.New(errMsg)
+				return nil, &FileResult{
+					FilePath:  filePath,
+					Status:    JobStatusFailed,
+					Error:     errMsg,
+					StartedAt: startTime,
+				}, errors.New(errMsg)
+			}
+			matcherMissFallback = true
+			matchResultPtr = nil
+			logging.Debugf("[Batch %s] File %d: Matcher could not extract ID, using raw filename query: %s",
+				job.ID, fileIndex, movieID)
+		} else {
+			// Store pointer to match result for later use
+			matchResultPtr = &matchResults[0]
+			movieID = matchResultPtr.ID
+			logging.Debugf("[Batch %s] File %d: Extracted movie ID: %s", job.ID, fileIndex, movieID)
 		}
-
-		// Store pointer to match result for later use
-		matchResultPtr = &matchResults[0]
-		movieID = matchResultPtr.ID
-		logging.Debugf("[Batch %s] File %d: Extracted movie ID: %s", job.ID, fileIndex, movieID)
 	}
 
 	// Step 2: Check cache (unless force or custom scrapers)
 	usingCustomScrapers := len(selectedScrapers) > 0
-	skipCache := force || usingCustomScrapers
+	skipCache := force || usingCustomScrapers || matcherMissFallback
 
 	if !skipCache {
 		logging.Debugf("[Batch %s] File %d: Checking cache for %s", job.ID, fileIndex, movieID)
@@ -183,7 +230,7 @@ func RunBatchScrapeOnce(
 				}
 
 				if shouldGenerate {
-					if tempPosterURL, err := GenerateTempPoster(ctx, job.ID, cached, httpClient, userAgent, referer); err != nil {
+					if tempPosterURL, err := GenerateTempPoster(ctx, job.ID, cached, httpClient, userAgent, referer, downloader.ResolveMediaReferer); err != nil {
 						logging.Warnf("[Batch %s] File %d: Failed to create temp poster for cached movie: %v", job.ID, fileIndex, err)
 						errMsg := err.Error()
 						posterErr = &errMsg
@@ -196,7 +243,7 @@ func RunBatchScrapeOnce(
 					if _, err := os.Stat(tempPosterPath); err != nil {
 						// Temp poster doesn't exist - regenerate it
 						logging.Debugf("[Batch %s] File %d: Temp poster missing for %s, regenerating", job.ID, fileIndex, cached.ID)
-						if tempPosterURL, err := GenerateTempPoster(ctx, job.ID, cached, httpClient, userAgent, referer); err != nil {
+						if tempPosterURL, err := GenerateTempPoster(ctx, job.ID, cached, httpClient, userAgent, referer, downloader.ResolveMediaReferer); err != nil {
 							logging.Warnf("[Batch %s] File %d: Failed to regenerate temp poster: %v", job.ID, fileIndex, err)
 							errMsg := err.Error()
 							posterErr = &errMsg
@@ -359,7 +406,8 @@ func RunBatchScrapeOnce(
 
 	// Step 3: Perform DMM content-ID resolution (only if not using manual query)
 	var resolvedID string
-	shouldResolveDMMContentID := queryOverride == "" && (len(selectedScrapers) == 0 || scraperListContains(selectedScrapers, "dmm"))
+	shouldResolveDMMContentID := queryOverride == "" && !matcherMissFallback &&
+		(len(selectedScrapers) == 0 || scraperListContains(selectedScrapers, "dmm"))
 	if shouldResolveDMMContentID {
 		if dmmScraper, exists := registry.Get("dmm"); exists {
 			if !dmmScraper.IsEnabled() {
@@ -407,7 +455,40 @@ func RunBatchScrapeOnce(
 	}
 
 	// GetByPriority returns all enabled scrapers when passed nil
-	scrapersToUse := registry.GetByPriority(scraperNames)
+	priorityInput := movieID
+	if rawFilenameQuery != "" {
+		priorityInput = rawFilenameQuery
+	}
+	scrapersToUse := registry.GetByPriorityForInput(scraperNames, priorityInput)
+
+	// If matcher fallback is active, route only to scrapers that explicitly
+	// claim support for this input via ScraperQueryResolver.
+	if matcherMissFallback {
+		matchedScrapers := make([]models.Scraper, 0, len(scrapersToUse))
+		for _, scraper := range scrapersToUse {
+			if _, ok := resolveScraperQueryForInputs(scraper, rawFilenameQuery, movieID); ok {
+				matchedScrapers = append(matchedScrapers, scraper)
+			}
+		}
+
+		if len(matchedScrapers) == 0 {
+			errMsg := fmt.Sprintf("No scraper query resolver matched filename input: %s", movieID)
+			logging.Debugf("[Batch %s] File %d: %s", job.ID, fileIndex, errMsg)
+			now := time.Now()
+			return nil, &FileResult{
+				FilePath:  filePath,
+				MovieID:   movieID,
+				Status:    JobStatusFailed,
+				Error:     errMsg,
+				StartedAt: startTime,
+				EndedAt:   &now,
+			}, errors.New(errMsg)
+		}
+
+		scrapersToUse = matchedScrapers
+		logging.Debugf("[Batch %s] File %d: Routed filename input %s to resolver-matched scrapers: %d",
+			job.ID, fileIndex, movieID, len(scrapersToUse))
+	}
 	logging.Debugf("[Batch %s] File %d: Resolved to %d scrapers", job.ID, fileIndex, len(scrapersToUse))
 
 	for _, scraper := range scrapersToUse {
@@ -427,8 +508,13 @@ func RunBatchScrapeOnce(
 		default:
 		}
 
-		logging.Debugf("[Batch %s] File %d: Querying scraper %s for %s", job.ID, fileIndex, scraper.Name(), resolvedID)
-		scraperResult, err := scraperSearchWithContext(ctx, scraper, resolvedID)
+		scraperQuery := resolvedID
+		if mappedQuery, ok := resolveScraperQueryForInputs(scraper, rawFilenameQuery, movieID, resolvedID); ok {
+			scraperQuery = mappedQuery
+		}
+
+		logging.Debugf("[Batch %s] File %d: Querying scraper %s for %s", job.ID, fileIndex, scraper.Name(), scraperQuery)
+		scraperResult, err := scraperSearchWithContext(ctx, scraper, scraperQuery)
 		if err != nil {
 			// Check if error is due to context cancellation
 			if err == ctx.Err() {
@@ -448,7 +534,7 @@ func RunBatchScrapeOnce(
 
 			// If scraping with resolved ID fails, try with original ID before giving up
 			// (but only if we're not using a manual query override)
-			if resolvedID != movieID && queryOverride == "" {
+			if scraperQuery != movieID && queryOverride == "" {
 				logging.Debugf("[Batch %s] File %d: Retrying scraper %s with original ID: %s",
 					job.ID, fileIndex, scraper.Name(), movieID)
 				scraperResult, err = scraperSearchWithContext(ctx, scraper, movieID)
@@ -674,7 +760,7 @@ func RunBatchScrapeOnce(
 		}
 
 		if shouldGeneratePoster {
-			if tempPosterURL, err := GenerateTempPoster(ctx, job.ID, movie, httpClient, userAgent, referer); err != nil {
+			if tempPosterURL, err := GenerateTempPoster(ctx, job.ID, movie, httpClient, userAgent, referer, downloader.ResolveMediaReferer); err != nil {
 				logging.Warnf("[Batch %s] File %d: Failed to create temp poster: %v (continuing anyway)", job.ID, fileIndex, err)
 				errMsg := err.Error()
 				posterErr = &errMsg

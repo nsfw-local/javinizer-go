@@ -370,6 +370,12 @@ func getAvailableScrapers(deps *ServerDependencies) gin.HandlerFunc {
 						Description: "AV Entertainment base URL",
 						Type:        "string",
 					},
+					{
+						Key:         "scrape_bonus_screens",
+						Label:       "Scrape bonus screenshots",
+						Description: "Append bonus image files (e.g., 特典ファイル) to screenshots",
+						Type:        "boolean",
+					},
 				}
 				options = append(options, scraperFakeUserAgentOptions()...)
 				options = append(options, scraperProxyOptions(profileChoices)...)

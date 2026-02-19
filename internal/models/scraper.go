@@ -1,6 +1,9 @@
 package models
 
-import "time"
+import (
+	"strings"
+	"time"
+)
 
 // Rating represents rating information from scrapers
 type Rating struct {
@@ -69,6 +72,15 @@ type Scraper interface {
 	IsEnabled() bool
 }
 
+// ScraperQueryResolver is an optional hook for scrapers to declare and normalize
+// identifier formats they can handle (e.g., non-standard filename IDs).
+//
+// Implementations should return (normalizedQuery, true) when input matches a
+// scraper-specific pattern, or ("", false) when it does not apply.
+type ScraperQueryResolver interface {
+	ResolveSearchQuery(input string) (string, bool)
+}
+
 // ScraperRegistry manages available scrapers
 type ScraperRegistry struct {
 	scrapers map[string]Scraper
@@ -130,4 +142,51 @@ func (r *ScraperRegistry) GetByPriority(priority []string) []Scraper {
 	}
 
 	return scrapers
+}
+
+// GetByPriorityForInput returns enabled scrapers in priority order, but moves
+// scrapers with matching query resolvers to the front for the provided input.
+//
+// If no scraper resolver matches, the original GetByPriority ordering is
+// returned unchanged.
+func (r *ScraperRegistry) GetByPriorityForInput(priority []string, input string) []Scraper {
+	scrapers := r.GetByPriority(priority)
+	input = strings.TrimSpace(input)
+	if input == "" || len(scrapers) == 0 {
+		return scrapers
+	}
+
+	matching := make([]Scraper, 0, len(scrapers))
+	nonMatching := make([]Scraper, 0, len(scrapers))
+
+	for _, scraper := range scrapers {
+		if _, ok := ResolveSearchQueryForScraper(scraper, input); ok {
+			matching = append(matching, scraper)
+			continue
+		}
+		nonMatching = append(nonMatching, scraper)
+	}
+
+	if len(matching) == 0 {
+		return scrapers
+	}
+
+	return append(matching, nonMatching...)
+}
+
+// ResolveSearchQueryForScraper resolves an input query using a scraper's
+// optional ScraperQueryResolver hook.
+func ResolveSearchQueryForScraper(scraper Scraper, input string) (string, bool) {
+	resolver, ok := scraper.(ScraperQueryResolver)
+	if !ok || resolver == nil {
+		return "", false
+	}
+
+	query, matched := resolver.ResolveSearchQuery(input)
+	query = strings.TrimSpace(query)
+	if !matched || query == "" {
+		return "", false
+	}
+
+	return query, true
 }

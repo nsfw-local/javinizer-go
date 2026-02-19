@@ -305,6 +305,12 @@ func TestResolveTempImageReferer(t *testing.T) {
 			expected:   "https://www.dmm.co.jp/",
 		},
 		{
+			name:       "aventertainments override",
+			imageURL:   "https://imgs02.aventertainments.com/vodimages/screenshot/large/1pon_020326_001/001.webp",
+			configured: "https://example.com/",
+			expected:   "https://www.aventertainments.com/",
+		},
+		{
 			name:       "configured fallback",
 			imageURL:   "https://images.example.com/a.jpg",
 			configured: "https://configured.example.com/",

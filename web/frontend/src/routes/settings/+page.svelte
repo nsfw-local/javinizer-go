@@ -132,7 +132,65 @@
 
 	// Check if scraper has options to show
 	function scraperHasOptions(scraper: ScraperItem): boolean {
-		return scraper.options && scraper.options.length > 0;
+		return scraperSupportsProxyOptions(scraper) || getRenderableScraperOptions(scraper).length > 0;
+	}
+
+	function scraperSupportsProxyOptions(scraper: ScraperItem): boolean {
+		return (scraper.options || []).some((option) => option.key.startsWith('proxy.'));
+	}
+
+	function getRenderableScraperOptions(scraper: ScraperItem): ScraperOption[] {
+		return (scraper.options || []).filter((option) => !option.key.startsWith('proxy.') && !option.key.startsWith('download_proxy.'));
+	}
+
+	function getScraperConfigNames(): string[] {
+		if (!config?.scrapers) return [];
+		return Object.keys(config.scrapers).filter(
+			(name: string) => !['priority', 'proxy', 'user_agent', 'referer', 'timeout_seconds', 'request_timeout_seconds'].includes(name)
+		);
+	}
+
+	function stripLegacyDownloadProxyFields(): void {
+		for (const scraperName of getScraperConfigNames()) {
+			const scraperCfg = config?.scrapers?.[scraperName];
+			if (scraperCfg?.download_proxy !== undefined) {
+				delete scraperCfg.download_proxy;
+			}
+		}
+	}
+
+	type ScraperProxyMode = 'direct' | 'inherit' | 'specific';
+
+	function getScraperProxyMode(scraperName: string): ScraperProxyMode {
+		const proxyCfg = config?.scrapers?.[scraperName]?.proxy;
+		if (!proxyCfg?.enabled) return 'direct';
+		if ((proxyCfg.profile ?? '').trim() !== '') return 'specific';
+		return 'inherit';
+	}
+
+	function setScraperProxyMode(scraperName: string, mode: ScraperProxyMode): void {
+		if (!config?.scrapers) return;
+		if (!config.scrapers[scraperName]) config.scrapers[scraperName] = {};
+		if (!config.scrapers[scraperName].proxy || typeof config.scrapers[scraperName].proxy !== 'object') {
+			config.scrapers[scraperName].proxy = {};
+		}
+
+		const proxyCfg = config.scrapers[scraperName].proxy;
+		if (mode === 'direct') {
+			proxyCfg.enabled = false;
+		} else if (mode === 'inherit') {
+			proxyCfg.enabled = true;
+			proxyCfg.profile = '';
+		} else {
+			proxyCfg.enabled = true;
+			if (!(proxyCfg.profile ?? '').trim()) {
+				const defaultProfile = config.scrapers.proxy?.default_profile ?? '';
+				const firstProfile = getProxyProfileNames()[0] ?? '';
+				proxyCfg.profile = defaultProfile || firstProfile;
+			}
+		}
+
+		config = JSON.parse(JSON.stringify(config));
 	}
 
 	function toggleExpanded(index: number) {
@@ -232,13 +290,10 @@
 
 	function updateScraperProfileRefs(oldName: string, newName: string): void {
 		if (!config?.scrapers) return;
-		Object.keys(config.scrapers)
-			.filter((name: string) => !['priority', 'proxy', 'user_agent', 'referer', 'timeout_seconds', 'request_timeout_seconds'].includes(name))
-			.forEach((scraperName: string) => {
-				const scraperCfg = config.scrapers[scraperName];
-				if (scraperCfg?.proxy?.profile === oldName) scraperCfg.proxy.profile = newName;
-				if (scraperCfg?.download_proxy?.profile === oldName) scraperCfg.download_proxy.profile = newName;
-			});
+		getScraperConfigNames().forEach((scraperName: string) => {
+			const scraperCfg = config.scrapers[scraperName];
+			if (scraperCfg?.proxy?.profile === oldName) scraperCfg.proxy.profile = newName;
+		});
 	}
 
 	function renameProxyProfile(oldName: string, rawNewName: string): void {
@@ -369,7 +424,7 @@
 		scrapers = scrapers.map((scraper) => ({
 			...scraper,
 			options: (scraper.options || []).map((option) => {
-				if (option.key === 'proxy.profile' || option.key === 'download_proxy.profile') {
+				if (option.key === 'proxy.profile') {
 					return { ...option, choices };
 				}
 				return option;
@@ -423,14 +478,6 @@
 			return false;
 		}
 
-		if (optionKey.startsWith('download_proxy.')) {
-			if (!globalProxyEnabled) return true;
-			if (optionKey === 'download_proxy.enabled') return false;
-			const downloadProxyEnabled = !!getOptionValue(scraperName, 'download_proxy.enabled');
-			if (!downloadProxyEnabled) return true;
-			return false;
-		}
-
 		if (optionKey === 'fake_user_agent') {
 			return !(scraperCfg?.use_fake_user_agent ?? false);
 		}
@@ -443,21 +490,6 @@
 		if (!config?.scrapers) return;
 		if (!config.scrapers[scraperName]) config.scrapers[scraperName] = {};
 		setNestedValue(config.scrapers[scraperName], optionKey, value);
-		if (optionKey === 'download_proxy.enabled') {
-			if (!config.scrapers[scraperName].download_proxy) config.scrapers[scraperName].download_proxy = {};
-			if (!value) {
-				// Disable override by clearing legacy fields that would otherwise imply activation.
-				config.scrapers[scraperName].download_proxy.profile = '';
-				config.scrapers[scraperName].download_proxy.use_main_proxy = false;
-				config.scrapers[scraperName].download_proxy.url = '';
-				config.scrapers[scraperName].download_proxy.username = '';
-				config.scrapers[scraperName].download_proxy.password = '';
-			}
-		}
-		if (optionKey === 'download_proxy.profile') {
-			if (!config.scrapers[scraperName].download_proxy) config.scrapers[scraperName].download_proxy = {};
-			config.scrapers[scraperName].download_proxy.enabled = !!(typeof value === 'string' && value.trim().length > 0);
-		}
 		// Trigger reactivity by reassigning the config object with a deep clone
 		config = JSON.parse(JSON.stringify(config));
 	}
@@ -590,6 +622,7 @@
 		try {
 			config = await apiClient.request('/api/v1/config');
 			ensureProxyProfilesInitialized();
+			stripLegacyDownloadProxyFields();
 			buildScraperList();
 		} catch (e) {
 			error = e instanceof Error ? e.message : 'Failed to load configuration';
@@ -607,6 +640,7 @@
 		saving = true;
 		error = null;
 		try {
+			stripLegacyDownloadProxyFields();
 			await apiClient.request('/api/v1/config', {
 				method: 'PUT',
 				body: JSON.stringify(config)
@@ -746,6 +780,9 @@
 				<div class="space-y-4">
 					<div>
 						<span class="block text-sm font-medium mb-2">Available Scrapers</span>
+						<p class="text-xs text-muted-foreground mb-3">
+							Per-scraper proxy routing is configured inside each scraper: Scraper profile, then global proxy fallback, otherwise direct when disabled.
+						</p>
 						<div class="space-y-2">
 							{#each scrapers as scraper, index (scraper.name)}
 								<div
@@ -802,11 +839,73 @@
 									</div>
 
 									<!-- Collapsible options section - dynamically rendered -->
-									{#if scraper.enabled && scraper.expanded && scraper.options.length > 0}
+									{#if scraper.enabled && scraper.expanded && scraperHasOptions(scraper)}
 										<div class="px-3 pb-3 pt-0 border-t bg-muted/20" transition:slide|local={{ duration: 220, easing: quintOut }}>
 											<div class="pl-8 py-3 space-y-3" in:fade|local={{ duration: 170 }}>
 												<h4 class="text-sm font-medium">{scraper.displayName} Options</h4>
-												{#each scraper.options as option}
+												{#if scraperSupportsProxyOptions(scraper)}
+													<div class="rounded-md border border-border/80 bg-background/70 p-3 space-y-3">
+														<div>
+															<p class="text-sm font-medium">Proxy Routing</p>
+															<p class="text-xs text-muted-foreground mt-1">
+																Priority: scraper profile, then global proxy, else direct when disabled.
+															</p>
+														</div>
+
+														<div class="grid gap-3 md:grid-cols-2">
+															<div>
+																<label class="block text-sm font-medium mb-1" for="proxy-mode-{scraper.name}">Proxy mode</label>
+																<select
+																	id="proxy-mode-{scraper.name}"
+																	value={getScraperProxyMode(scraper.name)}
+																	onchange={(e) => setScraperProxyMode(scraper.name, e.currentTarget.value as ScraperProxyMode)}
+																	class="w-full px-3 py-2 border rounded-md transition-all text-sm bg-background focus:ring-2 focus:ring-primary focus:border-primary"
+																>
+																	<option value="direct">Direct (No proxy)</option>
+																	<option value="inherit">Inherit Global Proxy</option>
+																	<option value="specific">Use Scraper Profile</option>
+																</select>
+																<p class="text-xs text-muted-foreground mt-1">
+																	{#if getScraperProxyMode(scraper.name) === 'direct'}
+																		This scraper bypasses proxy for requests and downloads.
+																	{:else if getScraperProxyMode(scraper.name) === 'inherit'}
+																		Uses global proxy settings from Proxy Settings.
+																	{:else}
+																		Uses a scraper-specific proxy profile.
+																	{/if}
+																</p>
+															</div>
+
+															<div class={getScraperProxyMode(scraper.name) === 'specific' ? '' : 'opacity-60'}>
+																<label class="block text-sm font-medium mb-1" for="proxy-profile-{scraper.name}">Scraper profile</label>
+																<select
+																	id="proxy-profile-{scraper.name}"
+																	value={config.scrapers?.[scraper.name]?.proxy?.profile ?? ''}
+																	disabled={getScraperProxyMode(scraper.name) !== 'specific'}
+																	onchange={(e) => setOptionValue(scraper.name, 'proxy.profile', e.currentTarget.value)}
+																	class="w-full px-3 py-2 border rounded-md transition-all text-sm {getScraperProxyMode(scraper.name) === 'specific' ? 'bg-background focus:ring-2 focus:ring-primary focus:border-primary' : 'bg-muted/70 text-muted-foreground border-border/60 cursor-not-allowed'}"
+																>
+																	<option value="">Select profile</option>
+																	{#each getProxyProfileNames() as profileName}
+																		<option value={profileName}>{profileName}</option>
+																	{/each}
+																</select>
+																<p class="text-xs text-muted-foreground mt-1">
+																	Only used when Proxy mode is "Use Scraper Profile".
+																</p>
+															</div>
+														</div>
+
+														{#if !(config.scrapers?.proxy?.enabled ?? false)}
+															<p class="text-xs text-amber-600">
+																Global proxy is currently disabled. "Inherit Global Proxy" will behave as direct until enabled.
+															</p>
+														{/if}
+
+													</div>
+												{/if}
+
+												{#each getRenderableScraperOptions(scraper) as option}
 													{@const optionDisabled = isOptionDisabled(scraper.name, option.key)}
 													<div class="space-y-1">
 														{#if option.type === 'boolean'}
@@ -1445,11 +1544,11 @@
 			</SettingsSection>
 
 			<!-- Proxy Settings -->
-			<SettingsSection title="Proxy Settings" description="Configure HTTP/SOCKS5 proxies for scraper requests and downloads" defaultExpanded={false}>
+			<SettingsSection title="Proxy Settings" description="Configure global proxy fallback and reusable proxy profiles" defaultExpanded={false}>
 				<SettingsSubsection title="Scraper Proxy">
 					<FormToggle
 						label="Enable scraper proxy"
-						description="Route all scraper requests (and downloads by default) through a proxy server"
+						description="Enable global fallback proxy. Scrapers set to 'Inherit Global Proxy' will use this."
 						checked={config.scrapers.proxy?.enabled ?? false}
 						onchange={(val) => {
 							if (!config.scrapers.proxy) config.scrapers.proxy = {};
@@ -1473,7 +1572,7 @@
 							{/each}
 						</select>
 						<p class="text-xs text-muted-foreground mt-1">
-							Global proxy profile used by default for scraper requests and downloads.
+							Default global fallback profile. Scrapers in 'Inherit Global Proxy' mode use this profile.
 						</p>
 					</div>
 

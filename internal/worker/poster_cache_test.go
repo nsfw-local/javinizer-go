@@ -1,8 +1,12 @@
 package worker
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"image"
+	"image/color"
+	"image/jpeg"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -32,6 +36,7 @@ func TestPosterRegenerationOnCacheHit(t *testing.T) {
 	if testing.Short() {
 		t.Skip("Skipping integration test in short mode")
 	}
+	chdirToTempDir(t)
 
 	// Setup: Create temp directories
 	tempDir := t.TempDir()
@@ -41,16 +46,17 @@ func TestPosterRegenerationOnCacheHit(t *testing.T) {
 	// Ensure temp poster directory exists
 	err := os.MkdirAll(tempPosterDir, 0755)
 	require.NoError(t, err, "Failed to create temp poster directory")
-	defer os.RemoveAll("data") // Cleanup after test
 
-	// Create test HTTP server for poster downloads
-	// Use a real JPEG file from the project for testing
-	testImagePath := "/Users/choong/Projects/javinizer-go/out/PRED-151/PRED-151 [プレミアム] - カモられオヤジ集団 巨乳女子大生レ×プ制裁 八乃つばさ (2019)/PRED-151-poster.jpg"
-	testImageData, err := os.ReadFile(testImagePath)
-	if err != nil {
-		// If test image doesn't exist, skip this test
-		t.Skipf("Test image not found: %s", testImagePath)
+	// Create test HTTP server for poster downloads with an in-memory JPEG.
+	var imageBuf bytes.Buffer
+	img := image.NewRGBA(image.Rect(0, 0, 1000, 1500))
+	for y := 0; y < 1500; y++ {
+		for x := 0; x < 1000; x++ {
+			img.Set(x, y, color.RGBA{R: 80, G: 120, B: 180, A: 255})
+		}
 	}
+	require.NoError(t, jpeg.Encode(&imageBuf, img, &jpeg.Options{Quality: 90}))
+	testImageData := imageBuf.Bytes()
 
 	posterDownloadCount := 0
 	testServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

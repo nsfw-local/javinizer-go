@@ -122,12 +122,16 @@ func ScrapeMetadata(
 
 		// Scrape from sources
 		results := []*models.ScraperResult{}
-		scrapers := registry.GetByPriority(scraperPriority)
+		scrapers := registry.GetByPriorityForInput(scraperPriority, id)
 		logging.Debugf("[%s] Initialized %d scrapers in priority order", id, len(scrapers))
 
 		for _, scraper := range scrapers {
-			logging.Debugf("[%s] Querying scraper: %s", id, scraper.Name())
-			if result, err := scraper.Search(id); err == nil {
+			scraperQuery := id
+			if mappedQuery, ok := models.ResolveSearchQueryForScraper(scraper, id); ok {
+				scraperQuery = mappedQuery
+			}
+			logging.Debugf("[%s] Querying scraper: %s (query=%s)", id, scraper.Name(), scraperQuery)
+			if result, err := scraper.Search(scraperQuery); err == nil {
 				logging.Debugf("[%s] Scraper %s returned: Title=%s, Language=%s, Actresses=%d, Genres=%d",
 					id, scraper.Name(), result.Title, result.Language, len(result.Actresses), len(result.Genres))
 				results = append(results, result)

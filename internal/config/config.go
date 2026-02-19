@@ -200,14 +200,15 @@ type TokyoHotConfig struct {
 
 // AVEntertainmentConfig holds AVEntertainment scraper configuration
 type AVEntertainmentConfig struct {
-	Enabled          bool         `yaml:"enabled" json:"enabled"`
-	Language         string       `yaml:"language" json:"language"`                                 // Language code: en, ja (default: en)
-	RequestDelay     int          `yaml:"request_delay" json:"request_delay"`                       // Delay between requests in milliseconds (0 = no delay)
-	BaseURL          string       `yaml:"base_url" json:"base_url"`                                 // Base URL for AVEntertainment
-	UseFakeUserAgent bool         `yaml:"use_fake_user_agent" json:"use_fake_user_agent"`           // Use browser-like User-Agent header for this scraper
-	FakeUserAgent    string       `yaml:"fake_user_agent" json:"fake_user_agent"`                   // Optional custom fake User-Agent (defaults to built-in browser UA)
-	Proxy            *ProxyConfig `yaml:"proxy,omitempty" json:"proxy,omitempty"`                   // Optional scraper-specific proxy override
-	DownloadProxy    *ProxyConfig `yaml:"download_proxy,omitempty" json:"download_proxy,omitempty"` // Optional scraper-specific download proxy override
+	Enabled            bool         `yaml:"enabled" json:"enabled"`
+	Language           string       `yaml:"language" json:"language"`                                 // Language code: en, ja (default: en)
+	RequestDelay       int          `yaml:"request_delay" json:"request_delay"`                       // Delay between requests in milliseconds (0 = no delay)
+	BaseURL            string       `yaml:"base_url" json:"base_url"`                                 // Base URL for AVEntertainment
+	ScrapeBonusScreens bool         `yaml:"scrape_bonus_screens" json:"scrape_bonus_screens"`         // Append bonus image files (e.g., "特典ファイル") to screenshot URLs
+	UseFakeUserAgent   bool         `yaml:"use_fake_user_agent" json:"use_fake_user_agent"`           // Use browser-like User-Agent header for this scraper
+	FakeUserAgent      string       `yaml:"fake_user_agent" json:"fake_user_agent"`                   // Optional custom fake User-Agent (defaults to built-in browser UA)
+	Proxy              *ProxyConfig `yaml:"proxy,omitempty" json:"proxy,omitempty"`                   // Optional scraper-specific proxy override
+	DownloadProxy      *ProxyConfig `yaml:"download_proxy,omitempty" json:"download_proxy,omitempty"` // Optional scraper-specific download proxy override
 }
 
 // DLGetchuConfig holds DLgetchu scraper configuration
@@ -471,10 +472,11 @@ func DefaultConfig() *Config {
 				BaseURL:      "https://www.tokyo-hot.com",
 			},
 			AVEntertainment: AVEntertainmentConfig{
-				Enabled:      false,
-				Language:     "en",
-				RequestDelay: 1000,
-				BaseURL:      "https://www.aventertainments.com",
+				Enabled:            false,
+				Language:           "en",
+				RequestDelay:       1000,
+				BaseURL:            "https://www.aventertainments.com",
+				ScrapeBonusScreens: false,
 			},
 			DLGetchu: DLGetchuConfig{
 				Enabled:      false,

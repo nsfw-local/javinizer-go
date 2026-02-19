@@ -5,7 +5,6 @@ import (
 	"net/url"
 	"path"
 	"regexp"
-	"sort"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -24,7 +23,11 @@ const defaultBaseURL = "https://www.aventertainments.com"
 
 var (
 	nonAlphaNumRegex = regexp.MustCompile(`[^a-z0-9]+`)
-	idRegex          = regexp.MustCompile(`([A-Za-z]+[_-]?\d+[A-Za-z]?)`)
+	tokenSplitRegex  = regexp.MustCompile(`[^\w-]+`)
+	standardIDRegex  = regexp.MustCompile(`(?i)^([a-z]{2,12}[-_]\d{2,8}[a-z]?)$`)
+	compactIDRegex   = regexp.MustCompile(`(?i)^([a-z]{2,12}\d{2,8}[a-z]?)$`)
+	onePondoRegex    = regexp.MustCompile(`(?i)^1pon[_-](\d{6})[_-](\d{3})$`)
+	caribRegex       = regexp.MustCompile(`(?i)^carib(?:bean)?[_-](\d{6})[_-](\d{3})$`)
 	runtimeClockRe   = regexp.MustCompile(`(\d{1,2}):(\d{2})(?::\d{2})?`)
 	runtimeMinuteRe  = regexp.MustCompile(`(?i)(\d{1,3})\s*(?:min|minutes|分)`)
 	dateRegex        = regexp.MustCompile(`(\d{1,2}/\d{1,2}/\d{4}|\d{4}-\d{2}-\d{2}|\d{4}/\d{2}/\d{2})`)
@@ -37,6 +40,7 @@ type Scraper struct {
 	baseURL         string
 	language        string
 	requestDelay    time.Duration
+	scrapeBonus     bool
 	lastRequestTime atomic.Value
 }
 
@@ -75,6 +79,7 @@ func New(cfg *config.Config) *Scraper {
 		baseURL:      base,
 		language:     normalizeLanguage(scraperCfg.Language),
 		requestDelay: time.Duration(scraperCfg.RequestDelay) * time.Millisecond,
+		scrapeBonus:  scraperCfg.ScrapeBonusScreens,
 	}
 	s.lastRequestTime.Store(time.Time{})
 
@@ -91,6 +96,27 @@ func (s *Scraper) Name() string { return "aventertainment" }
 // IsEnabled returns whether scraper is enabled.
 func (s *Scraper) IsEnabled() bool { return s.enabled }
 
+// ResolveSearchQuery maps non-standard filename IDs to AVEntertainment-friendly
+// query formats.
+func (s *Scraper) ResolveSearchQuery(input string) (string, bool) {
+	norm := normalizeResolverInput(input)
+	if norm == "" {
+		return "", false
+	}
+
+	// OnePondo style IDs (example: 1pon_020326_001)
+	if m := onePondoRegex.FindStringSubmatch(norm); len(m) == 3 {
+		return "1pon_" + m[1] + "_" + m[2], true
+	}
+
+	// Caribbeancom style IDs (example: carib_020326_001)
+	if m := caribRegex.FindStringSubmatch(norm); len(m) == 3 {
+		return "carib_" + m[1] + "_" + m[2], true
+	}
+
+	return "", false
+}
+
 // GetURL resolves a detail page URL from movie ID.
 func (s *Scraper) GetURL(id string) (string, error) {
 	id = strings.TrimSpace(id)
@@ -102,16 +128,14 @@ func (s *Scraper) GetURL(id string) (string, error) {
 	}
 
 	searchEndpoints := []string{
-		fmt.Sprintf("/ppv/ppv_searchproducts.aspx?languageID=1&vodtypeid=1&keyword=%s", url.QueryEscape(id)),
-		fmt.Sprintf("/ppv/ppv_searchproducts.aspx?languageID=1&vodtypeid=2&keyword=%s", url.QueryEscape(id)),
-		fmt.Sprintf("/search_Products.aspx?languageID=1&dept_id=29&keyword=%s&searchby=keyword", url.QueryEscape(id)),
-		fmt.Sprintf("/search_Products.aspx?languageID=1&dept_id=43&keyword=%s&searchby=keyword", url.QueryEscape(id)),
+		fmt.Sprintf("/ppv/search?keyword=%s&searchby=keyword", url.QueryEscape(id)),
+		fmt.Sprintf("/ppv/search?keyword=%s", url.QueryEscape(id)),
 	}
 
 	candidateSet := map[string]struct{}{}
 	candidateOrder := make([]string, 0, 8)
 	for _, endpoint := range searchEndpoints {
-		searchURL := s.baseURL + endpoint
+		searchURL := s.applyLanguage(s.baseURL + endpoint)
 		html, status, err := s.fetchPage(searchURL)
 		if err != nil || status != 200 {
 			continue
@@ -130,7 +154,7 @@ func (s *Scraper) GetURL(id string) (string, error) {
 		return "", fmt.Errorf("movie %s not found on AVEntertainment", id)
 	}
 
-	target := normalizeID(id)
+	target := normalizeComparableID(id)
 	maxInspect := len(candidateOrder)
 	if maxInspect > 12 {
 		maxInspect = 12
@@ -146,7 +170,8 @@ func (s *Scraper) GetURL(id string) (string, error) {
 		if candidateID == "" {
 			candidateID = extractID(candidate)
 		}
-		if candidateID != "" && (normalizeID(candidateID) == target || strings.HasSuffix(normalizeID(candidateID), target)) {
+		candidateNorm := normalizeComparableID(candidateID)
+		if candidateNorm != "" && (candidateNorm == target || strings.HasSuffix(candidateNorm, target) || strings.HasSuffix(target, candidateNorm)) {
 			return s.applyLanguage(candidate), nil
 		}
 	}
@@ -179,17 +204,22 @@ func (s *Scraper) Search(id string) (*models.ScraperResult, error) {
 		return nil, fmt.Errorf("failed to parse AVEntertainment detail page: %w", err)
 	}
 
-	return parseDetailPage(doc, html, detailURL, id, s.language), nil
+	return parseDetailPage(doc, html, detailURL, id, s.language, s.scrapeBonus), nil
 }
 
-func parseDetailPage(doc *goquery.Document, html, sourceURL, fallbackID, language string) *models.ScraperResult {
+func parseDetailPage(doc *goquery.Document, html, sourceURL, fallbackID, language string, scrapeBonus bool) *models.ScraperResult {
 	result := &models.ScraperResult{
 		Source:    "aventertainment",
 		SourceURL: sourceURL,
 		Language:  language,
 	}
 
-	id := cleanString(doc.Find("span.tag-title").First().Text())
+	detail := extractDetailInfo(doc)
+
+	id := extractID(detail.ProductID)
+	if id == "" {
+		id = extractID(cleanString(doc.Find("span.tag-title").First().Text()))
+	}
 	if id == "" {
 		id = extractCandidateID(html)
 	}
@@ -202,31 +232,61 @@ func parseDetailPage(doc *goquery.Document, html, sourceURL, fallbackID, languag
 	result.ID = strings.ToUpper(strings.ReplaceAll(id, "_", "-"))
 	result.ContentID = result.ID
 
-	title := cleanString(doc.Find("title").First().Text())
+	title := cleanString(detail.Title)
+	if title == "" {
+		title = cleanString(doc.Find(".section-title h1, .section-title h2, .section-title h3").First().Text())
+	}
+	if title == "" {
+		title = cleanString(doc.Find("title").First().Text())
+	}
 	if title == "" {
 		title = cleanString(doc.Find("meta[property='og:title']").AttrOr("content", ""))
 	}
 	result.Title = stripSiteSuffix(title)
 	result.OriginalTitle = result.Title
 
-	if dateRaw := findDate(html); dateRaw != "" {
+	dateRaw := cleanString(detail.ReleaseDateRaw)
+	if dateRaw == "" {
+		dateRaw = findDate(html)
+	}
+	if dateRaw != "" {
 		if t := parseDate(dateRaw); t != nil {
 			result.ReleaseDate = t
 		}
 	}
 
-	if runtimeRaw := findRuntime(html); runtimeRaw != "" {
+	runtimeRaw := cleanString(detail.RuntimeRaw)
+	if runtimeRaw == "" {
+		runtimeRaw = findRuntime(html)
+	}
+	if runtimeRaw != "" {
 		result.Runtime = parseRuntime(runtimeRaw)
 	}
 
-	result.Maker = cleanString(findMaker(html))
+	result.Maker = cleanString(detail.Studio)
+	if result.Maker == "" {
+		result.Maker = cleanString(findMaker(html))
+	}
 	result.Description = extractDescription(doc)
-	result.Genres = extractGenres(doc)
-	result.Actresses = extractActresses(doc)
+	result.Genres = detail.Categories
+	if len(result.Genres) == 0 {
+		result.Genres = extractGenres(doc.Selection)
+	}
+	result.Actresses = detail.Actresses
+	if len(result.Actresses) == 0 {
+		result.Actresses = extractActresses(doc.Selection)
+	}
 
-	result.CoverURL = extractCoverURL(doc, html, sourceURL)
-	result.PosterURL = result.CoverURL
-	result.ScreenshotURL = extractScreenshotURLs(doc, html, sourceURL)
+	posterURL := extractPosterURL(doc, html, sourceURL)
+	if posterURL == "" {
+		posterURL = extractCoverURL(doc, html, sourceURL)
+	}
+
+	result.PosterURL = posterURL
+	// AVEntertainment cover/fanart should use the same original source image
+	// used before poster cropping.
+	result.CoverURL = posterURL
+	result.ScreenshotURL = extractScreenshotURLs(doc, html, sourceURL, scrapeBonus)
 	result.ShouldCropPoster = true
 
 	if result.Title == "" {
@@ -250,7 +310,7 @@ func extractDetailLinks(html, base string) []string {
 		if href == "" {
 			return
 		}
-		if !(strings.Contains(href, "new_detail") || strings.Contains(href, "product_lists")) {
+		if !(strings.Contains(href, "/ppv/detail") || strings.Contains(href, "new_detail") || strings.Contains(href, "product_lists")) {
 			return
 		}
 		full := resolveURL(base, href)
@@ -261,13 +321,14 @@ func extractDetailLinks(html, base string) []string {
 		out = append(out, full)
 	})
 
-	sort.Strings(out)
 	return out
 }
 
 func extractCandidateID(html string) string {
 	patterns := []*regexp.Regexp{
 		regexp.MustCompile(`(?is)<span class="tag-title">\s*([^<]+?)\s*</span>`),
+		regexp.MustCompile(`(?is)item_no=([A-Za-z0-9_-]+)`),
+		regexp.MustCompile(`(?is)vodimages/(?:x?large|screenshot/large|gallery/large)/([A-Za-z0-9_-]+)`),
 		regexp.MustCompile(`(?is)(?:Product\s*ID|品番|品號|识别码|識別碼)\s*[:：]?\s*([A-Za-z0-9_-]+)`),
 	}
 	for _, re := range patterns {
@@ -282,6 +343,7 @@ func extractCandidateID(html string) string {
 
 func findDate(html string) string {
 	for _, re := range []*regexp.Regexp{
+		regexp.MustCompile(`(?is)(?:発売日|配信日|release(?:\s*date)?)\s*</span>\s*<span class="value">\s*([^<]+)`),
 		regexp.MustCompile(`(?is)<span class="value">\s*(\d{1,2}/\d{1,2}/\d{4}|\d{4}/\d{2}/\d{2}|\d{4}-\d{2}-\d{2})`),
 		regexp.MustCompile(`(?is)(\d{1,2}/\d{1,2}/\d{4}|\d{4}/\d{2}/\d{2}|\d{4}-\d{2}-\d{2})`),
 	} {
@@ -293,6 +355,9 @@ func findDate(html string) string {
 }
 
 func parseDate(raw string) *time.Time {
+	if token := dateRegex.FindString(raw); token != "" {
+		raw = token
+	}
 	raw = strings.TrimSpace(strings.ReplaceAll(raw, "/", "-"))
 	for _, f := range []string{"2006-01-02", "01-02-2006"} {
 		if t, err := time.Parse(f, raw); err == nil {
@@ -304,6 +369,7 @@ func parseDate(raw string) *time.Time {
 
 func findRuntime(html string) string {
 	for _, re := range []*regexp.Regexp{
+		regexp.MustCompile(`(?is)(?:収録時間|再生時間|runtime|running\s*time)\s*</span>\s*<span class="value">\s*([^<]+)`),
 		runtimeClockRe,
 		runtimeMinuteRe,
 		regexp.MustCompile(`(?is)Apx\.?\s*(\d{1,3})\s*Min`),
@@ -337,6 +403,9 @@ func parseRuntime(raw string) int {
 
 func findMaker(html string) string {
 	for _, re := range []*regexp.Regexp{
+		regexp.MustCompile(`(?is)<span class="title">\s*Studio\s*</span>\s*<span class="value">\s*<a[^>]*>([^<]+)</a>`),
+		regexp.MustCompile(`(?is)<span class="title">\s*スタジオ\s*</span>\s*<span class="value">\s*<a[^>]*>([^<]+)</a>`),
+		regexp.MustCompile(`(?is)/ppv/studio\?[^"']*["'][^>]*>\s*([^<]+)\s*</a>`),
 		regexp.MustCompile(`(?is)studio_products\.aspx\?StudioID=.*?>([^<]+)</a>`),
 		regexp.MustCompile(`(?is)ppv_studioproducts.*?>([^<]+)</a>`),
 	} {
@@ -348,7 +417,18 @@ func findMaker(html string) string {
 }
 
 func extractDescription(doc *goquery.Document) string {
-	for _, sel := range []string{"meta[name='description']", ".product-detail .description", ".value-description"} {
+	if block := doc.Find(".product-description").First(); block.Length() > 0 {
+		clone := block.Clone()
+		clone.Find("script,style").Remove()
+		clone.Find("a[data-toggle='collapse'], a[data-target], .text-black a").Each(func(_ int, a *goquery.Selection) {
+			a.Remove()
+		})
+		if v := cleanString(clone.Text()); v != "" {
+			return v
+		}
+	}
+
+	for _, sel := range []string{".product-detail .description", ".value-description", "meta[name='description']"} {
 		node := doc.Find(sel).First()
 		if node.Length() == 0 {
 			continue
@@ -366,11 +446,15 @@ func extractDescription(doc *goquery.Document) string {
 	return ""
 }
 
-func extractGenres(doc *goquery.Document) []string {
+func extractGenres(scope *goquery.Selection) []string {
+	if scope == nil {
+		return nil
+	}
+
 	seen := map[string]bool{}
 	genres := make([]string, 0)
 
-	doc.Find(".value-category a, a[href*='cat_id'], a[href*='dept']").Each(func(_ int, a *goquery.Selection) {
+	scope.Find(".value-category a, a[href*='cat_id'], a[href*='dept']").Each(func(_ int, a *goquery.Selection) {
 		v := cleanString(a.Text())
 		if v == "" || seen[v] {
 			return
@@ -382,10 +466,115 @@ func extractGenres(doc *goquery.Document) []string {
 	return genres
 }
 
-func extractActresses(doc *goquery.Document) []models.ActressInfo {
+type detailInfo struct {
+	Title          string
+	ProductID      string
+	Studio         string
+	ReleaseDateRaw string
+	RuntimeRaw     string
+	Categories     []string
+	Actresses      []models.ActressInfo
+}
+
+func extractDetailInfo(doc *goquery.Document) detailInfo {
+	info := detailInfo{
+		Title: cleanString(doc.Find(".section-title h1, .section-title h2, .section-title h3").First().Text()),
+	}
+
+	doc.Find(".product-info-block-rev .single-info").Each(func(_ int, row *goquery.Selection) {
+		label := normalizeInfoLabel(row.Find(".title").First().Text())
+		value := cleanString(row.Find(".value").First().Text())
+
+		switch {
+		case isProductIDLabel(label):
+			if info.ProductID == "" {
+				if tagID := cleanString(row.Find(".tag-title").First().Text()); tagID != "" {
+					info.ProductID = tagID
+				} else if value != "" {
+					info.ProductID = value
+				}
+			}
+		case isActressLabel(label):
+			if len(info.Actresses) == 0 {
+				info.Actresses = extractActresses(row)
+			}
+		case isStudioLabel(label):
+			if info.Studio == "" {
+				info.Studio = cleanString(row.Find(".value a, .value").First().Text())
+			}
+		case isCategoryLabel(label):
+			if len(info.Categories) == 0 {
+				info.Categories = extractGenres(row)
+			}
+		case isReleaseDateLabel(label):
+			if info.ReleaseDateRaw == "" {
+				info.ReleaseDateRaw = value
+			}
+		case isRuntimeLabel(label):
+			if info.RuntimeRaw == "" {
+				info.RuntimeRaw = value
+			}
+		}
+	})
+
+	return info
+}
+
+func normalizeInfoLabel(v string) string {
+	v = strings.ToLower(cleanString(v))
+	replacer := strings.NewReplacer(" ", "", "\u3000", "", ":", "", "：", "", "-", "", "_", "", "#", "")
+	return replacer.Replace(v)
+}
+
+func isProductIDLabel(label string) bool {
+	return strings.Contains(label, "商品番号") ||
+		strings.Contains(label, "品番") ||
+		strings.Contains(label, "productid") ||
+		strings.Contains(label, "itemno") ||
+		strings.Contains(label, "item#") ||
+		label == "item"
+}
+
+func isActressLabel(label string) bool {
+	return strings.Contains(label, "主演女優") ||
+		strings.Contains(label, "女優") ||
+		strings.Contains(label, "actress") ||
+		strings.Contains(label, "starring")
+}
+
+func isStudioLabel(label string) bool {
+	return strings.Contains(label, "スタジオ") || strings.Contains(label, "studio")
+}
+
+func isCategoryLabel(label string) bool {
+	return strings.Contains(label, "カテゴリ") || strings.Contains(label, "category") || strings.Contains(label, "categories")
+}
+
+func isReleaseDateLabel(label string) bool {
+	return strings.Contains(label, "発売日") ||
+		strings.Contains(label, "配信日") ||
+		strings.Contains(label, "releasedate") ||
+		strings.Contains(label, "release") ||
+		label == "date"
+}
+
+func isRuntimeLabel(label string) bool {
+	return strings.Contains(label, "収録時間") ||
+		strings.Contains(label, "再生時間") ||
+		strings.Contains(label, "runtime") ||
+		strings.Contains(label, "runningtime") ||
+		strings.Contains(label, "playtime") ||
+		strings.Contains(label, "length")
+}
+
+func extractActresses(scope *goquery.Selection) []models.ActressInfo {
+	if scope == nil {
+		return nil
+	}
+
 	seen := map[string]bool{}
 	out := make([]models.ActressInfo, 0)
-	doc.Find("a[href*='ppv_actressdetail'], a[href*='ppv_ActressDetail']").Each(func(_ int, a *goquery.Selection) {
+	scope.Find("a[href*='ppv_actressdetail'], a[href*='ppv_ActressDetail'], a[href*='/ppv/idoldetail']").Each(func(_ int, a *goquery.Selection) {
 		name := cleanString(a.Text())
 		if name == "" || seen[name] {
 			return
@@ -410,22 +599,45 @@ func extractActresses(doc *goquery.Document) []models.ActressInfo {
 	return out
 }
 
-func extractCoverURL(doc *goquery.Document, html, base string) string {
+func extractPosterURL(doc *goquery.Document, html, base string) string {
 	if v := cleanString(doc.Find("#PlayerCover img").First().AttrOr("src", "")); v != "" {
 		return resolveURL(base, v)
 	}
 	for _, re := range []*regexp.Regexp{
-		regexp.MustCompile(`(?is)class='lightbox'\s+href='([^']+/vodimages/gallery/large/[^']+\.(?:jpg|webp))'`),
+		regexp.MustCompile(`(?is)vodimages/xlarge/[A-Za-z0-9._-]+\.(?:jpg|webp)`),
 		regexp.MustCompile(`(?is)<meta property="og:image" content="([^"]+)"`),
 	} {
 		if m := re.FindStringSubmatch(html); len(m) > 1 {
 			return resolveURL(base, cleanString(m[1]))
 		}
+		if m := re.FindString(html); m != "" {
+			return resolveURL(base, cleanString(m))
+		}
 	}
 	return ""
 }
 
-func extractScreenshotURLs(doc *goquery.Document, html, base string) []string {
+func extractCoverURL(doc *goquery.Document, html, base string) string {
+	if v := cleanString(doc.Find("a.lightbox[href*='/vodimages/gallery/large/']").First().AttrOr("href", "")); v != "" {
+		return resolveURL(base, v)
+	}
+	for _, re := range []*regexp.Regexp{
+		regexp.MustCompile(`(?is)class='lightbox'\s+href='([^']+/vodimages/gallery/large/[^']+\.(?:jpg|webp))'`),
+		regexp.MustCompile(`(?is)vodimages/gallery/large/[A-Za-z0-9._/-]+\.(?:jpg|webp)`),
+		regexp.MustCompile(`(?is)vodimages/xlarge/[A-Za-z0-9._/-]+\.(?:jpg|webp)`),
+		regexp.MustCompile(`(?is)<meta property="og:image" content="([^"]+)"`),
+	} {
+		if m := re.FindStringSubmatch(html); len(m) > 1 {
+			return resolveURL(base, cleanString(m[1]))
+		}
+		if m := re.FindString(html); m != "" {
+			return resolveURL(base, cleanString(m))
+		}
+	}
+	return ""
+}
+
+func extractScreenshotURLs(doc *goquery.Document, html, base string, scrapeBonus bool) []string {
 	seen := map[string]bool{}
 	out := make([]string, 0)
 	add := func(raw string) {
@@ -457,7 +669,48 @@ func extractScreenshotURLs(doc *goquery.Document, html, base string) []string {
 		}
 	}
 
+	if scrapeBonus {
+		doc.Find("a[href], img[src], img[data-src], img[data-original]").Each(func(_ int, sel *goquery.Selection) {
+			for _, attr := range []string{"href", "src", "data-src", "data-original"} {
+				raw := cleanString(sel.AttrOr(attr, ""))
+				if !isAVEBonusScreenshotURL(raw) {
+					continue
+				}
+				add(raw)
+			}
+		})
+
+		// Some bonus images are injected in page scripts and not present as DOM nodes.
+		re := regexp.MustCompile(`(?is)(?:href|src|data-src|data-original)=['"]([^'"]+/vodimages/gallery/large/[A-Za-z0-9_-]+/\d{2,4}\.(?:jpg|jpeg|png|webp))['"]`)
+		for _, m := range re.FindAllStringSubmatch(html, -1) {
+			if len(m) > 1 && isAVEBonusScreenshotURL(m[1]) {
+				add(m[1])
+			}
+		}
+	}
+
 	return out
+}
+
+func isAVEBonusScreenshotURL(raw string) bool {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return false
+	}
+
+	path := raw
+	if parsed, err := url.Parse(raw); err == nil && parsed.Path != "" {
+		path = parsed.Path
+	}
+
+	path = strings.ToLower(path)
+	// Bonus screenshots are gallery "extra file" images with numbered file names:
+	// /vodimages/gallery/large/<content_id>/<nnn>.webp
+	re := regexp.MustCompile(`(?i)/vodimages/gallery/large/[a-z0-9_-]+/\d{2,4}\.(jpg|jpeg|png|webp)$`)
+	if re.MatchString(path) {
+		return true
+	}
+	return false
 }
 
 func (s *Scraper) applyLanguage(rawURL string) string {
@@ -475,14 +728,24 @@ func (s *Scraper) applyLanguage(rawURL string) string {
 	}
 
 	q := u.Query()
+	if s.language == "ja" {
+		q.Set("lang", "2")
+		q.Set("culture", "ja-JP")
+	} else {
+		q.Set("lang", "1")
+		q.Set("culture", "en-US")
+	}
+	if !q.Has("v") {
+		q.Set("v", "1")
+	}
 	if q.Has("languageID") {
 		if s.language == "ja" {
 			q.Set("languageID", "2")
 		} else {
 			q.Set("languageID", "1")
 		}
-		u.RawQuery = q.Encode()
 	}
+	u.RawQuery = q.Encode()
 	return u.String()
 }
 
@@ -530,9 +793,70 @@ func normalizeID(v string) string {
 	return nonAlphaNumRegex.ReplaceAllString(v, "")
 }
 
+func normalizeComparableID(v string) string {
+	v = normalizeID(v)
+	for _, prefix := range []string{"dl", "st"} {
+		if strings.HasPrefix(v, prefix) {
+			v = strings.TrimPrefix(v, prefix)
+			break
+		}
+	}
+	return v
+}
+
 func extractID(v string) string {
-	if m := idRegex.FindStringSubmatch(v); len(m) > 1 {
-		return strings.ToUpper(strings.ReplaceAll(m[1], "_", "-"))
+	normalizeToken := func(token string) string {
+		token = strings.TrimSpace(strings.ToLower(token))
+		token = strings.Trim(token, "[](){}<>\"'`.,;:/\\?&=#")
+		token = strings.Trim(token, "_-")
+		if token == "" {
+			return ""
+		}
+		for _, prefix := range []string{"dl", "st"} {
+			if strings.HasPrefix(token, prefix) {
+				tail := strings.Trim(token[len(prefix):], "_-")
+				if tail != "" {
+					token = tail
+				}
+				break
+			}
+		}
+		return token
+	}
+
+	raw := normalizeToken(v)
+	if raw != "" {
+		if m := onePondoRegex.FindStringSubmatch(raw); len(m) == 3 {
+			return strings.ToUpper("1pon-" + m[1] + "-" + m[2])
+		}
+		if m := caribRegex.FindStringSubmatch(raw); len(m) == 3 {
+			return strings.ToUpper("carib-" + m[1] + "-" + m[2])
+		}
+		if m := standardIDRegex.FindStringSubmatch(raw); len(m) > 1 {
+			return strings.ToUpper(strings.ReplaceAll(m[1], "_", "-"))
+		}
+		if m := compactIDRegex.FindStringSubmatch(raw); len(m) > 1 {
+			return strings.ToUpper(m[1])
+		}
+	}
+
+	for _, token := range tokenSplitRegex.Split(v, -1) {
+		token = normalizeToken(token)
+		if token == "" {
+			continue
+		}
+		if m := onePondoRegex.FindStringSubmatch(token); len(m) == 3 {
+			return strings.ToUpper("1pon-" + m[1] + "-" + m[2])
+		}
+		if m := caribRegex.FindStringSubmatch(token); len(m) == 3 {
+			return strings.ToUpper("carib-" + m[1] + "-" + m[2])
+		}
+		if m := standardIDRegex.FindStringSubmatch(token); len(m) > 1 {
+			return strings.ToUpper(strings.ReplaceAll(m[1], "_", "-"))
+		}
+		if m := compactIDRegex.FindStringSubmatch(token); len(m) > 1 {
+			return strings.ToUpper(m[1])
+		}
 	}
 	return ""
 }
@@ -553,13 +877,18 @@ func resolveURL(base, raw string) string {
 	if err != nil {
 		return raw
 	}
-	if strings.HasPrefix(raw, "/") {
-		baseURL.Path = raw
-		baseURL.RawQuery = ""
-		return baseURL.String()
+	ref, err := url.Parse(raw)
+	if err != nil {
+		return raw
 	}
-	baseURL.Path = path.Join(path.Dir(baseURL.Path), raw)
-	return baseURL.String()
+	resolved := baseURL.ResolveReference(ref)
+	if resolved == nil {
+		return raw
+	}
+	if resolved.Path == "" {
+		resolved.Path = path.Join(path.Dir(baseURL.Path), raw)
+	}
+	return resolved.String()
 }
 
 func hasJapanese(v string) bool {
@@ -580,8 +909,17 @@ func cleanString(v string) string {
 
 func stripSiteSuffix(v string) string {
 	v = cleanString(v)
-	for _, suffix := range []string{" - AV Entertainment", " | AV Entertainment", " - AVEntertainment"} {
-		v = strings.TrimSuffix(v, suffix)
+	for _, suffix := range []string{
+		" - AV Entertainment",
+		" | AV Entertainment",
+		" - AVEntertainment",
+		" | AV ENTERTAINMENT PAY-PER-VIEW",
+		" | AVエンターテインメント ペイパービュー",
+		" | AVエンターテインメント",
+	} {
+		if len(v) >= len(suffix) && strings.EqualFold(v[len(v)-len(suffix):], suffix) {
+			v = strings.TrimSpace(v[:len(v)-len(suffix)])
+		}
 	}
 	return cleanString(v)
 }
@@ -592,4 +930,20 @@ func isHTTPURL(v string) bool {
 		return false
 	}
 	return (u.Scheme == "http" || u.Scheme == "https") && u.Host != ""
+}
+
+func normalizeResolverInput(input string) string {
+	input = strings.TrimSpace(input)
+	if input == "" {
+		return ""
+	}
+
+	// Allow passing full paths/filenames; resolver operates on basename without extension.
+	base := path.Base(input)
+	ext := path.Ext(base)
+	if ext != "" {
+		base = strings.TrimSuffix(base, ext)
+	}
+
+	return strings.ToLower(strings.TrimSpace(base))
 }

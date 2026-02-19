@@ -109,10 +109,10 @@ func (t *ScrapeTask) Execute(ctx context.Context) error {
 	// Use custom scraper priority if provided, otherwise use default
 	var scrapers []models.Scraper
 	if len(t.customScraperPriority) > 0 {
-		scrapers = t.registry.GetByPriority(t.customScraperPriority)
+		scrapers = t.registry.GetByPriorityForInput(t.customScraperPriority, t.javID)
 		logging.Debugf("[%s] Using custom scraper priority: %v (%d scrapers)", t.javID, t.customScraperPriority, len(scrapers))
 	} else {
-		scrapers = t.registry.GetByPriority([]string{"r18dev", "dmm"})
+		scrapers = t.registry.GetByPriorityForInput([]string{"r18dev", "dmm"}, t.javID)
 		logging.Debugf("[%s] Using default scraper priority (%d scrapers)", t.javID, len(scrapers))
 	}
 
@@ -130,8 +130,12 @@ func (t *ScrapeTask) Execute(ctx context.Context) error {
 		}
 		t.progressTracker.Update(t.id, progress, msg, 0)
 
-		logging.Debugf("[%s] Querying scraper: %s", t.javID, scraper.Name())
-		result, err := scraper.Search(t.javID)
+		scraperQuery := t.javID
+		if mappedQuery, ok := models.ResolveSearchQueryForScraper(scraper, t.javID); ok {
+			scraperQuery = mappedQuery
+		}
+		logging.Debugf("[%s] Querying scraper: %s (query=%s)", t.javID, scraper.Name(), scraperQuery)
+		result, err := scraper.Search(scraperQuery)
 		if err != nil {
 			logging.Debugf("[%s] Scraper %s failed: %v", t.javID, scraper.Name(), err)
 			continue

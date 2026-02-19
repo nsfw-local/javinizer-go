@@ -160,33 +160,6 @@ func serveTempImage(deps *ServerDependencies) gin.HandlerFunc {
 }
 
 // resolveTempImageReferer selects a compatible Referer for preview image proxy requests.
-// Priority:
-// 1) Known host overrides
-// 2) Configured referer
-// 3) URL origin fallback
 func resolveTempImageReferer(downloadURL, configuredReferer string) string {
-	parsedURL, err := url.Parse(downloadURL)
-	if err != nil {
-		return configuredReferer
-	}
-
-	host := strings.ToLower(parsedURL.Hostname())
-	switch {
-	case strings.HasSuffix(host, "jdbstatic.com"), strings.HasSuffix(host, "javdb.com"):
-		return "https://javdb.com/"
-	case strings.HasSuffix(host, "javbus.com"), strings.HasSuffix(host, "javbus.org"):
-		return "https://www.javbus.com/"
-	case strings.HasSuffix(host, "dmm.co.jp"), strings.HasSuffix(host, "dmm.com"), strings.Contains(host, ".dmm."):
-		return "https://www.dmm.co.jp/"
-	}
-
-	if configuredReferer != "" {
-		return configuredReferer
-	}
-
-	if (parsedURL.Scheme == "http" || parsedURL.Scheme == "https") && parsedURL.Host != "" {
-		return parsedURL.Scheme + "://" + parsedURL.Host + "/"
-	}
-
-	return ""
+	return downloader.ResolveMediaReferer(downloadURL, configuredReferer)
 }

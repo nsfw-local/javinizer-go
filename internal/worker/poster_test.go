@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/javinizer/javinizer-go/internal/downloader"
 	"github.com/javinizer/javinizer-go/internal/models"
 )
 
@@ -37,6 +38,18 @@ func TestResolvePosterReferer(t *testing.T) {
 			expected:   "https://www.javbus.com/",
 		},
 		{
+			name:       "aventertainments host overrides configured referer",
+			url:        "https://imgs02.aventertainments.com/vodimages/xlarge/1pon_020326_001.webp",
+			configured: "https://www.dmm.co.jp/",
+			expected:   "https://www.aventertainments.com/",
+		},
+		{
+			name:       "dmm host override applies",
+			url:        "https://pics.dmm.co.jp/digital/video/118abp00880/118abp00880pl.jpg",
+			configured: "https://example.com/",
+			expected:   "https://www.dmm.co.jp/",
+		},
+		{
 			name:       "configured referer used for other hosts",
 			url:        "https://example.com/cover.jpg",
 			configured: "https://www.dmm.co.jp/",
@@ -58,7 +71,7 @@ func TestResolvePosterReferer(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			referer := resolvePosterReferer(tt.url, tt.configured)
+			referer := resolvePosterReferer(tt.url, tt.configured, downloader.ResolveMediaReferer)
 			if referer != tt.expected {
 				t.Fatalf("resolvePosterReferer(%q, %q) = %q, want %q", tt.url, tt.configured, referer, tt.expected)
 			}
@@ -71,6 +84,7 @@ func TestGenerateCroppedPoster_Success(t *testing.T) {
 	if testing.Short() {
 		t.Skip("Skipping integration test in short mode")
 	}
+	chdirToTempDir(t)
 
 	// Create test server that serves a 100x200 JPEG image (valid aspect ratio for cropping)
 	testServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -100,7 +114,7 @@ func TestGenerateCroppedPoster_Success(t *testing.T) {
 
 	// Execute - this will fail with decode error for our minimal JPEG
 	// That's acceptable - we're testing the workflow, not the image library
-	_, err := GenerateCroppedPoster(ctx, movie, httpClient, "test-agent", "test-referer")
+	_, err := GenerateCroppedPoster(ctx, movie, httpClient, "test-agent", "test-referer", downloader.ResolveMediaReferer)
 
 	// We expect an error because our minimal JPEG isn't a real image
 	// The important thing is that it doesn't crash and cleans up properly
@@ -113,6 +127,8 @@ func TestGenerateCroppedPoster_Success(t *testing.T) {
 
 // TestGenerateCroppedPoster_HTTPError tests handling of HTTP errors
 func TestGenerateCroppedPoster_HTTPError(t *testing.T) {
+	chdirToTempDir(t)
+
 	// Create test server that returns 404
 	testServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
@@ -130,7 +146,7 @@ func TestGenerateCroppedPoster_HTTPError(t *testing.T) {
 	httpClient := testServer.Client()
 
 	// Execute
-	_, err := GenerateCroppedPoster(ctx, movie, httpClient, "test-agent", "test-referer")
+	_, err := GenerateCroppedPoster(ctx, movie, httpClient, "test-agent", "test-referer", downloader.ResolveMediaReferer)
 
 	// Verify error is returned
 	if err == nil {
@@ -147,6 +163,8 @@ func TestGenerateCroppedPoster_HTTPError(t *testing.T) {
 
 // TestGenerateCroppedPoster_ContextCancellation tests cancellation handling
 func TestGenerateCroppedPoster_ContextCancellation(t *testing.T) {
+	chdirToTempDir(t)
+
 	// Create test server that blocks
 	blockChan := make(chan struct{})
 	testServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -170,7 +188,7 @@ func TestGenerateCroppedPoster_ContextCancellation(t *testing.T) {
 	cancel()
 
 	// Execute
-	_, err := GenerateCroppedPoster(ctx, movie, httpClient, "test-agent", "test-referer")
+	_, err := GenerateCroppedPoster(ctx, movie, httpClient, "test-agent", "test-referer", downloader.ResolveMediaReferer)
 
 	// Verify error is returned
 	if err == nil {
@@ -187,6 +205,8 @@ func TestGenerateCroppedPoster_ContextCancellation(t *testing.T) {
 
 // TestGenerateCroppedPoster_NoCoverURL tests handling when no cover URL is provided
 func TestGenerateCroppedPoster_NoCoverURL(t *testing.T) {
+	chdirToTempDir(t)
+
 	movie := &models.Movie{
 		ID:               "TEST-004",
 		CoverURL:         "", // No cover URL
@@ -197,7 +217,7 @@ func TestGenerateCroppedPoster_NoCoverURL(t *testing.T) {
 	httpClient := &http.Client{}
 
 	// Execute
-	_, err := GenerateCroppedPoster(ctx, movie, httpClient, "test-agent", "test-referer")
+	_, err := GenerateCroppedPoster(ctx, movie, httpClient, "test-agent", "test-referer", downloader.ResolveMediaReferer)
 
 	// Verify error is returned
 	if err == nil {
@@ -207,6 +227,8 @@ func TestGenerateCroppedPoster_NoCoverURL(t *testing.T) {
 
 // TestGenerateCroppedPoster_ErrorHandling tests general error scenarios
 func TestGenerateCroppedPoster_ErrorHandling(t *testing.T) {
+	chdirToTempDir(t)
+
 	// Test with invalid URL (no http client timeout)
 	movie := &models.Movie{
 		ID:       "TEST-005",
@@ -217,7 +239,7 @@ func TestGenerateCroppedPoster_ErrorHandling(t *testing.T) {
 	httpClient := &http.Client{}
 
 	// Execute
-	_, err := GenerateCroppedPoster(ctx, movie, httpClient, "test-agent", "test-referer")
+	_, err := GenerateCroppedPoster(ctx, movie, httpClient, "test-agent", "test-referer", downloader.ResolveMediaReferer)
 
 	// Verify error is returned for network failure
 	if err == nil {

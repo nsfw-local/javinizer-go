@@ -163,6 +163,19 @@ func (m *MockScraper) IsEnabled() bool {
 	return m.enabled
 }
 
+type MockResolverScraper struct {
+	*MockScraper
+	matches bool
+	query   string
+}
+
+func (m *MockResolverScraper) ResolveSearchQuery(input string) (string, bool) {
+	if !m.matches {
+		return "", false
+	}
+	return m.query, true
+}
+
 // TestNewScraperRegistry tests creation of a new registry
 func TestNewScraperRegistry(t *testing.T) {
 	registry := NewScraperRegistry()
@@ -354,5 +367,64 @@ func TestScraperRegistryGetByPriority(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestResolveSearchQueryForScraper(t *testing.T) {
+	plain := &MockScraper{name: "plain", enabled: true}
+	resolver := &MockResolverScraper{
+		MockScraper: &MockScraper{name: "resolver", enabled: true},
+		matches:     true,
+		query:       "normalized-id",
+	}
+
+	if q, ok := ResolveSearchQueryForScraper(plain, "input"); ok || q != "" {
+		t.Fatalf("expected plain scraper to have no resolver, got query=%q matched=%v", q, ok)
+	}
+
+	if q, ok := ResolveSearchQueryForScraper(resolver, "input"); !ok || q != "normalized-id" {
+		t.Fatalf("expected resolver query to match, got query=%q matched=%v", q, ok)
+	}
+}
+
+func TestScraperRegistryGetByPriorityForInput(t *testing.T) {
+	registry := NewScraperRegistry()
+
+	plainA := &MockScraper{name: "plain-a", enabled: true}
+	matchingResolver := &MockResolverScraper{
+		MockScraper: &MockScraper{name: "resolver-match", enabled: true},
+		matches:     true,
+		query:       "mapped-query",
+	}
+	nonMatchingResolver := &MockResolverScraper{
+		MockScraper: &MockScraper{name: "resolver-no-match", enabled: true},
+		matches:     false,
+		query:       "",
+	}
+
+	registry.Register(plainA)
+	registry.Register(matchingResolver)
+	registry.Register(nonMatchingResolver)
+
+	priority := []string{"plain-a", "resolver-no-match", "resolver-match"}
+
+	ordered := registry.GetByPriorityForInput(priority, "1pon_020326_001")
+	if len(ordered) != 3 {
+		t.Fatalf("expected 3 scrapers, got %d", len(ordered))
+	}
+
+	// Matching resolver should be promoted to front.
+	if ordered[0].Name() != "resolver-match" {
+		t.Fatalf("expected resolver-match to be first, got %s", ordered[0].Name())
+	}
+
+	// If no resolver matches, ordering should remain unchanged.
+	nonMatchingResolver.matches = false
+	matchingResolver.matches = false
+	ordered = registry.GetByPriorityForInput(priority, "unknown")
+	for i, want := range priority {
+		if ordered[i].Name() != want {
+			t.Fatalf("expected order[%d]=%s, got %s", i, want, ordered[i].Name())
+		}
 	}
 }

@@ -91,20 +91,6 @@ func NewHTTPClientForDownloader(cfg *config.Config) (httpclient.HTTPClient, erro
 		}
 	}
 
-	// Default behavior: when global scraper proxy is enabled, use it for all downloads.
-	// Keep adaptive routing only when scraper-level download overrides are configured.
-	resolvedGlobalProxy := config.ResolveGlobalProxy(cfg.Scrapers.Proxy)
-	if resolvedGlobalProxy != nil && resolvedGlobalProxy.Enabled && resolvedGlobalProxy.URL != "" && !hasScraperDownloadProxyOverrides(cfg) {
-		client, err := httpclient.NewHTTPClient(resolvedGlobalProxy, timeoutDuration)
-		if err != nil {
-			logging.Errorf("Downloader: Failed to create global download proxy client: %v, using adaptive routing", err)
-		} else {
-			logging.Infof("Downloader: Using scrapers.proxy for all downloads via %s", httpclient.SanitizeProxyURL(resolvedGlobalProxy.URL))
-			adaptiveClient.forceClient = client
-			return adaptiveClient, nil
-		}
-	}
-
 	// Default direct client
 	directClient, err := httpclient.NewHTTPClient(nil, timeoutDuration)
 	if err != nil {
@@ -122,23 +108,6 @@ func NewHTTPClientForDownloader(cfg *config.Config) (httpclient.HTTPClient, erro
 	adaptiveClient.directClient = directClient
 
 	return adaptiveClient, nil
-}
-
-func hasScraperDownloadProxyOverrides(cfg *config.Config) bool {
-	if cfg == nil {
-		return false
-	}
-
-	return cfg.Scrapers.R18Dev.DownloadProxy != nil ||
-		cfg.Scrapers.DMM.DownloadProxy != nil ||
-		cfg.Scrapers.MGStage.DownloadProxy != nil ||
-		cfg.Scrapers.JavLibrary.DownloadProxy != nil ||
-		cfg.Scrapers.JavDB.DownloadProxy != nil ||
-		cfg.Scrapers.JavBus.DownloadProxy != nil ||
-		cfg.Scrapers.Jav321.DownloadProxy != nil ||
-		cfg.Scrapers.TokyoHot.DownloadProxy != nil ||
-		cfg.Scrapers.AVEntertainment.DownloadProxy != nil ||
-		cfg.Scrapers.DLGetchu.DownloadProxy != nil
 }
 
 // adaptiveDownloaderHTTPClient routes media downloads through per-scraper proxies when needed.
@@ -952,14 +921,15 @@ func validateURLScheme(urlStr string) error {
 	return nil
 }
 
-// resolveDownloadReferer selects a compatible Referer header for media downloads.
+// ResolveMediaReferer selects a compatible Referer header for media requests.
 // Priority:
 // 1) Known host overrides (hotlink-protected hosts)
-// 2) URL origin fallback
-func resolveDownloadReferer(downloadURL string) string {
+// 2) Configured referer fallback (if provided)
+// 3) URL origin fallback
+func ResolveMediaReferer(downloadURL, configuredReferer string) string {
 	parsedURL, err := url.Parse(downloadURL)
 	if err != nil {
-		return ""
+		return configuredReferer
 	}
 
 	host := strings.ToLower(parsedURL.Hostname())
@@ -968,8 +938,14 @@ func resolveDownloadReferer(downloadURL string) string {
 		return "https://javdb.com/"
 	case strings.HasSuffix(host, "javbus.com"), strings.HasSuffix(host, "javbus.org"):
 		return "https://www.javbus.com/"
+	case strings.HasSuffix(host, "aventertainments.com"):
+		return "https://www.aventertainments.com/"
 	case strings.HasSuffix(host, "dmm.co.jp"), strings.HasSuffix(host, "dmm.com"), strings.Contains(host, ".dmm."):
 		return "https://www.dmm.co.jp/"
+	}
+
+	if configuredReferer != "" {
+		return configuredReferer
 	}
 
 	if (parsedURL.Scheme == "http" || parsedURL.Scheme == "https") && parsedURL.Host != "" {
@@ -977,6 +953,11 @@ func resolveDownloadReferer(downloadURL string) string {
 	}
 
 	return ""
+}
+
+// resolveDownloadReferer selects a compatible Referer header for media downloads.
+func resolveDownloadReferer(downloadURL string) string {
+	return ResolveMediaReferer(downloadURL, "")
 }
 
 // GetImageExtension determines the image extension from a URL
