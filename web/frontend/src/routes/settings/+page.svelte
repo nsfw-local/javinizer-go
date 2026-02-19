@@ -943,21 +943,6 @@
 			<!-- Output Settings -->
 			<SettingsSection title="Output Settings" description="Configure output paths, templates, and download options" defaultExpanded={false}>
 				<div class="space-y-4">
-					<div>
-						<label class="block text-sm font-medium mb-2" for="destination-path">Destination Path</label>
-						<p class="text-sm text-muted-foreground mb-2">
-							Note: Destination path is currently not configurable via API
-						</p>
-						<input
-							id="destination-path"
-							type="text"
-							value="Configured in config.yaml"
-							class={inputClass}
-							disabled
-							placeholder="/path/to/output"
-						/>
-					</div>
-
 					<SettingsSubsection title="Template Options">
 						<FormNumberInput
 							label="Max title length"

@@ -59,8 +59,15 @@ func healthCheck(deps *ServerDependencies) gin.HandlerFunc {
 // @Router /api/v1/config [get]
 func getConfig(deps *ServerDependencies) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		// Read current config dynamically (respects config reloads)
-		c.JSON(200, deps.GetConfig())
+		// Read current config dynamically (respects config reloads) and include
+		// runtime config file location for UI display.
+		c.JSON(200, struct {
+			*config.Config
+			ConfigFilePath string `json:"config_file_path"`
+		}{
+			Config:         deps.GetConfig(),
+			ConfigFilePath: deps.ConfigFile,
+		})
 	}
 }
 
