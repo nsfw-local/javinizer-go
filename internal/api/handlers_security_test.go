@@ -535,10 +535,14 @@ func TestSecurity_InputValidation(t *testing.T) {
 		{
 			// NOTE: This test MUST run last because it modifies shared deps.Config
 			// and reloads components, which affects subsequent tests
-			name:           "config update with malicious template",
-			method:         "PUT",
-			path:           "/api/v1/config",
-			body:           map[string]interface{}{"output": map[string]string{"folder_format": "{{.Exec `rm -rf /`}}"}},
+			name:   "config update with malicious template",
+			method: "PUT",
+			path:   "/api/v1/config",
+			body: func() *config.Config {
+				cfg := config.DefaultConfig()
+				cfg.Output.FolderFormat = "{{.Exec `rm -rf /`}}"
+				return cfg
+			}(),
 			expectedStatus: 200,
 			securityCheck: func(t *testing.T, w *httptest.ResponseRecorder) {
 				// Should accept config - template engine prevents exec during rendering

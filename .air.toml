@@ -5,8 +5,8 @@ tmp_dir = "tmp/air"
   cmd = "go build -o ./tmp/air/javinizer-dev ./cmd/javinizer"
   bin = "./tmp/air/javinizer-dev"
   full_bin = "./tmp/air/javinizer-dev api"
-  include_dir = ["cmd", "internal", "configs"]
-  include_file = ["go.mod", "go.sum", ".air.toml", "config.yaml"]
+  include_dir = ["cmd", "internal"]
+  include_file = ["go.mod", "go.sum", ".air.toml"]
   include_ext = ["go", "yaml", "yml", "json", "toml"]
   exclude_dir = [
     ".git",

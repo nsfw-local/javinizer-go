@@ -192,14 +192,13 @@ func TestConfig_Validate(t *testing.T) {
 			errorContains: "metadata.translation.provider must be one of",
 		},
 		{
-			name: "translation openai missing api key",
+			name: "translation openai missing api key allowed at startup",
 			modifyConfig: func(c *Config) {
 				c.Metadata.Translation.Enabled = true
 				c.Metadata.Translation.Provider = "openai"
 				c.Metadata.Translation.OpenAI.APIKey = ""
 			},
-			expectError:   true,
-			errorContains: "metadata.translation.openai.api_key is required",
+			expectError: false,
 		},
 		{
 			name: "translation deepl invalid mode",
@@ -213,15 +212,14 @@ func TestConfig_Validate(t *testing.T) {
 			errorContains: "metadata.translation.deepl.mode must be either 'free' or 'pro'",
 		},
 		{
-			name: "translation google paid missing api key",
+			name: "translation google paid missing api key allowed at startup",
 			modifyConfig: func(c *Config) {
 				c.Metadata.Translation.Enabled = true
 				c.Metadata.Translation.Provider = "google"
 				c.Metadata.Translation.Google.Mode = "paid"
 				c.Metadata.Translation.Google.APIKey = ""
 			},
-			expectError:   true,
-			errorContains: "metadata.translation.google.api_key is required",
+			expectError: false,
 		},
 		{
 			name: "translation openai valid config",

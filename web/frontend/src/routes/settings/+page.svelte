@@ -34,6 +34,8 @@
 	let testingFlareSolverr = $state(false);
 	let testingProfile = $state<Record<string, boolean>>({});
 	let savingProfile = $state<Record<string, boolean>>({});
+	let fetchingTranslationModels = $state(false);
+	let translationModelOptions = $state<string[]>([]);
 	let error = $state<string | null>(null);
 	let showConfirmModal = $state(false);
 	let scrapers = $state<ScraperItem[]>([]);
@@ -699,6 +701,43 @@
 
 	function cancelSave() {
 		showConfirmModal = false;
+	}
+
+	async function fetchTranslationModels(): Promise<void> {
+		const baseURL = config?.metadata?.translation?.openai?.base_url?.trim?.() ?? '';
+		const apiKey = config?.metadata?.translation?.openai?.api_key?.trim?.() ?? '';
+		if (!baseURL) {
+			toastStore.error('Set OpenAI-compatible base URL before fetching models', 5000);
+			return;
+		}
+		if (!apiKey) {
+			toastStore.error('Set API key before fetching models', 5000);
+			return;
+		}
+
+		fetchingTranslationModels = true;
+		try {
+			const response = await apiClient.getTranslationModels({
+				provider: 'openai',
+				base_url: baseURL,
+				api_key: apiKey
+			});
+			translationModelOptions = response.models || [];
+			if (translationModelOptions.length > 0) {
+				const current = config.metadata.translation.openai.model?.trim?.() ?? '';
+				if (!current || !translationModelOptions.includes(current)) {
+					config.metadata.translation.openai.model = translationModelOptions[0];
+				}
+				toastStore.success(`Loaded ${translationModelOptions.length} model(s)`, 4000);
+			} else {
+				toastStore.error('No models returned from provider', 5000);
+			}
+		} catch (e) {
+			const msg = e instanceof Error ? e.message : 'Failed to fetch models';
+			toastStore.error(msg, 5000);
+		} finally {
+			fetchingTranslationModels = false;
+		}
 	}
 
 	async function runProxyTest(mode: 'direct' | 'flaresolverr') {
@@ -1575,17 +1614,57 @@
 							}}
 						/>
 
-						<FormTextInput
-							label="Model"
-							description="Model name for translation requests"
-							value={config.metadata.translation?.openai?.model ?? "gpt-4o-mini"}
-							placeholder="gpt-4o-mini"
-							onchange={(val) => {
-								if (!config.metadata.translation) config.metadata.translation = {};
-								if (!config.metadata.translation.openai) config.metadata.translation.openai = {};
-								config.metadata.translation.openai.model = val.trim();
-							}}
-						/>
+						<div class="py-4 border-b border-border">
+							<div class="flex items-center justify-between mb-2 gap-2">
+								<label class="block text-sm font-medium" for="translation-openai-model-select">Model</label>
+								<Button
+									variant="outline"
+									size="sm"
+									onclick={fetchTranslationModels}
+									disabled={
+										fetchingTranslationModels ||
+										!(config.metadata.translation?.openai?.base_url ?? '').trim() ||
+										!(config.metadata.translation?.openai?.api_key ?? '').trim()
+									}
+								>
+									{#snippet children()}
+										<RefreshCw class={`h-4 w-4 mr-2 ${fetchingTranslationModels ? 'animate-spin' : ''}`} />
+										{fetchingTranslationModels ? 'Fetching...' : 'Fetch Models'}
+									{/snippet}
+								</Button>
+							</div>
+
+							{#if translationModelOptions.length > 0}
+								<select
+									id="translation-openai-model-select"
+									bind:value={config.metadata.translation.openai.model}
+									class={inputClass}
+								>
+									{#each translationModelOptions as modelName}
+										<option value={modelName}>{modelName}</option>
+									{/each}
+								</select>
+								<p class="text-xs text-muted-foreground mt-1">
+									Loaded from <code>{config.metadata.translation?.openai?.base_url}</code>. You can still edit manually below.
+								</p>
+							{/if}
+
+							<input
+								id="translation-openai-model-input"
+								type="text"
+								value={config.metadata.translation?.openai?.model ?? "gpt-4o-mini"}
+								oninput={(e) => {
+									if (!config.metadata.translation) config.metadata.translation = {};
+									if (!config.metadata.translation.openai) config.metadata.translation.openai = {};
+									config.metadata.translation.openai.model = e.currentTarget.value.trim();
+								}}
+								class="{inputClass} mt-3"
+								placeholder="gpt-4o-mini"
+							/>
+							<p class="text-xs text-muted-foreground mt-1">
+								Manual model override.
+							</p>
+						</div>
 
 						<FormPasswordInput
 							label="API Key"

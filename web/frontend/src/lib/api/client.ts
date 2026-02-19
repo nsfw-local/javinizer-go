@@ -22,6 +22,8 @@ import type {
 	Config,
 	ProxyTestRequest,
 	ProxyTestResponse,
+	TranslationModelsRequest,
+	TranslationModelsResponse,
 	HistoryListResponse,
 	HistoryListParams,
 	HistoryStats,
@@ -228,6 +230,14 @@ class APIClient {
 	// Test proxy or FlareSolverr connectivity
 	async testProxy(request: ProxyTestRequest): Promise<ProxyTestResponse> {
 		return this.request<ProxyTestResponse>('/api/v1/proxy/test', {
+			method: 'POST',
+			body: JSON.stringify(request)
+		});
+	}
+
+	// Discover models from OpenAI-compatible provider
+	async getTranslationModels(request: TranslationModelsRequest): Promise<TranslationModelsResponse> {
+		return this.request<TranslationModelsResponse>('/api/v1/translation/models', {
 			method: 'POST',
 			body: JSON.stringify(request)
 		});

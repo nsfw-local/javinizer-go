@@ -498,6 +498,75 @@ func TestTestProxy(t *testing.T) {
 	})
 }
 
+func TestGetTranslationModels(t *testing.T) {
+	t.Run("success openai-compatible models", func(t *testing.T) {
+		upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			assert.Equal(t, "/models", r.URL.Path)
+			assert.Equal(t, "Bearer test-key", r.Header.Get("Authorization"))
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"data":[{"id":"gpt-4o-mini"},{"id":"gpt-4.1"},{"id":"gpt-4o-mini"}]}`))
+		}))
+		defer upstream.Close()
+
+		deps := &ServerDependencies{}
+		deps.SetConfig(config.DefaultConfig())
+
+		router := gin.New()
+		router.POST("/translation/models", getTranslationModels(deps))
+
+		reqBody := TranslationModelsRequest{
+			Provider: "openai",
+			BaseURL:  upstream.URL,
+			APIKey:   "test-key",
+		}
+		body, err := json.Marshal(reqBody)
+		require.NoError(t, err)
+
+		req := httptest.NewRequest(http.MethodPost, "/translation/models", bytes.NewBuffer(body))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+
+		router.ServeHTTP(w, req)
+
+		assert.Equal(t, http.StatusOK, w.Code)
+		var resp TranslationModelsResponse
+		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+		assert.Equal(t, []string{"gpt-4.1", "gpt-4o-mini"}, resp.Models)
+	})
+
+	t.Run("invalid provider", func(t *testing.T) {
+		deps := &ServerDependencies{}
+		deps.SetConfig(config.DefaultConfig())
+
+		router := gin.New()
+		router.POST("/translation/models", getTranslationModels(deps))
+
+		body := []byte(`{"provider":"deepl","base_url":"https://example.com","api_key":"k"}`)
+		req := httptest.NewRequest(http.MethodPost, "/translation/models", bytes.NewBuffer(body))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+
+		router.ServeHTTP(w, req)
+		assert.Equal(t, http.StatusBadRequest, w.Code)
+	})
+
+	t.Run("missing api key", func(t *testing.T) {
+		deps := &ServerDependencies{}
+		deps.SetConfig(config.DefaultConfig())
+
+		router := gin.New()
+		router.POST("/translation/models", getTranslationModels(deps))
+
+		body := []byte(`{"provider":"openai","base_url":"https://api.openai.com/v1"}`)
+		req := httptest.NewRequest(http.MethodPost, "/translation/models", bytes.NewBuffer(body))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+
+		router.ServeHTTP(w, req)
+		assert.Equal(t, http.StatusBadRequest, w.Code)
+	})
+}
+
 func TestUpdateConfig(t *testing.T) {
 	tests := []struct {
 		name           string
@@ -507,32 +576,19 @@ func TestUpdateConfig(t *testing.T) {
 		expectedError  string
 	}{
 		{
-			name: "valid config update",
-			initialConfig: &config.Config{
-				Server: config.ServerConfig{
-					Host: "localhost",
-					Port: 8080,
-				},
-				Matching: config.MatchingConfig{},
-			},
-			requestBody: &config.Config{
-				Server: config.ServerConfig{
-					Host: "0.0.0.0",
-					Port: 9090,
-				},
-				Matching: config.MatchingConfig{},
-			},
+			name:          "valid config update",
+			initialConfig: config.DefaultConfig(),
+			requestBody: func() *config.Config {
+				cfg := config.DefaultConfig()
+				cfg.Server.Host = "0.0.0.0"
+				cfg.Server.Port = 9090
+				return cfg
+			}(),
 			expectedStatus: 200,
 		},
 		{
-			name: "invalid json",
-			initialConfig: &config.Config{
-				Server: config.ServerConfig{
-					Host: "localhost",
-					Port: 8080,
-				},
-				Matching: config.MatchingConfig{},
-			},
+			name:           "invalid json",
+			initialConfig:  config.DefaultConfig(),
 			requestBody:    "invalid json",
 			expectedStatus: 400,
 			expectedError:  "Invalid configuration format",
@@ -579,13 +635,7 @@ func TestUpdateConfig(t *testing.T) {
 
 func TestUpdateConfig_ConcurrentAccess(t *testing.T) {
 	// Test that concurrent config updates are properly serialized
-	cfg := &config.Config{
-		Server: config.ServerConfig{
-			Host: "localhost",
-			Port: 8080,
-		},
-		Matching: config.MatchingConfig{},
-	}
+	cfg := config.DefaultConfig()
 
 	tempConfigFile := t.TempDir() + "/config.yaml"
 
@@ -601,13 +651,9 @@ func TestUpdateConfig_ConcurrentAccess(t *testing.T) {
 		go func(port int) {
 			defer func() { done <- true }()
 
-			newConfig := &config.Config{
-				Server: config.ServerConfig{
-					Host: "0.0.0.0",
-					Port: 8080 + port,
-				},
-				Matching: config.MatchingConfig{},
-			}
+			newConfig := config.DefaultConfig()
+			newConfig.Server.Host = "0.0.0.0"
+			newConfig.Server.Port = 8080 + port
 
 			body, err := json.Marshal(newConfig)
 			require.NoError(t, err)
@@ -761,7 +807,22 @@ func TestUpdateConfig_InvalidConfig(t *testing.T) {
 		{
 			name:         "empty JSON object",
 			requestBody:  "{}",
-			expectedCode: 200, // Empty config is technically valid
+			expectedCode: 400, // Missing required settings after strict save validation
+		},
+		{
+			name: "translation enabled but deepl key missing",
+			requestBody: func() string {
+				cfg := config.DefaultConfig()
+				cfg.Metadata.Translation.Enabled = true
+				cfg.Metadata.Translation.Provider = "deepl"
+				cfg.Metadata.Translation.DeepL.APIKey = ""
+
+				payload, err := json.Marshal(cfg)
+				require.NoError(t, err)
+				return string(payload)
+			}(),
+			expectedCode:  400,
+			errorContains: "metadata.translation.deepl.api_key is required when provider=deepl",
 		},
 	}
 

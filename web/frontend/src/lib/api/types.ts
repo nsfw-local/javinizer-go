@@ -278,6 +278,16 @@ export interface ProxyTestResponse {
 	flaresolverr_url?: string;
 }
 
+export interface TranslationModelsRequest {
+	provider: 'openai';
+	base_url: string;
+	api_key: string;
+}
+
+export interface TranslationModelsResponse {
+	models: string[];
+}
+
 // Config types
 export interface PerformanceConfig {
 	max_workers: number;

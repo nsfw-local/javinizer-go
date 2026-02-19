@@ -112,6 +112,18 @@ type ProxyTestResponse struct {
 	FlareSolverrURL string `json:"flaresolverr_url,omitempty"` // FlareSolverr endpoint used
 }
 
+// TranslationModelsRequest represents a request to fetch available translation models.
+type TranslationModelsRequest struct {
+	Provider string `json:"provider" binding:"required"` // openai (OpenAI-compatible only for now)
+	BaseURL  string `json:"base_url" binding:"required"` // API base URL (e.g., https://api.openai.com/v1)
+	APIKey   string `json:"api_key"`                     // Provider API key
+}
+
+// TranslationModelsResponse represents the model discovery response.
+type TranslationModelsResponse struct {
+	Models []string `json:"models"`
+}
+
 // ScanRequest represents a directory scan request
 type ScanRequest struct {
 	Path      string `json:"path" binding:"required" example:"/path/to/videos"`

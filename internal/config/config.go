@@ -904,9 +904,6 @@ func (c *Config) validateTranslationConfig() error {
 	t.Provider = provider
 	switch provider {
 	case "openai":
-		if strings.TrimSpace(t.OpenAI.APIKey) == "" {
-			return fmt.Errorf("metadata.translation.openai.api_key is required when provider=openai")
-		}
 		if strings.TrimSpace(t.OpenAI.Model) == "" {
 			return fmt.Errorf("metadata.translation.openai.model is required when provider=openai")
 		}
@@ -919,9 +916,6 @@ func (c *Config) validateTranslationConfig() error {
 			return fmt.Errorf("metadata.translation.deepl.mode must be either 'free' or 'pro'")
 		}
 		t.DeepL.Mode = mode
-		if strings.TrimSpace(t.DeepL.APIKey) == "" {
-			return fmt.Errorf("metadata.translation.deepl.api_key is required when provider=deepl")
-		}
 		if strings.TrimSpace(t.DeepL.BaseURL) != "" {
 			if err := validateHTTPBaseURL("metadata.translation.deepl.base_url", t.DeepL.BaseURL); err != nil {
 				return err
@@ -933,9 +927,6 @@ func (c *Config) validateTranslationConfig() error {
 			return fmt.Errorf("metadata.translation.google.mode must be either 'free' or 'paid'")
 		}
 		t.Google.Mode = mode
-		if mode == "paid" && strings.TrimSpace(t.Google.APIKey) == "" {
-			return fmt.Errorf("metadata.translation.google.api_key is required when provider=google and mode=paid")
-		}
 		if strings.TrimSpace(t.Google.BaseURL) != "" {
 			if err := validateHTTPBaseURL("metadata.translation.google.base_url", t.Google.BaseURL); err != nil {
 				return err
