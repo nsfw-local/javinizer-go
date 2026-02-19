@@ -21,6 +21,29 @@ func TestConfig_Validate(t *testing.T) {
 			expectError: false,
 		},
 		{
+			name: "database type unsupported",
+			modifyConfig: func(c *Config) {
+				c.Database.Type = "postgres"
+			},
+			expectError:   true,
+			errorContains: "database.type must be 'sqlite'",
+		},
+		{
+			name: "database type normalized to sqlite",
+			modifyConfig: func(c *Config) {
+				c.Database.Type = " SQLITE "
+			},
+			expectError: false,
+		},
+		{
+			name: "database dsn required",
+			modifyConfig: func(c *Config) {
+				c.Database.DSN = "   "
+			},
+			expectError:   true,
+			errorContains: "database.dsn is required",
+		},
+		{
 			name: "timeout_seconds too low",
 			modifyConfig: func(c *Config) {
 				c.Scrapers.TimeoutSeconds = 0
@@ -247,6 +270,9 @@ func TestConfig_Validate(t *testing.T) {
 				// Verify default referer was set if it was empty
 				if tt.name == "empty referer gets default" {
 					assert.Equal(t, "https://www.dmm.co.jp/", cfg.Scrapers.Referer)
+				}
+				if tt.name == "database type normalized to sqlite" {
+					assert.Equal(t, "sqlite", cfg.Database.Type)
 				}
 			}
 		})

@@ -333,6 +333,12 @@ func createTestConfig() *config.Config {
 				Description: []string{"dmm", "r18dev"},
 				CoverURL:    []string{}, // Empty = use global priority
 			},
+			GenreReplacement: config.GenreReplacementConfig{
+				Enabled: true,
+			},
+			ActressDatabase: config.ActressDatabaseConfig{
+				Enabled: true,
+			},
 		},
 	}
 }

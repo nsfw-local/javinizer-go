@@ -286,20 +286,30 @@ func TestGenreAutoAdd(t *testing.T) {
 
 	tests := []struct {
 		name        string
+		enabled     bool
 		autoAdd     bool
 		genreName   string
 		shouldExist bool
 	}{
 		{
 			name:        "Auto-add enabled - new genre",
+			enabled:     true,
 			autoAdd:     true,
 			genreName:   "New Genre",
 			shouldExist: true,
 		},
 		{
 			name:        "Auto-add disabled - new genre",
+			enabled:     true,
 			autoAdd:     false,
 			genreName:   "Another Genre",
+			shouldExist: false,
+		},
+		{
+			name:        "Genre replacement disabled - auto-add ignored",
+			enabled:     false,
+			autoAdd:     true,
+			genreName:   "Disabled Genre",
 			shouldExist: false,
 		},
 	}
@@ -312,6 +322,7 @@ func TestGenreAutoAdd(t *testing.T) {
 				},
 				Metadata: config.MetadataConfig{
 					GenreReplacement: config.GenreReplacementConfig{
+						Enabled: tt.enabled,
 						AutoAdd: tt.autoAdd,
 					},
 				},
@@ -348,6 +359,51 @@ func TestGenreAutoAdd(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestGenreReplacementDisabledIgnoresExistingMappings(t *testing.T) {
+	db, err := database.New(&config.Config{
+		Database: config.DatabaseConfig{
+			Type: "sqlite",
+			DSN:  ":memory:",
+		},
+		Logging: config.LoggingConfig{
+			Level: "error",
+		},
+	})
+	require.NoError(t, err)
+	defer db.Close()
+	require.NoError(t, db.AutoMigrate())
+
+	repo := database.NewGenreReplacementRepository(db)
+	require.NoError(t, repo.Create(&models.GenreReplacement{
+		Original:    "Drama",
+		Replacement: "ドラマ",
+	}))
+
+	aggEnabled := NewWithDatabase(&config.Config{
+		Scrapers: config.ScrapersConfig{
+			Priority: []string{"test"},
+		},
+		Metadata: config.MetadataConfig{
+			GenreReplacement: config.GenreReplacementConfig{
+				Enabled: true,
+			},
+		},
+	}, db)
+	assert.Equal(t, "ドラマ", aggEnabled.applyGenreReplacement("Drama"))
+
+	aggDisabled := NewWithDatabase(&config.Config{
+		Scrapers: config.ScrapersConfig{
+			Priority: []string{"test"},
+		},
+		Metadata: config.MetadataConfig{
+			GenreReplacement: config.GenreReplacementConfig{
+				Enabled: false,
+			},
+		},
+	}, db)
+	assert.Equal(t, "Drama", aggDisabled.applyGenreReplacement("Drama"))
 }
 
 func TestDisplayNameFormatting(t *testing.T) {

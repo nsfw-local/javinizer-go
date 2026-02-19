@@ -376,6 +376,12 @@ func TestConfigValidate_FlareSolverr(t *testing.T) {
 			if tt.cfg.Performance.UpdateInterval == 0 {
 				tt.cfg.Performance.UpdateInterval = 100
 			}
+			if tt.cfg.Database.Type == "" {
+				tt.cfg.Database.Type = "sqlite"
+			}
+			if tt.cfg.Database.DSN == "" {
+				tt.cfg.Database.DSN = ":memory:"
+			}
 
 			err := tt.cfg.Validate()
 

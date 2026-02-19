@@ -394,6 +394,10 @@ func createTestConfig(dataDir string) *config.Config {
 				ScreenshotURL: []string{"r18dev", "dmm"},
 				TrailerURL:    []string{"r18dev", "dmm"},
 			},
+			GenreReplacement: config.GenreReplacementConfig{
+				Enabled: true,
+				AutoAdd: true,
+			},
 			IgnoreGenres: []string{"Sample", "Trailer"},
 			NFO: config.NFOConfig{
 				Enabled:              true,

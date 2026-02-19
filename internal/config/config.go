@@ -430,7 +430,7 @@ type OutputConfig struct {
 
 // DatabaseConfig holds database configuration
 type DatabaseConfig struct {
-	Type     string `yaml:"type" json:"type"`           // sqlite, postgres, mysql
+	Type     string `yaml:"type" json:"type"`           // sqlite (currently only supported backend)
 	DSN      string `yaml:"dsn" json:"dsn"`             // Data Source Name
 	LogLevel string `yaml:"log_level" json:"log_level"` // Database query logging: silent, error, warn, info (default: silent)
 }
@@ -754,6 +754,21 @@ func applyMigrations(cfg *Config) (bool, error) {
 
 // Validate checks configuration values for validity
 func (c *Config) Validate() error {
+	// Validate database settings
+	dbType := strings.ToLower(strings.TrimSpace(c.Database.Type))
+	if dbType == "" {
+		// Backward compatibility: treat empty type as sqlite default.
+		dbType = "sqlite"
+	}
+	if dbType != "sqlite" {
+		return fmt.Errorf("database.type must be 'sqlite' (currently only sqlite is supported)")
+	}
+	c.Database.Type = dbType
+
+	if strings.TrimSpace(c.Database.DSN) == "" {
+		return fmt.Errorf("database.dsn is required")
+	}
+
 	// Validate scraper timeouts
 	if c.Scrapers.TimeoutSeconds < 1 || c.Scrapers.TimeoutSeconds > 300 {
 		return fmt.Errorf("scrapers.timeout_seconds must be between 1 and 300")

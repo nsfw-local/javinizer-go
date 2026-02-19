@@ -163,6 +163,43 @@ func TestActressAliasConversion(t *testing.T) {
 		assert.Equal(t, "Hatano", actresses[0].LastName)
 	})
 
+	t.Run("Conversion disabled when actress database is disabled", func(t *testing.T) {
+		cfgNoActressDB := &config.Config{
+			Metadata: config.MetadataConfig{
+				Priority: config.PriorityConfig{
+					Actress: []string{"r18dev"},
+				},
+				ActressDatabase: config.ActressDatabaseConfig{
+					Enabled:      false, // DISABLED
+					ConvertAlias: true,  // Should be ignored when disabled
+				},
+			},
+			Scrapers: config.ScrapersConfig{
+				Priority: []string{"r18dev"},
+			},
+		}
+		aggNoActressDB := NewWithDatabase(cfgNoActressDB, db)
+
+		results := map[string]*models.ScraperResult{
+			"r18dev": {
+				Actresses: []models.ActressInfo{
+					{
+						FirstName: "Yui",
+						LastName:  "Hatano",
+					},
+				},
+			},
+		}
+
+		actresses := aggNoActressDB.getActressesByPriority(results, []string{"r18dev"})
+		require.Len(t, actresses, 1)
+
+		// Should NOT be converted because actress_database.enabled=false.
+		assert.Equal(t, "Yui", actresses[0].FirstName)
+		assert.Equal(t, "Hatano", actresses[0].LastName)
+		assert.Equal(t, "Hatano Yui", actresses[0].FullName())
+	})
+
 	t.Run("Multiple actresses with mixed conversion", func(t *testing.T) {
 		results := map[string]*models.ScraperResult{
 			"r18dev": {

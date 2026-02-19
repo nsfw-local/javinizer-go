@@ -127,7 +127,7 @@ func NewWithOptions(cfg *config.Config, opts *AggregatorOptions) *Aggregator {
 		agg.genreCacheMutex.Lock()
 		agg.genreReplacementCache = opts.GenreCache
 		agg.genreCacheMutex.Unlock()
-	} else if agg.genreReplacementRepo != nil {
+	} else if agg.genreReplacementRepo != nil && agg.config.Metadata.GenreReplacement.Enabled {
 		// Load from database if repository is available
 		agg.loadGenreReplacementCache()
 	}
@@ -137,7 +137,7 @@ func NewWithOptions(cfg *config.Config, opts *AggregatorOptions) *Aggregator {
 		agg.aliasCacheMutex.Lock()
 		agg.actressAliasCache = opts.ActressCache
 		agg.aliasCacheMutex.Unlock()
-	} else if agg.actressAliasRepo != nil {
+	} else if agg.actressAliasRepo != nil && agg.config.Metadata.ActressDatabase.Enabled {
 		// Load from database if repository is available
 		agg.loadActressAliasCache()
 	}
@@ -877,7 +877,7 @@ func (a *Aggregator) getActressesByPriority(
 		// Add actresses with DMMID first (primary source)
 		for _, actress := range actressByDMMID {
 			// Apply alias conversion if enabled
-			if a.config.Metadata.ActressDatabase.ConvertAlias {
+			if a.config.Metadata.ActressDatabase.Enabled && a.config.Metadata.ActressDatabase.ConvertAlias {
 				a.applyActressAlias(actress)
 			}
 			actresses = append(actresses, *actress)
@@ -886,7 +886,7 @@ func (a *Aggregator) getActressesByPriority(
 		// Add actresses without DMMID (fallback)
 		for _, actress := range actressByName {
 			// Apply alias conversion if enabled
-			if a.config.Metadata.ActressDatabase.ConvertAlias {
+			if a.config.Metadata.ActressDatabase.Enabled && a.config.Metadata.ActressDatabase.ConvertAlias {
 				a.applyActressAlias(actress)
 			}
 			actresses = append(actresses, *actress)
@@ -1084,6 +1084,11 @@ func mergeTranslationFields(current, incoming models.MovieTranslation) models.Mo
 
 // applyGenreReplacement applies genre replacement if one exists
 func (a *Aggregator) applyGenreReplacement(original string) string {
+	// Feature toggle: bypass DB-backed genre replacement entirely when disabled.
+	if a == nil || a.config == nil || !a.config.Metadata.GenreReplacement.Enabled {
+		return original
+	}
+
 	// Check cache first with read lock
 	a.genreCacheMutex.RLock()
 	replacement, exists := a.genreReplacementCache[original]
