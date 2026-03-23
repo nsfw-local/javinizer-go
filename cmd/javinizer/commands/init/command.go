@@ -46,10 +46,7 @@ func run(cmd *cobra.Command, configFile string) error {
 	}
 	defer func() { _ = deps.Close() }()
 
-	// Run database migrations
-	if err := deps.DB.AutoMigrate(); err != nil {
-		return fmt.Errorf("failed to run migrations: %w", err)
-	}
+	// Dependencies initialization already runs startup migrations.
 	fmt.Printf("✅ Initialized database: %s\n", cfg.Database.DSN)
 
 	// Save config

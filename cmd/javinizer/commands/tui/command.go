@@ -209,8 +209,10 @@ func run(cmd *cobra.Command, args []string) error {
 	}
 	defer func() { _ = db.Close() }()
 
-	if err := db.AutoMigrate(); err != nil {
+	if err := db.RunMigrationsOnStartup(context.Background()); err != nil {
 		logging.Errorf("Failed to run migrations: %v", err)
+		_, _ = fmt.Fprintf(os.Stderr, "Failed to run migrations: %v\n", err)
+		os.Exit(1)
 	}
 
 	// Initialize repositories

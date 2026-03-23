@@ -63,7 +63,7 @@ type MovieTranslation struct {
 // Actress represents a JAV actress
 type Actress struct {
 	ID           uint   `json:"id" gorm:"primaryKey"`
-	DMMID        int    `json:"dmm_id" gorm:"uniqueIndex"` // DMM actress ID for unique identification
+	DMMID        int    `json:"dmm_id"` // Real DMM actress ID when available (unique only for values > 0)
 	FirstName    string `json:"first_name"`
 	LastName     string `json:"last_name"`
 	JapaneseName string `json:"japanese_name" gorm:"index"`

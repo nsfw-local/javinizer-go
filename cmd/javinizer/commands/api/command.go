@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"os"
@@ -107,8 +108,8 @@ func Run(cmd *cobra.Command, configFile string, hostFlag string, portFlag int) (
 		return nil, fmt.Errorf("failed to connect to database: %w", err)
 	}
 
-	// Run migrations
-	if err := db.AutoMigrate(); err != nil {
+	// Run startup migrations before repositories are initialized.
+	if err := db.RunMigrationsOnStartup(context.Background()); err != nil {
 		_ = db.Close()
 		return nil, fmt.Errorf("failed to run migrations: %w", err)
 	}

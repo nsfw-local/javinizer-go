@@ -2,7 +2,6 @@ package javdb
 
 import (
 	"fmt"
-	"hash/fnv"
 	"net/url"
 	"regexp"
 	"strconv"
@@ -707,9 +706,9 @@ func extractActresses(sel *goquery.Selection) []models.ActressInfo {
 		}
 		seen[c.name] = true
 		actresses = append(actresses, models.ActressInfo{
-			// JavDB doesn't expose DMM actress IDs; use a stable negative surrogate so
-			// multiple actresses can coexist under the DB's unique dmm_id constraint.
-			DMMID:        syntheticActressID(c.name),
+			// JavDB doesn't expose real DMM actress IDs.
+			// Keep unknown as zero and let downstream matching use names.
+			DMMID:        0,
 			JapaneseName: c.name,
 		})
 	}
@@ -723,7 +722,7 @@ func extractActresses(sel *goquery.Selection) []models.ActressInfo {
 			}
 			seen[n] = true
 			actresses = append(actresses, models.ActressInfo{
-				DMMID:        syntheticActressID(n),
+				DMMID:        0,
 				JapaneseName: n,
 			})
 		}
@@ -865,20 +864,6 @@ func hasWordToken(text, token string) bool {
 		}
 	}
 	return false
-}
-
-func syntheticActressID(name string) int {
-	normalized := strings.ToLower(strings.TrimSpace(name))
-	if normalized == "" {
-		return 0
-	}
-	h := fnv.New32a()
-	_, _ = h.Write([]byte(normalized))
-	id := int(h.Sum32() & 0x7fffffff)
-	if id == 0 {
-		id = 1
-	}
-	return -id
 }
 
 func extractStringList(sel *goquery.Selection) []string {

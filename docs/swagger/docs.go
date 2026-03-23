@@ -4388,7 +4388,7 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "dmm_id": {
-                    "description": "DMM actress ID for unique identification",
+                    "description": "Real DMM actress ID when available (unique only for values \u003e 0)",
                     "type": "integer"
                 },
                 "first_name": {

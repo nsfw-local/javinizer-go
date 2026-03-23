@@ -333,20 +333,21 @@ func TestDMMIDDeduplication(t *testing.T) {
 	}
 }
 
-// TestGORMUniqueConstraintOnDMMID validates GORM uniqueIndex tag on DMMID field (AC-2.4.2)
-func TestGORMUniqueConstraintOnDMMID(t *testing.T) {
+// TestDMMIDFieldConstraintTagging validates that DMMID does not use a model-level unique tag.
+// Uniqueness for real DMM IDs is enforced by a database partial index (dmm_id > 0).
+func TestDMMIDFieldConstraintTagging(t *testing.T) {
 	actressType := reflect.TypeOf(Actress{})
 	field, found := actressType.FieldByName("DMMID")
 	require.True(t, found, "DMMID field should exist in Actress struct")
 
 	gormTag := field.Tag.Get("gorm")
-	assert.Contains(t, gormTag, "uniqueIndex", "DMMID field must have uniqueIndex tag for deduplication")
+	assert.NotContains(t, gormTag, "uniqueIndex", "DMMID uniqueness is managed by DB migration (partial unique index)")
 
 	// Document the behavior
-	t.Log("✓ DMMID has uniqueIndex tag - prevents duplicate actress entries in database")
+	t.Log("✓ DMMID has no model-level uniqueIndex tag")
+	t.Log("✓ Database migration enforces uniqueness only for dmm_id > 0")
 	t.Log("✓ Business rule: Two actresses with same DMMID are the same person")
-	t.Log("✓ Scraper scenario: r18dev and dmm may return same actress with different names but same DMMID")
-	t.Log("✓ Zero DMMID allowed: Some actresses may not have DMM ID (cannot deduplicate)")
+	t.Log("✓ Zero DMMID allowed: Unknown/non-DMM IDs may repeat")
 }
 
 // TestActressJSONMarshaling tests Actress struct to JSON conversion (AC-2.4.3)
@@ -569,12 +570,6 @@ func TestActressGORMTags(t *testing.T) {
 			fieldName:    "ID",
 			expectedTags: []string{"primaryKey"},
 			description:  "Primary key for actress records",
-		},
-		{
-			name:         "DMMID field has uniqueIndex tag",
-			fieldName:    "DMMID",
-			expectedTags: []string{"uniqueIndex"},
-			description:  "Unique index prevents duplicate actresses from multiple scrapers",
 		},
 		{
 			name:         "JapaneseName field has index tag",

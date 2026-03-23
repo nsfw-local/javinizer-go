@@ -1,10 +1,12 @@
 package database
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"log"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/javinizer/javinizer-go/internal/config"
@@ -18,7 +20,10 @@ import (
 // DB wraps the GORM database connection
 type DB struct {
 	*gorm.DB
+	dsn string
 }
+
+var sqliteMemoryDSNCounter atomic.Uint64
 
 // parseLogLevel converts a log level string to a GORM logger.LogLevel
 // Normalizes input by trimming whitespace and converting to lowercase
@@ -49,7 +54,7 @@ func New(cfg *config.Config) (*DB, error) {
 
 	switch cfg.Database.Type {
 	case "sqlite", "":
-		dialector = sqlite.Open(cfg.Database.DSN)
+		dialector = sqlite.Open(normalizeSQLiteDSN(cfg.Database.DSN))
 	default:
 		return nil, fmt.Errorf("unsupported database type: %s", cfg.Database.Type)
 	}
@@ -66,23 +71,29 @@ func New(cfg *config.Config) (*DB, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to database: %w", err)
 	}
-
-	return &DB{db}, nil
+	return &DB{
+		DB:  db,
+		dsn: cfg.Database.DSN,
+	}, nil
 }
 
-// AutoMigrate runs database migrations
+// AutoMigrate runs startup database migrations.
+//
+// Kept for backward compatibility in tests and existing call sites.
+// New runtime paths should call RunMigrationsOnStartup directly.
 func (db *DB) AutoMigrate() error {
-	return db.DB.AutoMigrate(
-		&models.Movie{},
-		&models.MovieTranslation{},
-		&models.Actress{},
-		&models.Genre{},
-		&models.GenreReplacement{},
-		&models.ActressAlias{},
-		&models.MovieTag{},
-		&models.History{},
-		&models.ContentIDMapping{},
-	)
+	return db.RunMigrationsOnStartup(context.Background())
+}
+
+func normalizeSQLiteDSN(dsn string) string {
+	normalized := strings.ToLower(strings.TrimSpace(dsn))
+	if normalized != ":memory:" {
+		return dsn
+	}
+	// `:memory:` is scoped per SQLite connection. Goose migration checks and applies
+	// can use multiple connections, so convert to a unique shared-cache memory URI.
+	next := sqliteMemoryDSNCounter.Add(1)
+	return fmt.Sprintf("file:javinizer_mem_%d_%d?mode=memory&cache=shared", time.Now().UnixNano(), next)
 }
 
 // Close closes the database connection
@@ -125,6 +136,10 @@ func (r *MovieRepository) Upsert(movie *models.Movie) error {
 			// Pragmatic fallback: derive from display ID
 			movie.ContentID = strings.ToLower(strings.ReplaceAll(movie.ID, "-", ""))
 		}
+
+		// Drop actress entries with no identifying information before any association work.
+		// This prevents zero-value placeholders from being persisted as real actress records.
+		movie.Actresses = filterIdentifiableActresses(movie.Actresses)
 
 		// Check if movie exists - prefer ContentID (primary key) with fallback to display ID
 		var existing models.Movie
@@ -281,6 +296,24 @@ func (r *MovieRepository) Upsert(movie *models.Movie) error {
 
 		return nil
 	})
+}
+
+func filterIdentifiableActresses(actresses []models.Actress) []models.Actress {
+	if len(actresses) == 0 {
+		return actresses
+	}
+
+	filtered := actresses[:0]
+	for _, actress := range actresses {
+		if actress.DMMID != 0 ||
+			strings.TrimSpace(actress.JapaneseName) != "" ||
+			strings.TrimSpace(actress.FirstName) != "" ||
+			strings.TrimSpace(actress.LastName) != "" {
+			filtered = append(filtered, actress)
+		}
+	}
+
+	return filtered
 }
 
 // ensureGenresExistTx ensures all genres exist in DB using the provided transaction

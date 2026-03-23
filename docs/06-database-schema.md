@@ -226,7 +226,11 @@ javinizer init
 
 ## Migration
 
-Database migrations are automatic via GORM AutoMigrate. When you update Javinizer, new tables/columns are added automatically.
+Database migrations are automatic at startup using versioned Goose migrations embedded in the binary.
+
+- Migrations are applied before normal app startup continues.
+- A pre-migration `.backup` snapshot is created when pending migrations exist.
+- If migration fails, startup aborts with recovery instructions.
 
 ## Direct Access
 

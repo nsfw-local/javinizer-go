@@ -1,6 +1,9 @@
 package database
 
 import (
+	"context"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/javinizer/javinizer-go/internal/config"
@@ -115,4 +118,562 @@ func TestParseLogLevelEdgeCases(t *testing.T) {
 			assert.NotEqual(t, logger.Silent, result, "Should not default to silent for valid inputs")
 		})
 	}
+}
+
+func TestDBAutoMigrate_DMMIDPartialUniqueIndex(t *testing.T) {
+	cfg := &config.Config{
+		Database: config.DatabaseConfig{
+			Type: "sqlite",
+			DSN:  ":memory:",
+		},
+		Logging: config.LoggingConfig{
+			Level: "error",
+		},
+	}
+
+	db, err := New(cfg)
+	require.NoError(t, err)
+	defer func() { _ = db.Close() }()
+	require.NoError(t, db.AutoMigrate())
+
+	// Ensure partial unique index exists for dmm_id > 0.
+	var count int
+	err = db.DB.Raw(
+		"SELECT COUNT(*) FROM sqlite_master WHERE type='index' AND tbl_name='actresses' AND name='idx_actresses_dmm_id_positive' AND sql LIKE '%WHERE dmm_id > 0%'",
+	).Scan(&count).Error
+	require.NoError(t, err)
+	require.Equal(t, 1, count)
+
+	repo := NewActressRepository(db)
+
+	// Multiple unknown DMM IDs (0) should be allowed.
+	require.NoError(t, repo.Create(&models.Actress{DMMID: 0, JapaneseName: "零A"}))
+	require.NoError(t, repo.Create(&models.Actress{DMMID: 0, JapaneseName: "零B"}))
+
+	// Real DMM IDs (>0) must remain unique.
+	require.NoError(t, repo.Create(&models.Actress{DMMID: 123456, JapaneseName: "正A"}))
+	err = repo.Create(&models.Actress{DMMID: 123456, JapaneseName: "正B"})
+	require.Error(t, err)
+}
+
+func TestRunMigrationsOnStartup_RepairsLegacyConstraintAndNormalizesNegativeDMMID(t *testing.T) {
+	cfg := &config.Config{
+		Database: config.DatabaseConfig{
+			Type: "sqlite",
+			DSN:  ":memory:",
+		},
+		Logging: config.LoggingConfig{
+			Level: "error",
+		},
+	}
+
+	db, err := New(cfg)
+	require.NoError(t, err)
+	defer func() { _ = db.Close() }()
+	require.NoError(t, db.DB.Exec(`
+		CREATE TABLE actresses (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			dmm_id INTEGER,
+			first_name TEXT,
+			last_name TEXT,
+			japanese_name TEXT,
+			thumb_url TEXT,
+			aliases TEXT,
+			created_at DATETIME,
+			updated_at DATETIME,
+			UNIQUE(dmm_id),
+			UNIQUE(japanese_name)
+		)
+	`).Error)
+	require.NoError(t, db.DB.Exec(
+		"CREATE INDEX IF NOT EXISTS idx_custom_actresses_dmm_id_name ON actresses(dmm_id, japanese_name)",
+	).Error)
+	require.NoError(t, db.DB.Exec(
+		"INSERT INTO actresses (dmm_id, japanese_name) VALUES (-111, '負A'), (-222, '負B'), (333, '正A')",
+	).Error)
+
+	require.NoError(t, db.RunMigrationsOnStartup(context.Background()))
+
+	var zeroCount int
+	err = db.DB.Raw(
+		"SELECT COUNT(*) FROM actresses WHERE dmm_id = 0",
+	).Scan(&zeroCount).Error
+	require.NoError(t, err)
+	assert.Equal(t, 2, zeroCount, "legacy negative dmm_id values should be normalized to zero")
+
+	var positiveCount int
+	err = db.DB.Raw(
+		"SELECT COUNT(*) FROM actresses WHERE dmm_id = 333",
+	).Scan(&positiveCount).Error
+	require.NoError(t, err)
+	assert.Equal(t, 1, positiveCount)
+
+	var customIndexCount int
+	err = db.DB.Raw(
+		"SELECT COUNT(*) FROM sqlite_master WHERE type='index' AND tbl_name='actresses' AND name='idx_custom_actresses_dmm_id_name'",
+	).Scan(&customIndexCount).Error
+	require.NoError(t, err)
+	assert.Equal(t, 1, customIndexCount, "custom indexes should be preserved during legacy table rebuild")
+
+	// Unique constraints that were previously represented as constraint-owned
+	// indexes should remain enforced after rebuild.
+	err = db.DB.Exec("INSERT INTO actresses (dmm_id, japanese_name) VALUES (444, '正A')").Error
+	require.Error(t, err, "duplicate japanese_name should remain rejected after rebuild")
+}
+
+func TestRunMigrationsOnStartup_PreservesConstraintCollationOnRebuild(t *testing.T) {
+	cfg := &config.Config{
+		Database: config.DatabaseConfig{
+			Type: "sqlite",
+			DSN:  ":memory:",
+		},
+		Logging: config.LoggingConfig{
+			Level: "error",
+		},
+	}
+
+	db, err := New(cfg)
+	require.NoError(t, err)
+	defer func() { _ = db.Close() }()
+	require.NoError(t, db.DB.Exec(`
+		CREATE TABLE actresses (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			dmm_id INTEGER,
+			first_name TEXT,
+			last_name TEXT,
+			japanese_name TEXT,
+			thumb_url TEXT,
+			aliases TEXT,
+			created_at DATETIME,
+			updated_at DATETIME,
+			UNIQUE(dmm_id),
+			UNIQUE(japanese_name COLLATE NOCASE)
+		)
+	`).Error)
+	require.NoError(t, db.DB.Exec(
+		"INSERT INTO actresses (dmm_id, japanese_name) VALUES (-1, 'abc')",
+	).Error)
+
+	require.NoError(t, db.RunMigrationsOnStartup(context.Background()))
+
+	err = db.DB.Exec(
+		"INSERT INTO actresses (dmm_id, japanese_name) VALUES (1, 'ABC')",
+	).Error
+	require.Error(t, err, "NOCASE collation on preserved unique constraint should still reject case-insensitive duplicates")
+}
+
+func TestRunMigrationsOnStartup_PreservesNonIndexConstraintsOnRebuild(t *testing.T) {
+	cfg := &config.Config{
+		Database: config.DatabaseConfig{
+			Type: "sqlite",
+			DSN:  ":memory:",
+		},
+		Logging: config.LoggingConfig{
+			Level: "error",
+		},
+	}
+
+	db, err := New(cfg)
+	require.NoError(t, err)
+	defer func() { _ = db.Close() }()
+	require.NoError(t, db.DB.Exec(`
+		CREATE TABLE actresses (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			dmm_id INTEGER,
+			first_name TEXT,
+			last_name TEXT,
+			japanese_name TEXT CHECK(length(japanese_name) > 0),
+			thumb_url TEXT,
+			aliases TEXT,
+			created_at DATETIME,
+			updated_at DATETIME,
+			UNIQUE(dmm_id)
+		)
+	`).Error)
+	require.NoError(t, db.DB.Exec(
+		"INSERT INTO actresses (dmm_id, japanese_name) VALUES (-1, 'abc')",
+	).Error)
+
+	require.NoError(t, db.RunMigrationsOnStartup(context.Background()))
+
+	err = db.DB.Exec(
+		"INSERT INTO actresses (dmm_id, japanese_name) VALUES (1, '')",
+	).Error
+	require.Error(t, err, "CHECK constraint should still reject empty japanese_name after rebuild")
+}
+
+func TestRunMigrationsOnStartup_SupportsInlineUniqueDMMConstraintOnRebuild(t *testing.T) {
+	cfg := &config.Config{
+		Database: config.DatabaseConfig{
+			Type: "sqlite",
+			DSN:  ":memory:",
+		},
+		Logging: config.LoggingConfig{
+			Level: "error",
+		},
+	}
+
+	db, err := New(cfg)
+	require.NoError(t, err)
+	defer func() { _ = db.Close() }()
+	require.NoError(t, db.DB.Exec(`
+		CREATE TABLE actresses (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			dmm_id INTEGER UNIQUE,
+			first_name TEXT,
+			last_name TEXT,
+			japanese_name TEXT,
+			thumb_url TEXT,
+			aliases TEXT,
+			created_at DATETIME,
+			updated_at DATETIME
+		)
+	`).Error)
+	require.NoError(t, db.DB.Exec(
+		"INSERT INTO actresses (dmm_id, japanese_name) VALUES (-1, 'A'), (5, 'B')",
+	).Error)
+
+	require.NoError(t, db.RunMigrationsOnStartup(context.Background()))
+
+	var normalizedNegativeCount int
+	err = db.DB.Raw("SELECT COUNT(*) FROM actresses WHERE dmm_id = 0").Scan(&normalizedNegativeCount).Error
+	require.NoError(t, err)
+	assert.Equal(t, 1, normalizedNegativeCount)
+
+	err = db.DB.Exec(
+		"INSERT INTO actresses (dmm_id, japanese_name) VALUES (0, 'C')",
+	).Error
+	require.NoError(t, err, "multiple dmm_id=0 rows should be allowed after inline unique removal")
+
+	err = db.DB.Exec(
+		"INSERT INTO actresses (dmm_id, japanese_name) VALUES (5, 'D')",
+	).Error
+	require.Error(t, err, "positive dmm_id values should remain unique after migration")
+}
+
+func TestRunMigrationsOnStartup_SupportsInlineUniqueDMMConstraintWithConflictClause(t *testing.T) {
+	cfg := &config.Config{
+		Database: config.DatabaseConfig{
+			Type: "sqlite",
+			DSN:  ":memory:",
+		},
+		Logging: config.LoggingConfig{
+			Level: "error",
+		},
+	}
+
+	db, err := New(cfg)
+	require.NoError(t, err)
+	defer func() { _ = db.Close() }()
+	require.NoError(t, db.DB.Exec(`
+		CREATE TABLE actresses (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			dmm_id INTEGER UNIQUE ON CONFLICT IGNORE,
+			first_name TEXT,
+			last_name TEXT,
+			japanese_name TEXT,
+			thumb_url TEXT,
+			aliases TEXT,
+			created_at DATETIME,
+			updated_at DATETIME
+		)
+	`).Error)
+	require.NoError(t, db.DB.Exec(
+		"INSERT INTO actresses (dmm_id, japanese_name) VALUES (-1, 'A'), (9, 'B')",
+	).Error)
+
+	require.NoError(t, db.RunMigrationsOnStartup(context.Background()))
+
+	err = db.DB.Exec(
+		"INSERT INTO actresses (dmm_id, japanese_name) VALUES (9, 'C')",
+	).Error
+	require.Error(t, err, "positive dmm_id uniqueness should be enforced by canonical partial index")
+
+	var rebuiltSchemaSQL string
+	err = db.DB.Raw(
+		"SELECT sql FROM sqlite_master WHERE type='table' AND name='actresses'",
+	).Scan(&rebuiltSchemaSQL).Error
+	require.NoError(t, err)
+	assert.NotContains(t, strings.ToLower(rebuiltSchemaSQL), "constraint uq_dmm", "inline named unique constraint should be removed entirely, not left dangling")
+}
+
+func TestRunMigrationsOnStartup_SupportsInlineUniqueDMMConstraintWithQuotedConstraintName(t *testing.T) {
+	cfg := &config.Config{
+		Database: config.DatabaseConfig{
+			Type: "sqlite",
+			DSN:  ":memory:",
+		},
+		Logging: config.LoggingConfig{
+			Level: "error",
+		},
+	}
+
+	db, err := New(cfg)
+	require.NoError(t, err)
+	defer func() { _ = db.Close() }()
+	require.NoError(t, db.DB.Exec(`
+		CREATE TABLE actresses (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			dmm_id INTEGER CONSTRAINT "uq dmm" UNIQUE ON CONFLICT IGNORE,
+			first_name TEXT,
+			last_name TEXT,
+			japanese_name TEXT,
+			thumb_url TEXT,
+			aliases TEXT,
+			created_at DATETIME,
+			updated_at DATETIME
+		)
+	`).Error)
+	require.NoError(t, db.DB.Exec(
+		"INSERT INTO actresses (dmm_id, japanese_name) VALUES (-1, 'A'), (9, 'B')",
+	).Error)
+
+	require.NoError(t, db.RunMigrationsOnStartup(context.Background()))
+
+	var rebuiltSchemaSQL string
+	err = db.DB.Raw(
+		"SELECT sql FROM sqlite_master WHERE type='table' AND name='actresses'",
+	).Scan(&rebuiltSchemaSQL).Error
+	require.NoError(t, err)
+	assert.NotContains(t, strings.ToLower(rebuiltSchemaSQL), `constraint "uq dmm"`, "quoted inline unique constraint prefix should be removed entirely")
+}
+
+func TestRunMigrationsOnStartup_FailsOnDuplicatePositiveDMMID(t *testing.T) {
+	cfg := &config.Config{
+		Database: config.DatabaseConfig{
+			Type: "sqlite",
+			DSN:  ":memory:",
+		},
+		Logging: config.LoggingConfig{
+			Level: "error",
+		},
+	}
+
+	db, err := New(cfg)
+	require.NoError(t, err)
+	defer func() { _ = db.Close() }()
+
+	require.NoError(t, db.DB.Exec(`
+		CREATE TABLE actresses (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			dmm_id INTEGER,
+			first_name TEXT,
+			last_name TEXT,
+			japanese_name TEXT,
+			thumb_url TEXT,
+			aliases TEXT,
+			created_at DATETIME,
+			updated_at DATETIME
+		)
+	`).Error)
+	require.NoError(t, db.DB.Exec(
+		"INSERT INTO actresses (dmm_id, japanese_name) VALUES (12345, 'A'), (12345, 'B')",
+	).Error)
+
+	err = db.RunMigrationsOnStartup(context.Background())
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "duplicate positive dmm_id=12345")
+}
+
+func TestRunMigrationsOnStartup_CreatesBackupAndIsIdempotent(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "javinizer.db")
+
+	cfg := &config.Config{
+		Database: config.DatabaseConfig{
+			Type: "sqlite",
+			DSN:  dbPath,
+		},
+		Logging: config.LoggingConfig{
+			Level: "error",
+		},
+	}
+
+	db, err := New(cfg)
+	require.NoError(t, err)
+	defer func() { _ = db.Close() }()
+
+	require.NoError(t, db.RunMigrationsOnStartup(context.Background()))
+
+	initialBackups, err := filepath.Glob(dbPath + ".*.backup")
+	require.NoError(t, err)
+	require.Len(t, initialBackups, 1, "first startup migration should create exactly one backup file")
+
+	require.NoError(t, db.RunMigrationsOnStartup(context.Background()))
+
+	finalBackups, err := filepath.Glob(dbPath + ".*.backup")
+	require.NoError(t, err)
+	assert.Len(t, finalBackups, 1, "no additional backups should be created when no migrations are pending")
+}
+
+func TestRunMigrationsOnStartup_UpgradesExistingMoviesSchema(t *testing.T) {
+	cfg := &config.Config{
+		Database: config.DatabaseConfig{
+			Type: "sqlite",
+			DSN:  ":memory:",
+		},
+		Logging: config.LoggingConfig{
+			Level: "error",
+		},
+	}
+
+	db, err := New(cfg)
+	require.NoError(t, err)
+	defer func() { _ = db.Close() }()
+
+	// Simulate a legacy schema that predates newer movie columns.
+	require.NoError(t, db.DB.Exec(`
+		CREATE TABLE movies (
+			content_id TEXT PRIMARY KEY,
+			title TEXT,
+			created_at DATETIME,
+			updated_at DATETIME
+		)
+	`).Error)
+
+	require.NoError(t, db.RunMigrationsOnStartup(context.Background()))
+
+	var croppedPosterColumnCount int
+	err = db.DB.Raw(
+		"SELECT COUNT(*) FROM pragma_table_info('movies') WHERE name='cropped_poster_url'",
+	).Scan(&croppedPosterColumnCount).Error
+	require.NoError(t, err)
+	assert.Equal(t, 1, croppedPosterColumnCount, "compatibility migration should add missing movie columns")
+
+	var idColumnCount int
+	err = db.DB.Raw(
+		"SELECT COUNT(*) FROM pragma_table_info('movies') WHERE name='id'",
+	).Scan(&idColumnCount).Error
+	require.NoError(t, err)
+	assert.Equal(t, 1, idColumnCount, "compatibility migration should add missing movies.id before creating indexes")
+}
+
+func TestRunMigrationsOnStartup_UpgradesLegacyMoviesIDPrimarySchema(t *testing.T) {
+	cfg := &config.Config{
+		Database: config.DatabaseConfig{
+			Type: "sqlite",
+			DSN:  ":memory:",
+		},
+		Logging: config.LoggingConfig{
+			Level: "error",
+		},
+	}
+
+	db, err := New(cfg)
+	require.NoError(t, err)
+	defer func() { _ = db.Close() }()
+
+	require.NoError(t, db.DB.Exec(`
+		CREATE TABLE movies (
+			id TEXT PRIMARY KEY,
+			title TEXT,
+			created_at DATETIME,
+			updated_at DATETIME
+		)
+	`).Error)
+	require.NoError(t, db.DB.Exec(
+		"INSERT INTO movies (id, title) VALUES ('IPX-001', 'Legacy')",
+	).Error)
+
+	require.NoError(t, db.RunMigrationsOnStartup(context.Background()))
+
+	var contentIDColumnCount int
+	err = db.DB.Raw(
+		"SELECT COUNT(*) FROM pragma_table_info('movies') WHERE name='content_id'",
+	).Scan(&contentIDColumnCount).Error
+	require.NoError(t, err)
+	assert.Equal(t, 1, contentIDColumnCount, "compatibility migration should add missing movies.content_id")
+
+	var backfilledContentID string
+	err = db.DB.Raw(
+		"SELECT content_id FROM movies WHERE id = ?",
+		"IPX-001",
+	).Scan(&backfilledContentID).Error
+	require.NoError(t, err)
+	assert.Equal(t, "ipx001", backfilledContentID, "movies.content_id should be backfilled from legacy movies.id")
+
+	var contentIDIndexCount int
+	err = db.DB.Raw(
+		"SELECT COUNT(*) FROM sqlite_master WHERE type='index' AND tbl_name='movies' AND name='idx_movies_content_id'",
+	).Scan(&contentIDIndexCount).Error
+	require.NoError(t, err)
+	assert.Equal(t, 1, contentIDIndexCount, "compatibility migration should enforce uniqueness for movies.content_id")
+
+	repo := NewMovieRepository(db)
+	loadedMovie, err := repo.FindByContentID("ipx001")
+	require.NoError(t, err)
+	assert.Equal(t, "IPX-001", loadedMovie.ID)
+}
+
+func TestRunMigrationsOnStartup_FailsOnDuplicateDerivedMoviesContentID(t *testing.T) {
+	cfg := &config.Config{
+		Database: config.DatabaseConfig{
+			Type: "sqlite",
+			DSN:  ":memory:",
+		},
+		Logging: config.LoggingConfig{
+			Level: "error",
+		},
+	}
+
+	db, err := New(cfg)
+	require.NoError(t, err)
+	defer func() { _ = db.Close() }()
+
+	require.NoError(t, db.DB.Exec(`
+		CREATE TABLE movies (
+			id TEXT PRIMARY KEY,
+			title TEXT
+		)
+	`).Error)
+	require.NoError(t, db.DB.Exec(
+		"INSERT INTO movies (id, title) VALUES ('AB-123', 'A'), ('AB123', 'B')",
+	).Error)
+
+	err = db.RunMigrationsOnStartup(context.Background())
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "duplicate content_id=")
+}
+
+func TestRunMigrationsOnStartup_FileURIRestoreHintUsesFilesystemPath(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "javinizer.db")
+	uriDSN := "file:" + dbPath + "?cache=shared"
+
+	cfg := &config.Config{
+		Database: config.DatabaseConfig{
+			Type: "sqlite",
+			DSN:  uriDSN,
+		},
+		Logging: config.LoggingConfig{
+			Level: "error",
+		},
+	}
+
+	db, err := New(cfg)
+	require.NoError(t, err)
+	defer func() { _ = db.Close() }()
+
+	require.NoError(t, db.DB.Exec(`
+		CREATE TABLE actresses (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			dmm_id INTEGER,
+			first_name TEXT,
+			last_name TEXT,
+			japanese_name TEXT,
+			thumb_url TEXT,
+			aliases TEXT,
+			created_at DATETIME,
+			updated_at DATETIME
+		)
+	`).Error)
+	require.NoError(t, db.DB.Exec(
+		"INSERT INTO actresses (dmm_id, japanese_name) VALUES (777, 'A'), (777, 'B')",
+	).Error)
+
+	err = db.RunMigrationsOnStartup(context.Background())
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "restore with: cp")
+	assert.Contains(t, err.Error(), dbPath)
+	assert.NotContains(t, err.Error(), uriDSN)
 }

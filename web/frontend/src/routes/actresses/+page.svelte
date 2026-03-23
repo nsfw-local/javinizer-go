@@ -709,7 +709,7 @@
 															{#if actress.id}
 																<span class="text-xs rounded bg-muted px-2 py-0.5">#{actress.id}</span>
 															{/if}
-															{#if actress.dmm_id}
+															{#if actress.dmm_id && actress.dmm_id > 0}
 																<span class="text-xs rounded bg-muted px-2 py-0.5">DMM {actress.dmm_id}</span>
 															{/if}
 														</div>
@@ -761,7 +761,7 @@
 															{#if actress.id}
 																<span class="text-xs rounded bg-muted px-2 py-0.5">#{actress.id}</span>
 															{/if}
-															{#if actress.dmm_id}
+															{#if actress.dmm_id && actress.dmm_id > 0}
 																<span class="text-xs rounded bg-muted px-2 py-0.5">DMM {actress.dmm_id}</span>
 															{/if}
 														</div>
@@ -819,7 +819,7 @@
 														<td class="px-3 py-2 text-muted-foreground">{actress.id ?? '-'}</td>
 														<td class="px-3 py-2 font-medium max-w-44 truncate">{getDisplayName(actress)}</td>
 														<td class="px-3 py-2 text-muted-foreground max-w-44 truncate">{actress.japanese_name || '-'}</td>
-														<td class="px-3 py-2 text-muted-foreground">{actress.dmm_id ?? '-'}</td>
+														<td class="px-3 py-2 text-muted-foreground">{actress.dmm_id && actress.dmm_id > 0 ? actress.dmm_id : '-'}</td>
 														<td class="px-3 py-2 text-muted-foreground max-w-52 truncate">{actress.aliases || '-'}</td>
 														<td class="px-3 py-2">
 															<div class="flex items-center justify-end gap-2">

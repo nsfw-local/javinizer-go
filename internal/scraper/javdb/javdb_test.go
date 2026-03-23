@@ -112,8 +112,8 @@ func TestSearch_Success(t *testing.T) {
 	assert.Len(t, result.ScreenshotURL, 2)
 	assert.Len(t, result.Genres, 2)
 	assert.Len(t, result.Actresses, 2)
-	assert.Less(t, result.Actresses[0].DMMID, 0)
-	assert.Less(t, result.Actresses[1].DMMID, 0)
+	assert.Zero(t, result.Actresses[0].DMMID)
+	assert.Zero(t, result.Actresses[1].DMMID)
 	require.NotNil(t, result.ReleaseDate)
 	assert.Equal(t, "2024-01-02", result.ReleaseDate.Format("2006-01-02"))
 	require.NotNil(t, result.Rating)
@@ -179,7 +179,7 @@ func TestSearch_Success_EnglishLabels(t *testing.T) {
 	assert.Equal(t, "Maker Name", result.Maker)
 	assert.Equal(t, []string{"Big Tits", "Rape"}, result.Genres)
 	assert.Len(t, result.Actresses, 1)
-	assert.Less(t, result.Actresses[0].DMMID, 0)
+	assert.Zero(t, result.Actresses[0].DMMID)
 }
 
 func TestSearch_ActorNAIsIgnored(t *testing.T) {

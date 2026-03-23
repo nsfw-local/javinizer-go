@@ -1,6 +1,7 @@
 package commandutil
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -75,8 +76,8 @@ func NewDependenciesWithOptions(cfg *config.Config, opts *DependenciesOptions) (
 			return nil, fmt.Errorf("failed to initialize database: %w", err)
 		}
 
-		// Run migrations
-		if err := db.AutoMigrate(); err != nil {
+		// Run startup migrations before initializing dependent services.
+		if err := db.RunMigrationsOnStartup(context.Background()); err != nil {
 			_ = db.Close()
 			return nil, fmt.Errorf("failed to run migrations: %w", err)
 		}
