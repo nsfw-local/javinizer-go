@@ -143,7 +143,7 @@ func (b *Browser) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (b *Browser) View() string {
 	// Title
-	view := Title("Files") + " " + Dimmed("(f:source o:output)") + "\n"
+	view := Title("Files") + " " + Dimmed("(f:source o:output m:search M:merge)") + "\n"
 
 	// Source path
 	sourceDisplay := b.sourcePath

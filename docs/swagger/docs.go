@@ -23,6 +23,122 @@ const docTemplate = `{
     "host": "{{.Host}}",
     "basePath": "{{.BasePath}}",
     "paths": {
+        "/api/v1/actresses/merge": {
+            "post": {
+                "description": "Merge a source actress into a target actress with field-level target/source resolutions.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "actress"
+                ],
+                "summary": "Merge duplicated actresses",
+                "parameters": [
+                    {
+                        "description": "Merge request",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/api.ActressMergeRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/api.ActressMergeResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/actresses/merge/preview": {
+            "post": {
+                "description": "Build a merge preview and field conflict set for target/source actress IDs.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "actress"
+                ],
+                "summary": "Preview actress merge",
+                "parameters": [
+                    {
+                        "description": "Merge preview request",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/api.ActressMergePreviewRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/api.ActressMergePreviewResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/api.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/actresses/search": {
             "get": {
                 "description": "Search for actresses by name (first, last, or Japanese)",
@@ -1529,6 +1645,115 @@ const docTemplate = `{
         }
     },
     "definitions": {
+        "api.ActressMergeConflict": {
+            "type": "object",
+            "properties": {
+                "default_resolution": {
+                    "type": "string",
+                    "example": "target"
+                },
+                "field": {
+                    "type": "string",
+                    "example": "japanese_name"
+                },
+                "source_value": {},
+                "target_value": {}
+            }
+        },
+        "api.ActressMergePreviewRequest": {
+            "type": "object",
+            "required": [
+                "source_id",
+                "target_id"
+            ],
+            "properties": {
+                "source_id": {
+                    "type": "integer",
+                    "example": 34
+                },
+                "target_id": {
+                    "type": "integer",
+                    "example": 12
+                }
+            }
+        },
+        "api.ActressMergePreviewResponse": {
+            "type": "object",
+            "properties": {
+                "conflicts": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/api.ActressMergeConflict"
+                    }
+                },
+                "default_resolutions": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "string"
+                    }
+                },
+                "proposed_merged": {
+                    "$ref": "#/definitions/models.Actress"
+                },
+                "source": {
+                    "$ref": "#/definitions/models.Actress"
+                },
+                "target": {
+                    "$ref": "#/definitions/models.Actress"
+                }
+            }
+        },
+        "api.ActressMergeRequest": {
+            "type": "object",
+            "required": [
+                "source_id",
+                "target_id"
+            ],
+            "properties": {
+                "resolutions": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "string"
+                    },
+                    "example": {
+                        "dmm_id": "target",
+                        "japanese_name": "source"
+                    }
+                },
+                "source_id": {
+                    "type": "integer",
+                    "example": 34
+                },
+                "target_id": {
+                    "type": "integer",
+                    "example": 12
+                }
+            }
+        },
+        "api.ActressMergeResponse": {
+            "type": "object",
+            "properties": {
+                "aliases_added": {
+                    "type": "integer",
+                    "example": 5
+                },
+                "conflicts_resolved": {
+                    "type": "integer",
+                    "example": 3
+                },
+                "merged_actress": {
+                    "$ref": "#/definitions/models.Actress"
+                },
+                "merged_from_id": {
+                    "type": "integer",
+                    "example": 34
+                },
+                "updated_movies": {
+                    "type": "integer",
+                    "example": 27
+                }
+            }
+        },
         "api.AvailableScrapersResponse": {
             "type": "object",
             "properties": {

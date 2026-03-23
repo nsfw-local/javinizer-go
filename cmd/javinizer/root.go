@@ -6,6 +6,7 @@ import (
 	"os"
 	"strconv"
 
+	"github.com/javinizer/javinizer-go/cmd/javinizer/commands/actress"
 	"github.com/javinizer/javinizer-go/cmd/javinizer/commands/api"
 	"github.com/javinizer/javinizer-go/cmd/javinizer/commands/genre"
 	"github.com/javinizer/javinizer-go/cmd/javinizer/commands/history"
@@ -54,6 +55,7 @@ func init() {
 
 	// Add all subcommands
 	rootCmd.AddCommand(
+		actress.NewCommand(),
 		api.NewCommand(),
 		genre.NewCommand(),
 		history.NewCommand(),

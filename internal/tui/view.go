@@ -50,6 +50,11 @@ func (m *Model) View() string {
 		return RenderManualSearchModal(m)
 	}
 
+	// Show actress merge modal overlay if active
+	if m.showingActressMerge {
+		return RenderActressMergeModal(m)
+	}
+
 	// Show folder picker overlay if active
 	if m.showingFolderPicker {
 		return m.renderFolderPickerOverlay(mainView)
@@ -145,6 +150,8 @@ func (m *Model) renderFooter() string {
 		keys = []string{
 			helpKey("f", "source"),
 			helpKey("o", "output"),
+			helpKey("m", "manual search"),
+			helpKey("M", "merge actress"),
 			helpKey("r", "refresh"),
 			helpKey("↑↓/jk", "navigate"),
 			helpKey("space", "select"),
@@ -458,6 +465,9 @@ func (m *Model) renderSimpleHelp() string {
 
 	b.WriteString("\n" + Subtitle("File Browser") + "\n")
 	b.WriteString(helpLine("f", "Change scan folder"))
+	b.WriteString(helpLine("o", "Change output folder"))
+	b.WriteString(helpLine("m", "Manual search"))
+	b.WriteString(helpLine("M", "Open actress merge"))
 	b.WriteString(helpLine("r", "Refresh/rescan current folder"))
 	b.WriteString(helpLine("↑↓, j/k", "Navigate files"))
 	b.WriteString(helpLine("space", "Toggle selection"))

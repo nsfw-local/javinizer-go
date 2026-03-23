@@ -106,11 +106,39 @@ Manage actress database with images and metadata.
 | `POST` | `/api/v1/actresses` | Create new actress entry |
 | `PUT` | `/api/v1/actresses/:id` | Update actress metadata |
 | `DELETE` | `/api/v1/actresses/:id` | Delete actress from database |
+| `POST` | `/api/v1/actresses/merge/preview` | Preview a target/source merge and field conflicts |
+| `POST` | `/api/v1/actresses/merge` | Apply a target/source merge with conflict resolutions |
 
 **Example - Search actresses:**
 ```bash
 curl "http://localhost:8080/api/v1/actresses/search?q=Sakura"
 ```
+
+**Example - Merge preview:**
+```bash
+curl -X POST http://localhost:8080/api/v1/actresses/merge/preview \
+  -H "Content-Type: application/json" \
+  -d '{"target_id": 12, "source_id": 34}'
+```
+
+**Example - Apply merge:**
+```bash
+curl -X POST http://localhost:8080/api/v1/actresses/merge \
+  -H "Content-Type: application/json" \
+  -d '{
+    "target_id": 12,
+    "source_id": 34,
+    "resolutions": {
+      "first_name": "source",
+      "thumb_url": "target"
+    }
+  }'
+```
+
+**Merge status codes:**
+- `400`: Invalid IDs, same target/source IDs, or invalid `resolutions` payload.
+- `404`: Target or source actress not found.
+- `409`: Merge would violate uniqueness constraints (for example `dmm_id` collision).
 
 ### Batch Operations
 

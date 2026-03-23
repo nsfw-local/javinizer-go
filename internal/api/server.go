@@ -416,6 +416,8 @@ func NewServer(deps *ServerDependencies) *gin.Engine {
 			protected.PUT("/actresses/:id", updateActress(deps.ActressRepo))
 			protected.DELETE("/actresses/:id", deleteActress(deps.ActressRepo))
 			protected.GET("/actresses/search", searchActresses(deps.ActressRepo))
+			protected.POST("/actresses/merge/preview", previewActressMerge(deps.ActressRepo))
+			protected.POST("/actresses/merge", mergeActresses(deps.ActressRepo))
 
 			// System endpoints
 			protected.GET("/config", getConfig(deps))

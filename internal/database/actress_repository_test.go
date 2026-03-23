@@ -1,7 +1,9 @@
 package database
 
 import (
+	"errors"
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/javinizer/javinizer-go/internal/config"
@@ -455,4 +457,202 @@ func TestActressRepository_Search(t *testing.T) {
 		// Search might match partial names, so we just verify it returns results
 		assert.Greater(t, len(list), 0)
 	})
+}
+
+func TestActressRepository_PreviewMerge(t *testing.T) {
+	cfg := &config.Config{
+		Database: config.DatabaseConfig{Type: "sqlite", DSN: ":memory:"},
+		Logging:  config.LoggingConfig{Level: "error"},
+	}
+	db, err := New(cfg)
+	require.NoError(t, err)
+	defer func() { _ = db.Close() }()
+	require.NoError(t, db.AutoMigrate())
+	repo := NewActressRepository(db)
+
+	target := &models.Actress{
+		DMMID:        11111,
+		FirstName:    "Target First",
+		LastName:     "Target Last",
+		JapaneseName: "ターゲット",
+		ThumbURL:     "https://example.com/target.jpg",
+		Aliases:      "TargetAlias",
+	}
+	source := &models.Actress{
+		DMMID:        22222,
+		FirstName:    "Source First",
+		LastName:     "Source Last",
+		JapaneseName: "ソース",
+		ThumbURL:     "https://example.com/source.jpg",
+		Aliases:      "SourceAlias|TargetAlias",
+	}
+	require.NoError(t, repo.Create(target))
+	require.NoError(t, repo.Create(source))
+
+	preview, err := repo.PreviewMerge(target.ID, source.ID)
+	require.NoError(t, err)
+	require.NotNil(t, preview)
+
+	assert.Equal(t, target.ID, preview.Target.ID)
+	assert.Equal(t, source.ID, preview.Source.ID)
+	assert.Len(t, preview.Conflicts, 5)
+	assert.Equal(t, "target", preview.DefaultResolutions["dmm_id"])
+	assert.Contains(t, preview.ProposedMerged.Aliases, "SourceAlias")
+	assert.Contains(t, preview.ProposedMerged.Aliases, "TargetAlias")
+}
+
+func TestActressRepository_Merge_WithAssociationsAndAliases(t *testing.T) {
+	cfg := &config.Config{
+		Database: config.DatabaseConfig{Type: "sqlite", DSN: ":memory:"},
+		Logging:  config.LoggingConfig{Level: "error"},
+	}
+	db, err := New(cfg)
+	require.NoError(t, err)
+	defer func() { _ = db.Close() }()
+	require.NoError(t, db.AutoMigrate())
+	repo := NewActressRepository(db)
+
+	target := &models.Actress{
+		DMMID:        50001,
+		FirstName:    "Target",
+		LastName:     "Actress",
+		JapaneseName: "ターゲット女優",
+		Aliases:      "ExistingAlias",
+	}
+	source := &models.Actress{
+		DMMID:        50002,
+		FirstName:    "Source",
+		LastName:     "Actress",
+		JapaneseName: "ソース女優",
+		ThumbURL:     "https://example.com/source.jpg",
+		Aliases:      "SourceAlias|ExistingAlias",
+	}
+	require.NoError(t, repo.Create(target))
+	require.NoError(t, repo.Create(source))
+
+	movie1 := &models.Movie{ContentID: "ipx001", ID: "IPX-001", Title: "Movie 1"}
+	movie2 := &models.Movie{ContentID: "ipx002", ID: "IPX-002", Title: "Movie 2"}
+	require.NoError(t, db.DB.Create(movie1).Error)
+	require.NoError(t, db.DB.Create(movie2).Error)
+
+	// Movie 1: source only
+	require.NoError(t, db.DB.Model(movie1).Association("Actresses").Append(source))
+	// Movie 2: source + target (merge must dedupe)
+	require.NoError(t, db.DB.Model(movie2).Association("Actresses").Append(source, target))
+
+	resolutions := map[string]string{
+		"dmm_id":     "source",
+		"thumb_url":  "source",
+		"first_name": "target",
+		"last_name":  "target",
+	}
+	result, err := repo.Merge(target.ID, source.ID, resolutions)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+
+	assert.Equal(t, source.ID, result.MergedFromID)
+	assert.Equal(t, 2, result.UpdatedMovies)
+	assert.Greater(t, result.AliasesAdded, 0)
+
+	merged, err := repo.FindByID(target.ID)
+	require.NoError(t, err)
+	assert.Equal(t, 50002, merged.DMMID, "target should adopt source dmm_id when requested")
+	assert.Equal(t, "https://example.com/source.jpg", merged.ThumbURL)
+	assert.Contains(t, merged.Aliases, "SourceAlias")
+	assert.Contains(t, merged.Aliases, "ExistingAlias")
+
+	_, err = repo.FindByID(source.ID)
+	require.Error(t, err, "source actress should be deleted")
+
+	var loadedMovie1 models.Movie
+	require.NoError(t, db.DB.Preload("Actresses").First(&loadedMovie1, "content_id = ?", movie1.ContentID).Error)
+	require.Len(t, loadedMovie1.Actresses, 1)
+	assert.Equal(t, target.ID, loadedMovie1.Actresses[0].ID)
+
+	var loadedMovie2 models.Movie
+	require.NoError(t, db.DB.Preload("Actresses").First(&loadedMovie2, "content_id = ?", movie2.ContentID).Error)
+	require.Len(t, loadedMovie2.Actresses, 1, "duplicate source/target links should collapse to a single target link")
+	assert.Equal(t, target.ID, loadedMovie2.Actresses[0].ID)
+
+	var alias models.ActressAlias
+	require.NoError(t, db.DB.First(&alias, "alias_name = ?", "SourceAlias").Error)
+	assert.Equal(t, "ターゲット女優", alias.CanonicalName)
+}
+
+func TestActressRepository_Merge_DMMIDCollision(t *testing.T) {
+	cfg := &config.Config{
+		Database: config.DatabaseConfig{Type: "sqlite", DSN: ":memory:"},
+		Logging:  config.LoggingConfig{Level: "error"},
+	}
+	db, err := New(cfg)
+	require.NoError(t, err)
+	defer func() { _ = db.Close() }()
+	require.NoError(t, db.AutoMigrate())
+	repo := NewActressRepository(db)
+
+	target := &models.Actress{DMMID: 90001, FirstName: "Target", LastName: "Actor", JapaneseName: "重複A"}
+	source := &models.Actress{DMMID: 90002, FirstName: "Source", LastName: "Actor", JapaneseName: "重複B"}
+	require.NoError(t, repo.Create(target))
+	require.NoError(t, repo.Create(source))
+
+	// Drop unique index in test DB so we can simulate corrupted/legacy duplicate rows.
+	var idxNames []string
+	require.NoError(t, db.DB.Raw(
+		"SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='actresses' AND sql LIKE '%dmm_id%'",
+	).Scan(&idxNames).Error)
+	for _, idx := range idxNames {
+		require.NoError(t, db.DB.Exec(fmt.Sprintf("DROP INDEX IF EXISTS %s", idx)).Error)
+	}
+
+	duplicate := &models.Actress{DMMID: 90002, FirstName: "Other", LastName: "Actor", JapaneseName: "重複C"}
+	require.NoError(t, repo.Create(duplicate))
+
+	_, err = repo.Merge(target.ID, source.ID, map[string]string{"dmm_id": "source"})
+	require.Error(t, err)
+	assert.True(t, errors.Is(err, ErrActressMergeUniqueConstraint) || strings.Contains(err.Error(), ErrActressMergeUniqueConstraint.Error()))
+}
+
+func TestActressRepository_Merge_UpsertsSourceAliasEvenWhenAlreadyOnTarget(t *testing.T) {
+	cfg := &config.Config{
+		Database: config.DatabaseConfig{Type: "sqlite", DSN: ":memory:"},
+		Logging:  config.LoggingConfig{Level: "error"},
+	}
+	db, err := New(cfg)
+	require.NoError(t, err)
+	defer func() { _ = db.Close() }()
+	require.NoError(t, db.AutoMigrate())
+	repo := NewActressRepository(db)
+
+	target := &models.Actress{
+		DMMID:        91001,
+		FirstName:    "Target",
+		LastName:     "Actress",
+		JapaneseName: "ターゲット",
+		Aliases:      "SourceAlias",
+	}
+	source := &models.Actress{
+		DMMID:        91002,
+		FirstName:    "Source",
+		LastName:     "Actress",
+		JapaneseName: "ソース",
+		Aliases:      "SourceAlias",
+	}
+	require.NoError(t, repo.Create(target))
+	require.NoError(t, repo.Create(source))
+
+	// Seed outdated alias mapping that should be corrected by merge.
+	stale := &models.ActressAlias{
+		AliasName:     "SourceAlias",
+		CanonicalName: "Old Canonical",
+	}
+	require.NoError(t, db.DB.Create(stale).Error)
+
+	_, err = repo.Merge(target.ID, source.ID, map[string]string{
+		"dmm_id": "target",
+	})
+	require.NoError(t, err)
+
+	var alias models.ActressAlias
+	require.NoError(t, db.DB.First(&alias, "alias_name = ?", "SourceAlias").Error)
+	assert.Equal(t, "ターゲット", alias.CanonicalName)
 }

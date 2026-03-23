@@ -88,12 +88,14 @@ javinizer tui /source \
 
 ### Views
 
-The TUI has four main views accessible via number keys or Tab:
+The TUI has four main tab views accessible via number keys or Tab:
 
 1. **Browser (1)**: File selection and management
 2. **Dashboard (2)**: Statistics and progress overview
 3. **Logs (3)**: Real-time operation logging
-4. **Help (?)**: Keyboard shortcuts reference
+4. **Settings (4)**: Runtime processing toggles
+
+The help view is available with `?`.
 
 ### Browser View
 
@@ -183,6 +185,11 @@ Logs
 
 | Key | Action |
 |-----|--------|
+| `f` | Open source folder picker |
+| `o` | Open output folder picker |
+| `m` | Open manual search modal |
+| `M` | Open actress merge modal |
+| `r` | Refresh/rescan current source path |
 | `↑` / `k` | Move cursor up |
 | `↓` / `j` | Move cursor down |
 | `Space` | Toggle file selection |
@@ -190,6 +197,17 @@ Logs
 | `A` | Deselect all files |
 | `Enter` | Start processing selected files |
 | `p` | Pause/resume processing |
+
+### Actress Merge Modal
+
+From Browser view, press `M` to open manual actress merge.
+
+- Input `target` actress ID (survivor) and `source` actress ID (to be merged/deleted).
+- Press `Enter` on source ID to load conflict preview.
+- Navigate conflicts with `↑/↓`.
+- Choose per-field resolution with `t` (keep target) or `s` (use source).
+- Press `Enter` to apply merge.
+- Press `r` to go back to ID input, or `Esc` to cancel.
 
 ### Logs View
 

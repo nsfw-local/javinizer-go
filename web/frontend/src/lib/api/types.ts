@@ -253,6 +253,42 @@ export interface ActressUpsertRequest {
 	aliases?: string;
 }
 
+export type ActressMergeResolution = 'target' | 'source';
+
+export interface ActressMergePreviewRequest {
+	target_id: number;
+	source_id: number;
+}
+
+export interface ActressMergeConflict {
+	field: 'dmm_id' | 'first_name' | 'last_name' | 'japanese_name' | 'thumb_url';
+	target_value?: any;
+	source_value?: any;
+	default_resolution: ActressMergeResolution;
+}
+
+export interface ActressMergePreviewResponse {
+	target: Actress;
+	source: Actress;
+	proposed_merged: Actress;
+	conflicts: ActressMergeConflict[];
+	default_resolutions: Record<string, ActressMergeResolution>;
+}
+
+export interface ActressMergeRequest {
+	target_id: number;
+	source_id: number;
+	resolutions?: Record<string, ActressMergeResolution>;
+}
+
+export interface ActressMergeResponse {
+	merged_actress: Actress;
+	merged_from_id: number;
+	updated_movies: number;
+	conflicts_resolved: number;
+	aliases_added: number;
+}
+
 export interface ErrorResponse {
 	error: string;
 	errors?: string[];

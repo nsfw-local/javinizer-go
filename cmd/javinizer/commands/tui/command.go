@@ -215,6 +215,8 @@ func run(cmd *cobra.Command, args []string) error {
 
 	// Initialize repositories
 	movieRepo := database.NewMovieRepository(db)
+	actressRepo := database.NewActressRepository(db)
+	model.SetActressRepo(actressRepo)
 
 	// Initialize scraper registry using centralized function
 	registry, err := scraper.NewDefaultScraperRegistry(cfg, db)

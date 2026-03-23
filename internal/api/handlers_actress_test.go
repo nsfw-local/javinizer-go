@@ -3,12 +3,14 @@ package api
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
 	"testing"
 
 	"github.com/gin-gonic/gin"
+	"github.com/javinizer/javinizer-go/internal/config"
 	"github.com/javinizer/javinizer-go/internal/database"
 	"github.com/javinizer/javinizer-go/internal/models"
 	"github.com/stretchr/testify/assert"
@@ -569,4 +571,214 @@ func TestParseActressID(t *testing.T) {
 			assert.Equal(t, tt.expectedID, id, "id should match expected")
 		})
 	}
+}
+
+func TestActressMergePreviewAndApply(t *testing.T) {
+	mockRepo := newMockActressRepo()
+	target := &models.Actress{
+		DMMID:        70001,
+		FirstName:    "Target",
+		LastName:     "Actress",
+		JapaneseName: "ターゲット",
+		ThumbURL:     "https://example.com/target.jpg",
+		Aliases:      "TargetAlias",
+	}
+	source := &models.Actress{
+		DMMID:        70002,
+		FirstName:    "Source",
+		LastName:     "Actress",
+		JapaneseName: "ソース",
+		ThumbURL:     "https://example.com/source.jpg",
+		Aliases:      "SourceAlias",
+	}
+	require.NoError(t, mockRepo.Create(target))
+	require.NoError(t, mockRepo.Create(source))
+
+	router := gin.New()
+	router.POST("/actresses/merge/preview", previewActressMerge(mockRepo))
+	router.POST("/actresses/merge", mergeActresses(mockRepo))
+	router.GET("/actresses/:id", getActress(mockRepo))
+
+	previewBody := map[string]interface{}{
+		"target_id": target.ID,
+		"source_id": source.ID,
+	}
+	previewJSON, err := json.Marshal(previewBody)
+	require.NoError(t, err)
+
+	previewReq := httptest.NewRequest(http.MethodPost, "/actresses/merge/preview", bytes.NewReader(previewJSON))
+	previewReq.Header.Set("Content-Type", "application/json")
+	previewW := httptest.NewRecorder()
+	router.ServeHTTP(previewW, previewReq)
+	require.Equal(t, http.StatusOK, previewW.Code)
+
+	var previewResp ActressMergePreviewResponse
+	require.NoError(t, json.Unmarshal(previewW.Body.Bytes(), &previewResp))
+	assert.Equal(t, target.ID, previewResp.Target.ID)
+	assert.Equal(t, source.ID, previewResp.Source.ID)
+	assert.NotEmpty(t, previewResp.Conflicts)
+	assert.Equal(t, "target", previewResp.DefaultResolutions["dmm_id"])
+
+	mergeBody := map[string]interface{}{
+		"target_id": target.ID,
+		"source_id": source.ID,
+		"resolutions": map[string]string{
+			"dmm_id":    "source",
+			"thumb_url": "source",
+		},
+	}
+	mergeJSON, err := json.Marshal(mergeBody)
+	require.NoError(t, err)
+
+	mergeReq := httptest.NewRequest(http.MethodPost, "/actresses/merge", bytes.NewReader(mergeJSON))
+	mergeReq.Header.Set("Content-Type", "application/json")
+	mergeW := httptest.NewRecorder()
+	router.ServeHTTP(mergeW, mergeReq)
+	require.Equal(t, http.StatusOK, mergeW.Code)
+
+	var mergeResp ActressMergeResponse
+	require.NoError(t, json.Unmarshal(mergeW.Body.Bytes(), &mergeResp))
+	assert.Equal(t, source.ID, mergeResp.MergedFromID)
+	assert.Equal(t, 70002, mergeResp.MergedActress.DMMID)
+	assert.Equal(t, "https://example.com/source.jpg", mergeResp.MergedActress.ThumbURL)
+	assert.GreaterOrEqual(t, mergeResp.ConflictsResolved, 1)
+
+	getSourceReq := httptest.NewRequest(http.MethodGet, "/actresses/"+toString(source.ID), nil)
+	getSourceW := httptest.NewRecorder()
+	router.ServeHTTP(getSourceW, getSourceReq)
+	assert.Equal(t, http.StatusNotFound, getSourceW.Code)
+}
+
+func TestActressMergeValidationAndNotFound(t *testing.T) {
+	mockRepo := newMockActressRepo()
+	target := &models.Actress{
+		DMMID:        71001,
+		FirstName:    "Target",
+		JapaneseName: "ターゲット",
+	}
+	require.NoError(t, mockRepo.Create(target))
+
+	router := gin.New()
+	router.POST("/actresses/merge", mergeActresses(mockRepo))
+
+	// Same target/source should return 400.
+	sameBody := map[string]interface{}{
+		"target_id": target.ID,
+		"source_id": target.ID,
+	}
+	sameJSON, err := json.Marshal(sameBody)
+	require.NoError(t, err)
+
+	sameReq := httptest.NewRequest(http.MethodPost, "/actresses/merge", bytes.NewReader(sameJSON))
+	sameReq.Header.Set("Content-Type", "application/json")
+	sameW := httptest.NewRecorder()
+	router.ServeHTTP(sameW, sameReq)
+	assert.Equal(t, http.StatusBadRequest, sameW.Code)
+
+	// Missing source actress should return 404.
+	missingBody := map[string]interface{}{
+		"target_id": target.ID,
+		"source_id": 999999,
+	}
+	missingJSON, err := json.Marshal(missingBody)
+	require.NoError(t, err)
+
+	missingReq := httptest.NewRequest(http.MethodPost, "/actresses/merge", bytes.NewReader(missingJSON))
+	missingReq.Header.Set("Content-Type", "application/json")
+	missingW := httptest.NewRecorder()
+	router.ServeHTTP(missingW, missingReq)
+	assert.Equal(t, http.StatusNotFound, missingW.Code)
+}
+
+func TestActressMergeInvalidResolutionPayload(t *testing.T) {
+	mockRepo := newMockActressRepo()
+	target := &models.Actress{DMMID: 72001, FirstName: "Target", JapaneseName: "ターゲット"}
+	source := &models.Actress{DMMID: 72002, FirstName: "Source", JapaneseName: "ソース"}
+	require.NoError(t, mockRepo.Create(target))
+	require.NoError(t, mockRepo.Create(source))
+
+	router := gin.New()
+	router.POST("/actresses/merge", mergeActresses(mockRepo))
+
+	tests := []struct {
+		name       string
+		resolution map[string]string
+	}{
+		{
+			name:       "invalid field",
+			resolution: map[string]string{"unknown_field": "target"},
+		},
+		{
+			name:       "invalid decision",
+			resolution: map[string]string{"first_name": "invalid_choice"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			body := map[string]interface{}{
+				"target_id":   target.ID,
+				"source_id":   source.ID,
+				"resolutions": tt.resolution,
+			}
+			payload, err := json.Marshal(body)
+			require.NoError(t, err)
+
+			req := httptest.NewRequest(http.MethodPost, "/actresses/merge", bytes.NewReader(payload))
+			req.Header.Set("Content-Type", "application/json")
+			w := httptest.NewRecorder()
+			router.ServeHTTP(w, req)
+			assert.Equal(t, http.StatusBadRequest, w.Code)
+		})
+	}
+}
+
+func TestActressMergeConflictStatus409(t *testing.T) {
+	cfg := &config.Config{
+		Database: config.DatabaseConfig{Type: "sqlite", DSN: ":memory:"},
+		Logging:  config.LoggingConfig{Level: "error"},
+	}
+	db, err := database.New(cfg)
+	require.NoError(t, err)
+	defer func() { _ = db.Close() }()
+	require.NoError(t, db.AutoMigrate())
+	repo := database.NewActressRepository(db)
+
+	target := &models.Actress{DMMID: 73001, FirstName: "Target", JapaneseName: "ターゲット"}
+	source := &models.Actress{DMMID: 73002, FirstName: "Source", JapaneseName: "ソース"}
+	require.NoError(t, repo.Create(target))
+	require.NoError(t, repo.Create(source))
+
+	// Drop unique dmm_id index so we can create a conflicting duplicate row in test DB.
+	var idxNames []string
+	require.NoError(t, db.DB.Raw(
+		"SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='actresses' AND sql LIKE '%dmm_id%'",
+	).Scan(&idxNames).Error)
+	for _, idx := range idxNames {
+		require.NoError(t, db.DB.Exec(fmt.Sprintf("DROP INDEX IF EXISTS %s", idx)).Error)
+	}
+	require.NoError(t, repo.Create(&models.Actress{
+		DMMID:        73002,
+		FirstName:    "Other",
+		JapaneseName: "競合",
+	}))
+
+	router := gin.New()
+	router.POST("/actresses/merge", mergeActresses(repo))
+
+	body := map[string]interface{}{
+		"target_id": target.ID,
+		"source_id": source.ID,
+		"resolutions": map[string]string{
+			"dmm_id": "source",
+		},
+	}
+	payload, err := json.Marshal(body)
+	require.NoError(t, err)
+
+	req := httptest.NewRequest(http.MethodPost, "/actresses/merge", bytes.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusConflict, w.Code)
 }

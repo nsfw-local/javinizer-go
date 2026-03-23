@@ -1,5 +1,81 @@
 basePath: /
 definitions:
+  api.ActressMergeConflict:
+    properties:
+      default_resolution:
+        example: target
+        type: string
+      field:
+        example: japanese_name
+        type: string
+      source_value: {}
+      target_value: {}
+    type: object
+  api.ActressMergePreviewRequest:
+    properties:
+      source_id:
+        example: 34
+        type: integer
+      target_id:
+        example: 12
+        type: integer
+    required:
+    - source_id
+    - target_id
+    type: object
+  api.ActressMergePreviewResponse:
+    properties:
+      conflicts:
+        items:
+          $ref: '#/definitions/api.ActressMergeConflict'
+        type: array
+      default_resolutions:
+        additionalProperties:
+          type: string
+        type: object
+      proposed_merged:
+        $ref: '#/definitions/models.Actress'
+      source:
+        $ref: '#/definitions/models.Actress'
+      target:
+        $ref: '#/definitions/models.Actress'
+    type: object
+  api.ActressMergeRequest:
+    properties:
+      resolutions:
+        additionalProperties:
+          type: string
+        example:
+          dmm_id: target
+          japanese_name: source
+        type: object
+      source_id:
+        example: 34
+        type: integer
+      target_id:
+        example: 12
+        type: integer
+    required:
+    - source_id
+    - target_id
+    type: object
+  api.ActressMergeResponse:
+    properties:
+      aliases_added:
+        example: 5
+        type: integer
+      conflicts_resolved:
+        example: 3
+        type: integer
+      merged_actress:
+        $ref: '#/definitions/models.Actress'
+      merged_from_id:
+        example: 34
+        type: integer
+      updated_movies:
+        example: 27
+        type: integer
+    type: object
   api.AvailableScrapersResponse:
     properties:
       scrapers:
@@ -1945,6 +2021,84 @@ info:
   title: Javinizer API
   version: "1.0"
 paths:
+  /api/v1/actresses/merge:
+    post:
+      consumes:
+      - application/json
+      description: Merge a source actress into a target actress with field-level target/source
+        resolutions.
+      parameters:
+      - description: Merge request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/api.ActressMergeRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.ActressMergeResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      summary: Merge duplicated actresses
+      tags:
+      - actress
+  /api/v1/actresses/merge/preview:
+    post:
+      consumes:
+      - application/json
+      description: Build a merge preview and field conflict set for target/source
+        actress IDs.
+      parameters:
+      - description: Merge preview request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/api.ActressMergePreviewRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.ActressMergePreviewResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.ErrorResponse'
+      summary: Preview actress merge
+      tags:
+      - actress
   /api/v1/actresses/search:
     get:
       description: Search for actresses by name (first, last, or Japanese)

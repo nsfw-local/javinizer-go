@@ -94,6 +94,11 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m *Model) handleKeyPress(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	var cmds []tea.Cmd
 
+	// If actress merge modal is open, handle its keys first
+	if m.showingActressMerge {
+		return handleActressMergeInput(m, msg)
+	}
+
 	// If manual search modal is open, handle its keys first
 	if m.showingManualSearch {
 		return handleManualSearchInput(m, msg)
@@ -234,6 +239,11 @@ func (m *Model) handleBrowserKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			sort.Strings(m.scraperList)
 		}
 		m.manualSearchCursor = 0
+		return m, nil
+
+	case "M", "shift+m":
+		// Open actress merge modal
+		m.openActressMergeModal()
 		return m, nil
 
 	case "f":

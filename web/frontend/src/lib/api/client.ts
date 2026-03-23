@@ -37,6 +37,10 @@ import type {
 	ActressListResponse,
 	ActressUpsertRequest,
 	Actress,
+	ActressMergePreviewRequest,
+	ActressMergePreviewResponse,
+	ActressMergeRequest,
+	ActressMergeResponse,
 	AuthCredentialsRequest,
 	AuthStatusResponse
 } from './types';
@@ -334,6 +338,22 @@ class APIClient {
 	// Delete actress
 	async deleteActress(id: number): Promise<void> {
 		await this.request(`/api/v1/actresses/${id}`, { method: 'DELETE' });
+	}
+
+	// Preview merge result between two actresses
+	async previewActressMerge(request: ActressMergePreviewRequest): Promise<ActressMergePreviewResponse> {
+		return this.request<ActressMergePreviewResponse>('/api/v1/actresses/merge/preview', {
+			method: 'POST',
+			body: JSON.stringify(request)
+		});
+	}
+
+	// Apply merge between two actresses
+	async mergeActresses(request: ActressMergeRequest): Promise<ActressMergeResponse> {
+		return this.request<ActressMergeResponse>('/api/v1/actresses/merge', {
+			method: 'POST',
+			body: JSON.stringify(request)
+		});
 	}
 
 	// Get history records with optional filtering

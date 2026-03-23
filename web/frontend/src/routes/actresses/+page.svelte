@@ -3,12 +3,29 @@
 	import { flip } from 'svelte/animate';
 	import { cubicOut, quintOut } from 'svelte/easing';
 	import { fade, fly, scale } from 'svelte/transition';
-	import { Plus, RefreshCw, Search, Save, Trash2, Pencil, ImageOff, ChevronLeft, ChevronRight, ArrowUpDown } from 'lucide-svelte';
+	import {
+		Plus,
+		RefreshCw,
+		Search,
+		Save,
+		Trash2,
+		Pencil,
+		ImageOff,
+		ChevronLeft,
+		ChevronRight,
+		ArrowUpDown,
+		GitMerge
+	} from 'lucide-svelte';
 	import Card from '$lib/components/ui/Card.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
 	import { apiClient } from '$lib/api/client';
 	import { toastStore } from '$lib/stores/toast';
-	import type { Actress, ActressUpsertRequest } from '$lib/api/types';
+	import type {
+		Actress,
+		ActressUpsertRequest,
+		ActressMergePreviewResponse,
+		ActressMergeResolution
+	} from '$lib/api/types';
 
 	type ActressForm = {
 		dmm_id: string;
@@ -42,6 +59,21 @@
 	let editingId = $state<number | null>(null);
 	let form = $state<ActressForm>(emptyForm());
 	let formError = $state<string | null>(null);
+	let selectedIds = $state<number[]>([]);
+
+	let showMergeModal = $state(false);
+	let mergePrimaryId = $state<number | null>(null);
+	let mergeSourceQueue = $state<number[]>([]);
+	let mergeCurrentSourceId = $state<number | null>(null);
+	let mergePreview = $state<ActressMergePreviewResponse | null>(null);
+	let mergeResolutions = $state<Record<string, ActressMergeResolution>>({});
+	let mergeLoadingPreview = $state(false);
+	let mergeRunning = $state(false);
+	let mergeSummary = $state<{ success: number; failed: number; messages: string[] }>({
+		success: 0,
+		failed: 0,
+		messages: []
+	});
 
 	const currentPage = $derived(Math.floor(offset / limit) + 1);
 	const totalPages = $derived(Math.max(1, Math.ceil(total / limit)));
@@ -68,6 +100,34 @@
 		if (actress.first_name) return actress.first_name;
 		if (actress.japanese_name) return actress.japanese_name;
 		return 'Unnamed';
+	}
+
+	function getActressLabelByID(id: number): string {
+		const actress = actresses.find((item) => item.id === id);
+		if (!actress) return `Actress #${id}`;
+		return `#${id} - ${getDisplayName(actress)}`;
+	}
+
+	function isSelected(actress: Actress): boolean {
+		return actress.id !== undefined && selectedIds.includes(actress.id);
+	}
+
+	function toggleSelection(actress: Actress) {
+		if (!actress.id) return;
+		if (selectedIds.includes(actress.id)) {
+			selectedIds = selectedIds.filter((id) => id !== actress.id);
+			return;
+		}
+		selectedIds = [...selectedIds, actress.id];
+	}
+
+	function selectCurrentPage() {
+		const ids = actresses.map((actress) => actress.id).filter((id): id is number => id !== undefined);
+		selectedIds = [...new Set([...selectedIds, ...ids])];
+	}
+
+	function clearSelection() {
+		selectedIds = [];
 	}
 
 	function toPayload(): ActressUpsertRequest {
@@ -129,6 +189,12 @@
 			});
 			actresses = response.actresses;
 			total = response.total;
+			if (!showMergeModal) {
+				const pageIDs = new Set(
+					response.actresses.map((actress) => actress.id).filter((id): id is number => id !== undefined)
+				);
+				selectedIds = selectedIds.filter((id) => pageIDs.has(id));
+			}
 			listRenderVersion += 1;
 			hasLoadedOnce = true;
 		} catch (e) {
@@ -177,6 +243,7 @@
 		try {
 			await apiClient.deleteActress(actress.id);
 			toastStore.success('Actress deleted');
+			selectedIds = selectedIds.filter((id) => id !== actress.id);
 			if (actresses.length === 1 && offset > 0) {
 				offset = Math.max(0, offset - limit);
 			}
@@ -224,6 +291,121 @@
 		if (!canGoNext) return;
 		offset += limit;
 		loadActresses();
+	}
+
+	function resetMergeState() {
+		mergeSourceQueue = [];
+		mergeCurrentSourceId = null;
+		mergePreview = null;
+		mergeResolutions = {};
+		mergeLoadingPreview = false;
+		mergeRunning = false;
+		mergeSummary = { success: 0, failed: 0, messages: [] };
+	}
+
+	function closeMergeModal() {
+		showMergeModal = false;
+		mergePrimaryId = null;
+		resetMergeState();
+	}
+
+	function startMergeSelected() {
+		if (selectedIds.length < 2) {
+			toastStore.warning('Select at least 2 actresses to merge');
+			return;
+		}
+		mergePrimaryId = selectedIds[0];
+		showMergeModal = true;
+		resetMergeState();
+		void resetMergeQueueAndPreview();
+	}
+
+	async function resetMergeQueueAndPreview() {
+		if (!mergePrimaryId) return;
+		mergeSourceQueue = selectedIds.filter((id) => id !== mergePrimaryId);
+		await loadNextMergePreview();
+	}
+
+	function formatMergeValue(value: unknown): string {
+		if (value === null || value === undefined || value === '') return 'Empty';
+		return String(value);
+	}
+
+	function setResolution(field: string, decision: ActressMergeResolution) {
+		mergeResolutions = { ...mergeResolutions, [field]: decision };
+	}
+
+	async function loadNextMergePreview() {
+		if (!mergePrimaryId || mergeSourceQueue.length === 0) {
+			mergeCurrentSourceId = null;
+			mergePreview = null;
+			return;
+		}
+
+		const sourceID = mergeSourceQueue[0];
+		mergeCurrentSourceId = sourceID;
+		mergeLoadingPreview = true;
+		try {
+			const preview = await apiClient.previewActressMerge({
+				target_id: mergePrimaryId,
+				source_id: sourceID
+			});
+			mergePreview = preview;
+			mergeResolutions = { ...preview.default_resolutions };
+		} catch (e) {
+			const message = e instanceof Error ? e.message : 'Failed to preview merge';
+			mergeSummary = {
+				...mergeSummary,
+				failed: mergeSummary.failed + 1,
+				messages: [...mergeSummary.messages, `Skipped #${sourceID}: ${message}`]
+			};
+			mergeSourceQueue = mergeSourceQueue.slice(1);
+			await loadNextMergePreview();
+		} finally {
+			mergeLoadingPreview = false;
+		}
+	}
+
+	async function applyCurrentMerge() {
+		if (!mergePrimaryId || !mergeCurrentSourceId || !mergePreview || mergeRunning) return;
+		mergeRunning = true;
+		try {
+			const result = await apiClient.mergeActresses({
+				target_id: mergePrimaryId,
+				source_id: mergeCurrentSourceId,
+				resolutions: mergeResolutions
+			});
+			mergeSummary = {
+				...mergeSummary,
+				success: mergeSummary.success + 1,
+				messages: [...mergeSummary.messages, `Merged #${result.merged_from_id} into #${mergePrimaryId}`]
+			};
+			selectedIds = selectedIds.filter((id) => id !== mergeCurrentSourceId);
+			mergeSourceQueue = mergeSourceQueue.slice(1);
+			await loadActresses();
+			await loadNextMergePreview();
+		} catch (e) {
+			const message = e instanceof Error ? e.message : 'Failed to merge actress';
+			mergeSummary = {
+				...mergeSummary,
+				failed: mergeSummary.failed + 1,
+				messages: [...mergeSummary.messages, `Failed #${mergeCurrentSourceId}: ${message}`]
+			};
+			mergeSourceQueue = mergeSourceQueue.slice(1);
+			await loadNextMergePreview();
+		} finally {
+			mergeRunning = false;
+		}
+	}
+
+	async function skipCurrentMerge() {
+		if (!mergeCurrentSourceId || mergeRunning) return;
+		mergeSummary = {
+			...mergeSummary,
+			messages: [...mergeSummary.messages, `Skipped #${mergeCurrentSourceId}`]
+		};
+		mergeSourceQueue = mergeSourceQueue.slice(1);
+		await loadNextMergePreview();
 	}
 
 	onMount(() => {
@@ -425,6 +607,19 @@
 								for "{activeQuery}"
 							{/if}
 						</div>
+						<div class="mt-3 flex flex-wrap items-center gap-2 rounded-md border border-input bg-muted/20 px-3 py-2">
+							<span class="text-sm">
+								{selectedIds.length} selected
+							</span>
+							<Button variant="outline" size="sm" onclick={selectCurrentPage}>Select Page</Button>
+							<Button variant="outline" size="sm" onclick={clearSelection} disabled={selectedIds.length === 0}>
+								Clear
+							</Button>
+							<Button size="sm" onclick={startMergeSelected} disabled={selectedIds.length < 2}>
+								<GitMerge class="h-4 w-4" />
+								Merge Selected
+							</Button>
+						</div>
 					</Card>
 				</div>
 
@@ -453,8 +648,18 @@
 								<div class="grid grid-cols-1 md:grid-cols-2 gap-3">
 									{#each actresses as actress, index (`${actress.id ?? 'na'}-${index}-${listRenderVersion}`)}
 										<div animate:flip={{ duration: 220, easing: quintOut }} in:fly|local={{ y: 10, duration: 220, delay: itemDelay(index), easing: quintOut }}>
-											<Card class="p-3 h-full">
+											<Card class="p-3 h-full {isSelected(actress) ? 'ring-2 ring-primary' : ''}">
 												<div class="flex items-start gap-3 h-full">
+													<div class="pt-1">
+														<input
+															type="checkbox"
+															checked={isSelected(actress)}
+															disabled={!actress.id}
+															onchange={() => toggleSelection(actress)}
+															aria-label="Select actress for merge"
+															class="rounded border-input"
+														/>
+													</div>
 													{#if actress.thumb_url}
 														<img
 															src={actress.thumb_url}
@@ -512,8 +717,16 @@
 								<div class="space-y-2">
 									{#each actresses as actress, index (`${actress.id ?? 'na'}-${index}-${listRenderVersion}`)}
 										<div animate:flip={{ duration: 220, easing: quintOut }} in:fly|local={{ y: 8, duration: 190, delay: itemDelay(index), easing: quintOut }}>
-											<Card class="p-3">
+											<Card class="p-3 {isSelected(actress) ? 'ring-2 ring-primary' : ''}">
 												<div class="flex items-center gap-3">
+													<input
+														type="checkbox"
+														checked={isSelected(actress)}
+														disabled={!actress.id}
+														onchange={() => toggleSelection(actress)}
+														aria-label="Select actress for merge"
+														class="rounded border-input"
+													/>
 													<div class="flex-1 min-w-0">
 														<div class="flex items-center gap-2 min-w-0">
 															<p class="font-medium truncate">{getDisplayName(actress)}</p>
@@ -553,6 +766,7 @@
 										<table class="w-full text-sm">
 											<thead class="bg-muted/50">
 												<tr class="text-left border-b">
+													<th class="px-3 py-2 font-medium w-10">Sel</th>
 													<th class="px-3 py-2 font-medium">ID</th>
 													<th class="px-3 py-2 font-medium">Name</th>
 													<th class="px-3 py-2 font-medium">Japanese Name</th>
@@ -563,7 +777,17 @@
 											</thead>
 											<tbody>
 												{#each actresses as actress, index (`${actress.id ?? 'na'}-${index}-${listRenderVersion}`)}
-													<tr class="border-b last:border-b-0" in:fly|local={{ y: 6, duration: 170, delay: itemDelay(index), easing: quintOut }}>
+													<tr class="border-b last:border-b-0 {isSelected(actress) ? 'bg-primary/5' : ''}" in:fly|local={{ y: 6, duration: 170, delay: itemDelay(index), easing: quintOut }}>
+														<td class="px-3 py-2 text-muted-foreground">
+															<input
+																type="checkbox"
+																checked={isSelected(actress)}
+																disabled={!actress.id}
+																onchange={() => toggleSelection(actress)}
+																aria-label="Select actress for merge"
+																class="rounded border-input"
+															/>
+														</td>
 														<td class="px-3 py-2 text-muted-foreground">{actress.id ?? '-'}</td>
 														<td class="px-3 py-2 font-medium max-w-44 truncate">{getDisplayName(actress)}</td>
 														<td class="px-3 py-2 text-muted-foreground max-w-44 truncate">{actress.japanese_name || '-'}</td>
@@ -617,3 +841,121 @@
 		</div>
 	</div>
 </div>
+
+{#if showMergeModal}
+	<div class="fixed inset-0 z-50 bg-black/50 p-4 flex items-center justify-center">
+		<Card class="w-full max-w-3xl max-h-[90vh] overflow-hidden">
+			<div class="p-4 border-b flex items-center justify-between">
+				<h2 class="text-lg font-semibold">Merge Selected Actresses</h2>
+				<Button variant="outline" size="sm" onclick={closeMergeModal}>Close</Button>
+			</div>
+
+			<div class="p-4 space-y-4 overflow-auto max-h-[70vh]">
+				{#if selectedIds.length < 2}
+					<p class="text-sm text-muted-foreground">Select at least two actresses from the current page to merge.</p>
+				{:else}
+					<div class="space-y-2">
+						<label class="text-sm font-medium" for="merge-primary">Primary actress to keep</label>
+						<select
+							id="merge-primary"
+							value={mergePrimaryId ?? ''}
+							class="rounded-md border border-input bg-background px-3 py-2 text-sm"
+							onchange={(event) => {
+								const value = Number.parseInt((event.currentTarget as HTMLSelectElement).value, 10);
+								mergePrimaryId = Number.isNaN(value) ? null : value;
+								void resetMergeQueueAndPreview();
+							}}
+						>
+							{#each selectedIds as selectedID}
+								<option value={selectedID}>{getActressLabelByID(selectedID)}</option>
+							{/each}
+						</select>
+					</div>
+
+					<div class="rounded-md border border-input bg-muted/20 px-3 py-2 text-sm">
+						Queue: {mergeSourceQueue.length} remaining
+						{#if mergeCurrentSourceId}
+							• processing source #{mergeCurrentSourceId}
+						{/if}
+					</div>
+
+					{#if mergeLoadingPreview}
+						<p class="text-sm text-muted-foreground">Loading merge preview...</p>
+					{:else if mergePreview && mergeCurrentSourceId}
+						<div class="space-y-3">
+							<div class="text-sm">
+								Review conflicts for <span class="font-medium">#{mergeCurrentSourceId}</span> -> <span class="font-medium">#{mergePrimaryId}</span>
+							</div>
+
+							{#if mergePreview.conflicts.length === 0}
+								<div class="rounded-md border border-input bg-muted/20 px-3 py-2 text-sm">
+									No field conflicts. Safe to merge with defaults.
+								</div>
+							{:else}
+								<div class="space-y-2">
+									{#each mergePreview.conflicts as conflict}
+										<div class="rounded-md border border-input p-3 space-y-2">
+											<div class="font-medium text-sm">{conflict.field}</div>
+											<div class="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
+												<label class="rounded-md border border-input p-2 flex items-start gap-2 cursor-pointer">
+													<input
+														type="radio"
+														name={`conflict-${conflict.field}`}
+														checked={(mergeResolutions[conflict.field] || conflict.default_resolution) === 'target'}
+														onchange={() => setResolution(conflict.field, 'target')}
+													/>
+													<span>
+														<span class="font-medium">Keep target</span><br />
+														<span class="text-muted-foreground">{formatMergeValue(conflict.target_value)}</span>
+													</span>
+												</label>
+												<label class="rounded-md border border-input p-2 flex items-start gap-2 cursor-pointer">
+													<input
+														type="radio"
+														name={`conflict-${conflict.field}`}
+														checked={(mergeResolutions[conflict.field] || conflict.default_resolution) === 'source'}
+														onchange={() => setResolution(conflict.field, 'source')}
+													/>
+													<span>
+														<span class="font-medium">Use source</span><br />
+														<span class="text-muted-foreground">{formatMergeValue(conflict.source_value)}</span>
+													</span>
+												</label>
+											</div>
+										</div>
+									{/each}
+								</div>
+							{/if}
+
+							<div class="flex items-center gap-2">
+								<Button variant="outline" onclick={skipCurrentMerge} disabled={mergeRunning}>
+									Skip
+								</Button>
+								<Button onclick={applyCurrentMerge} disabled={mergeRunning}>
+									{mergeRunning ? 'Merging...' : 'Apply Merge'}
+								</Button>
+							</div>
+						</div>
+					{:else}
+						<div class="rounded-md border border-input bg-green-500/10 px-3 py-2 text-sm">
+							Queue complete.
+						</div>
+					{/if}
+				{/if}
+
+				{#if mergeSummary.messages.length > 0}
+					<div class="space-y-2">
+						<div class="text-sm font-medium">
+							Summary: {mergeSummary.success} succeeded, {mergeSummary.failed} failed
+						</div>
+						<div class="max-h-40 overflow-auto rounded-md border border-input p-2 text-xs space-y-1">
+							{#each mergeSummary.messages as message, idx (`merge-log-${idx}`)}
+								<div>{message}</div>
+							{/each}
+						</div>
+					</div>
+				{/if}
+			</div>
+		</Card>
+	</div>
+{/if}

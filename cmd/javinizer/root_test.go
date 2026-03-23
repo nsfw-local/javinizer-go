@@ -33,12 +33,12 @@ func TestRootCommand_SubcommandCount(t *testing.T) {
 		}
 	}
 
-	assert.GreaterOrEqual(t, customCommands, 10, "Should have at least 10 custom subcommands")
+	assert.GreaterOrEqual(t, customCommands, 11, "Should have at least 11 custom subcommands")
 }
 
 func TestRootCommand_SubcommandNames(t *testing.T) {
 	// Test that all expected subcommands are present
-	expectedCommands := []string{"api", "genre", "history", "info", "init", "scrape", "sort", "tag", "tui", "update", "version"}
+	expectedCommands := []string{"actress", "api", "genre", "history", "info", "init", "scrape", "sort", "tag", "tui", "update", "version"}
 
 	subcommands := rootCmd.Commands()
 	commandNames := make(map[string]bool)

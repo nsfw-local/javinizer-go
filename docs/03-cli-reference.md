@@ -9,6 +9,7 @@ Complete command-line interface reference for Javinizer Go.
   - [init](#init)
   - [scrape](#scrape)
   - [sort](#sort)
+  - [actress](#actress)
   - [genre](#genre)
   - [info](#info)
   - [completion](#completion)
@@ -278,6 +279,51 @@ Files organized: 3 (dry-run)
 6. Downloads media files (if enabled)
 7. Organizes files into folders
 8. Renames files according to template
+
+---
+
+### `actress`
+
+Manage actress records and deduplicate duplicates.
+
+#### `actress merge`
+
+Merge one actress record into another:
+
+```bash
+javinizer actress merge --target <id> --source <id> [flags]
+```
+
+**Required flags:**
+```bash
+--target uint   # Target actress ID to keep
+--source uint   # Source actress ID to merge and delete
+```
+
+**Optional flags:**
+```bash
+--non-interactive     # Do not prompt for per-field decisions
+--prefer string       # Global conflict preference in non-interactive mode: target|source (default target)
+-y, --yes             # Skip final confirmation prompt
+```
+
+**Examples:**
+
+Interactive conflict resolution (default):
+```bash
+javinizer actress merge --target 12 --source 34
+```
+
+Non-interactive merge for scripts:
+```bash
+javinizer actress merge --target 12 --source 34 --non-interactive --prefer source --yes
+```
+
+**Interactive behavior:**
+1. Loads merge preview for target/source actresses.
+2. Prompts you for each conflicting field (`target` or `source` value).
+3. Asks for final confirmation.
+4. Applies merge in one transaction: moves movie links, deduplicates associations, merges aliases, deletes source actress.
 
 ---
 

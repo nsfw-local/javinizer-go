@@ -12,6 +12,7 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/javinizer/javinizer-go/internal/config"
+	"github.com/javinizer/javinizer-go/internal/database"
 	"github.com/javinizer/javinizer-go/internal/logging"
 	"github.com/javinizer/javinizer-go/internal/matcher"
 	"github.com/javinizer/javinizer-go/internal/scanner"
@@ -55,9 +56,10 @@ type Model struct {
 	editingPath   bool
 
 	// Scanner/matcher for rescanning
-	scanner   *scanner.Scanner
-	matcher   *matcher.Matcher
-	recursive bool
+	scanner     *scanner.Scanner
+	matcher     *matcher.Matcher
+	recursive   bool
+	actressRepo *database.ActressRepository
 
 	// Folder picker state
 	showingFolderPicker bool
@@ -73,6 +75,18 @@ type Model struct {
 	scraperList         []string // Cached sorted list of scraper names for stable ordering
 	manualSearchCursor  int
 	focusOnInput        bool
+
+	// Actress merge modal state
+	showingActressMerge        bool
+	actressMergeTargetInput    textinput.Model
+	actressMergeSourceInput    textinput.Model
+	actressMergeFocus          int // 0: target, 1: source
+	actressMergeStep           string
+	actressMergePreview        *database.ActressMergePreview
+	actressMergeResolutions    map[string]string
+	actressMergeConflictCursor int
+	actressMergeResult         *database.ActressMergeResult
+	actressMergeError          string
 
 	// Task state
 	tasks        map[string]*worker.TaskProgress
@@ -202,6 +216,23 @@ func New(cfg *config.Config) *Model {
 	m.manualSearchCursor = 0
 	m.focusOnInput = true
 	m.showingManualSearch = false
+
+	mergeTargetInput := textinput.New()
+	mergeTargetInput.Placeholder = "Target actress ID"
+	mergeTargetInput.CharLimit = 20
+	mergeTargetInput.Width = 20
+
+	mergeSourceInput := textinput.New()
+	mergeSourceInput.Placeholder = "Source actress ID"
+	mergeSourceInput.CharLimit = 20
+	mergeSourceInput.Width = 20
+
+	m.actressMergeTargetInput = mergeTargetInput
+	m.actressMergeSourceInput = mergeSourceInput
+	m.actressMergeFocus = 0
+	m.actressMergeStep = "input"
+	m.actressMergeResolutions = make(map[string]string)
+	m.showingActressMerge = false
 
 	// Initialize components
 	m.header = NewHeader()
