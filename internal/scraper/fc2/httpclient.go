@@ -10,8 +10,13 @@ import (
 
 // NewHTTPClient creates a new HTTP client for the FC2 scraper.
 // HTTP-01: Per-scraper HTTP client ownership.
-func NewHTTPClient(cfg *config.ScraperConfig, globalProxy *config.ProxyConfig) (*resty.Client, error) {
-	proxyCfg := config.ResolveScraperProxy(*globalProxy, cfg.Proxy)
+func NewHTTPClient(cfg *config.ScraperSettings, globalProxy *config.ProxyConfig, globalFlareSolverr config.FlareSolverrConfig) (*resty.Client, error) {
+	// Handle nil globalProxy to avoid dereference panic
+	globalProxyVal := config.ProxyConfig{}
+	if globalProxy != nil {
+		globalProxyVal = *globalProxy
+	}
+	proxyCfg := config.ResolveScraperProxy(globalProxyVal, cfg.Proxy)
 
 	timeout := time.Duration(cfg.Timeout) * time.Second
 	if timeout == 0 {
@@ -27,7 +32,7 @@ func NewHTTPClient(cfg *config.ScraperConfig, globalProxy *config.ProxyConfig) (
 		return nil, err
 	}
 
-	userAgent := config.ResolveScraperUserAgent(cfg.UserAgent, cfg.UseFakeUserAgent, cfg.UserAgent)
+	userAgent := config.ResolveScraperUserAgent(cfg.UserAgent)
 	client.SetHeader("User-Agent", userAgent)
 	client.SetHeader("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
 	client.SetHeader("Accept-Language", "ja,en-US;q=0.8,en;q=0.6")

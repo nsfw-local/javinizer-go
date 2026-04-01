@@ -47,8 +47,8 @@ func (s *noPosterStubScraper) IsEnabled() bool { return true }
 
 func (s *noPosterStubScraper) Close() error { return nil }
 
-func (s *noPosterStubScraper) Config() *config.ScraperConfig {
-	return &config.ScraperConfig{Enabled: true}
+func (s *noPosterStubScraper) Config() *config.ScraperSettings {
+	return &config.ScraperSettings{Enabled: true}
 }
 
 func writeJPEG(t *testing.T, path string, width, height int) {

@@ -45,7 +45,7 @@ func isRunningInContainer() bool {
 }
 
 // FetchWithBrowser fetches a URL using Chrome browser automation with age verification cookies
-func FetchWithBrowser(url string, timeout int, proxyConfig *config.ProxyConfig) (string, error) {
+func FetchWithBrowser(url string, timeout int, proxyProfile *config.ProxyProfile) (string, error) {
 	if timeout <= 0 {
 		timeout = 30 // Default timeout
 	}
@@ -81,11 +81,11 @@ func FetchWithBrowser(url string, timeout int, proxyConfig *config.ProxyConfig) 
 		opts = append(opts, chromedp.ExecPath(chromeBin))
 	}
 
-	// Add proxy if configured
-	if proxyConfig != nil && proxyConfig.Enabled && proxyConfig.URL != "" {
-		sanitizedURL := httpclient.SanitizeProxyURL(proxyConfig.URL)
+	// Add proxy if configured (ProxyProfile has URL, no Enabled field)
+	if proxyProfile != nil && proxyProfile.URL != "" {
+		sanitizedURL := httpclient.SanitizeProxyURL(proxyProfile.URL)
 		logging.Debugf("DMM Browser: Using proxy %s", sanitizedURL)
-		opts = append(opts, chromedp.ProxyServer(proxyConfig.URL))
+		opts = append(opts, chromedp.ProxyServer(proxyProfile.URL))
 	}
 
 	// Create context with custom allocator
@@ -117,15 +117,15 @@ func FetchWithBrowser(url string, timeout int, proxyConfig *config.ProxyConfig) 
 				return fmt.Errorf("failed to set cklg cookie: %w", err)
 			}
 
-			// Set proxy authentication if proxy is enabled and credentials are provided
-			if proxyConfig != nil && proxyConfig.Enabled && proxyConfig.URL != "" &&
-				proxyConfig.Username != "" && proxyConfig.Password != "" {
+			// Set proxy authentication if proxy is configured and credentials are provided
+			if proxyProfile != nil && proxyProfile.URL != "" &&
+				proxyProfile.Username != "" && proxyProfile.Password != "" {
 				logging.Debug("DMM Browser: Setting proxy authentication credentials")
 				// Use CDP Network domain to set proxy auth credentials
 				// Note: This only works for HTTP/HTTPS proxies with Basic auth
 				// SOCKS5 proxies authenticate during handshake (not supported via headers)
 				err := network.SetExtraHTTPHeaders(network.Headers{
-					"Proxy-Authorization": "Basic " + basicAuth(proxyConfig.Username, proxyConfig.Password),
+					"Proxy-Authorization": "Basic " + basicAuth(proxyProfile.Username, proxyProfile.Password),
 				}).Do(ctx)
 				if err != nil {
 					return fmt.Errorf("failed to set proxy authentication: %w", err)

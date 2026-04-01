@@ -114,13 +114,6 @@ COPY --from=go-builder /build/web/dist /app/web/dist
 # Copy API documentation (Swagger/OpenAPI) to /app (avoids volume mount shadowing)
 COPY --from=go-builder /build/docs/swagger /app/docs/swagger
 
-# Copy default configuration to /app (not /javinizer, to avoid volume shadowing)
-COPY configs/config.yaml.example /app/config/config.yaml.default
-
-# Configure for Docker environment
-RUN sed -i 's/^\([[:space:]]*\)host: localhost/\1host: 0.0.0.0/' /app/config/config.yaml.default && \
-    sed -i 's/^\([[:space:]]*\)allowed_directories: \[\]/\1allowed_directories: ["\/media"]/' /app/config/config.yaml.default
-
 # Copy entrypoint script
 COPY scripts/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
@@ -136,6 +129,9 @@ ENV JAVINIZER_HOME=/javinizer \
     JAVINIZER_CONFIG=/javinizer/config.yaml \
     JAVINIZER_DB=/javinizer/javinizer.db \
     JAVINIZER_LOG_DIR=/javinizer/logs \
+    JAVINIZER_INIT_SERVER_HOST=0.0.0.0 \
+    JAVINIZER_INIT_ALLOWED_DIRECTORIES=/media \
+    JAVINIZER_INIT_ALLOWED_ORIGINS="http://localhost:8080,http://localhost:5173,http://127.0.0.1:8080,http://127.0.0.1:5173" \
     JAVINIZER_IMAGE_DEFAULT_UID=${USER_ID} \
     JAVINIZER_IMAGE_DEFAULT_GID=${GROUP_ID} \
     CHROME_BIN=/usr/bin/chromium-browser \

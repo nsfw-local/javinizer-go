@@ -12,29 +12,28 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func testConfig() *config.Config {
-	cfg := config.DefaultConfig()
-	cfg.Scrapers.FC2.Enabled = true
-	cfg.Scrapers.FC2.RequestDelay = 0
-	cfg.Scrapers.Proxy.Enabled = false
-	return cfg
+func testSettings() config.ScraperSettings {
+	return config.ScraperSettings{
+		Enabled:   true,
+		RateLimit: 0,
+	}
 }
 
 func TestScraperInterfaceCompliance(t *testing.T) {
-	s := New(testConfig())
+	s := New(testSettings(), nil, config.FlareSolverrConfig{})
 	var _ models.Scraper = s
 	var _ models.ScraperQueryResolver = s
 }
 
 func TestNameAndEnabled(t *testing.T) {
-	cfg := testConfig()
-	s := New(cfg)
+	settings := testSettings()
+	s := New(settings, nil, config.FlareSolverrConfig{})
 
 	assert.Equal(t, "fc2", s.Name())
 	assert.True(t, s.IsEnabled())
 
-	cfg.Scrapers.FC2.Enabled = false
-	s = New(cfg)
+	disabledSettings := config.ScraperSettings{Enabled: false, RateLimit: 0}
+	s = New(disabledSettings, nil, config.FlareSolverrConfig{})
 	assert.False(t, s.IsEnabled())
 }
 
@@ -68,9 +67,9 @@ func TestFetcherRateLimit(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			cfg := testConfig()
-			cfg.Scrapers.FC2.RequestDelay = int(tc.delay.Milliseconds())
-			s := New(cfg)
+			settings := testSettings()
+			settings.RateLimit = int(tc.delay.Milliseconds())
+			s := New(settings, nil, config.FlareSolverrConfig{})
 			s.lastRequestTime.Store(tc.lastRequest)
 
 			// Test that the function doesn't panic and completes
@@ -86,8 +85,8 @@ func TestFetcherRateLimit(t *testing.T) {
 }
 
 func TestUpdateLastRequestTime(t *testing.T) {
-	cfg := testConfig()
-	s := New(cfg)
+	settings := testSettings()
+	s := New(settings, nil, config.FlareSolverrConfig{})
 
 	firstTime := time.Now()
 	s.updateLastRequestTime()
@@ -105,7 +104,7 @@ func TestUpdateLastRequestTime(t *testing.T) {
 }
 
 func TestResolveSearchQuery(t *testing.T) {
-	s := New(testConfig())
+	s := New(testSettings(), nil, config.FlareSolverrConfig{})
 
 	tests := []struct {
 		name  string
@@ -131,7 +130,7 @@ func TestResolveSearchQuery(t *testing.T) {
 }
 
 func TestGetURL(t *testing.T) {
-	s := New(testConfig())
+	s := New(testSettings(), nil, config.FlareSolverrConfig{})
 
 	u, err := s.GetURL("PPV-4847718")
 	assert.NoError(t, err)

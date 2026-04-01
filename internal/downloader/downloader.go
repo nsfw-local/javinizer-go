@@ -187,12 +187,12 @@ func (c *adaptiveDownloaderHTTPClient) Do(req *http.Request) (*http.Response, er
 		return c.forceClient.Do(req)
 	}
 
-	proxyCfg := c.selectProxyForRequest(req)
-	if proxyCfg == nil || !proxyCfg.Enabled || proxyCfg.URL == "" {
+	proxyProfile := c.selectProxyForRequest(req)
+	if proxyProfile == nil || proxyProfile.URL == "" {
 		return c.directClient.Do(req)
 	}
 
-	client, err := c.getOrCreateProxyClient(proxyCfg)
+	client, err := c.getOrCreateProxyClient(proxyProfile)
 	if err != nil {
 		logging.Warnf("Downloader: Failed to create proxy client for %s: %v; falling back to direct", req.URL.Host, err)
 		return c.directClient.Do(req)
@@ -201,7 +201,7 @@ func (c *adaptiveDownloaderHTTPClient) Do(req *http.Request) (*http.Response, er
 	return client.Do(req)
 }
 
-func (c *adaptiveDownloaderHTTPClient) selectProxyForRequest(req *http.Request) *config.ProxyConfig {
+func (c *adaptiveDownloaderHTTPClient) selectProxyForRequest(req *http.Request) *config.ProxyProfile {
 	if req == nil || req.URL == nil || c.cfg == nil {
 		return nil
 	}
@@ -220,78 +220,27 @@ func (c *adaptiveDownloaderHTTPClient) selectProxyForRequest(req *http.Request) 
 
 	// Fallback to global scraper proxy, if enabled.
 	resolvedGlobalProxy := config.ResolveGlobalProxy(c.cfg.Scrapers.Proxy)
-	if resolvedGlobalProxy != nil && resolvedGlobalProxy.Enabled && resolvedGlobalProxy.URL != "" {
+	if resolvedGlobalProxy != nil && resolvedGlobalProxy.URL != "" {
 		return resolvedGlobalProxy
 	}
 	return nil
 }
 
-func (c *adaptiveDownloaderHTTPClient) resolveScraperDownloadProxy(downloadOverride, scraperProxy *config.ProxyConfig) *config.ProxyConfig {
-	// Scraper-level download proxy configuration:
-	// - When download_proxy.enabled=true, apply configured override.
-	// - Legacy compatibility: profile/url/use_main_proxy without enabled=true is still treated as override.
-	// - Otherwise, inherit scraper request proxy for downloads.
-	if hasConfiguredDownloadOverride(downloadOverride) {
-		overrideEnabled := downloadOverride.Enabled || hasLegacyDownloadOverrideFields(downloadOverride)
-		if !overrideEnabled {
-			resolved := config.ResolveScraperProxy(c.cfg.Scrapers.Proxy, scraperProxy)
-			if resolved != nil && resolved.Enabled && resolved.URL != "" {
-				return resolved
-			}
-			return nil
-		}
-
-		override := *downloadOverride
-		override.Enabled = true
-
-		if override.UseMainProxy {
-			resolved := config.ResolveScraperProxy(c.cfg.Scrapers.Proxy, scraperProxy)
-			if resolved != nil && resolved.Enabled && resolved.URL != "" {
-				return resolved
-			}
-			return nil
-		}
-
-		resolved := config.ResolveScraperProxy(c.cfg.Scrapers.Proxy, &override)
-		if resolved != nil && resolved.Enabled && resolved.URL != "" {
-			return resolved
-		}
-		return nil
+func (c *adaptiveDownloaderHTTPClient) resolveScraperDownloadProxy(downloadOverride, scraperProxy *config.ProxyConfig) *config.ProxyProfile {
+	// Profile-based download proxy resolution:
+	// - When download_proxy.enabled=true with a profile, use that profile
+	// - Otherwise, inherit scraper request proxy for downloads
+	if downloadOverride != nil && downloadOverride.Enabled && downloadOverride.Profile != "" {
+		// Resolve using the download override's profile
+		return config.ResolveScraperProxy(c.cfg.Scrapers.Proxy, downloadOverride)
 	}
 
-	// Backward-compatible fallback: scraper request proxy also applies to downloads.
-	resolved := config.ResolveScraperProxy(c.cfg.Scrapers.Proxy, scraperProxy)
-	if resolved != nil && resolved.Enabled && resolved.URL != "" {
-		return resolved
-	}
-	return nil
+	// Backward-compatible fallback: scraper request proxy also applies to downloads
+	return config.ResolveScraperProxy(c.cfg.Scrapers.Proxy, scraperProxy)
 }
 
-func hasConfiguredDownloadOverride(downloadOverride *config.ProxyConfig) bool {
-	if downloadOverride == nil {
-		return false
-	}
-	return downloadOverride.UseMainProxy ||
-		downloadOverride.Profile != "" ||
-		downloadOverride.URL != "" ||
-		downloadOverride.Username != "" ||
-		downloadOverride.Password != "" ||
-		downloadOverride.Enabled
-}
-
-func hasLegacyDownloadOverrideFields(downloadOverride *config.ProxyConfig) bool {
-	if downloadOverride == nil {
-		return false
-	}
-	return downloadOverride.UseMainProxy ||
-		downloadOverride.Profile != "" ||
-		downloadOverride.URL != "" ||
-		downloadOverride.Username != "" ||
-		downloadOverride.Password != ""
-}
-
-func (c *adaptiveDownloaderHTTPClient) getOrCreateProxyClient(proxyCfg *config.ProxyConfig) (httpclient.HTTPClient, error) {
-	key := fmt.Sprintf("%s|%s|%s", proxyCfg.URL, proxyCfg.Username, proxyCfg.Password)
+func (c *adaptiveDownloaderHTTPClient) getOrCreateProxyClient(proxyProfile *config.ProxyProfile) (httpclient.HTTPClient, error) {
+	key := fmt.Sprintf("%s|%s|%s", proxyProfile.URL, proxyProfile.Username, proxyProfile.Password)
 
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -300,12 +249,12 @@ func (c *adaptiveDownloaderHTTPClient) getOrCreateProxyClient(proxyCfg *config.P
 		return client, nil
 	}
 
-	client, err := httpclient.NewHTTPClient(proxyCfg, c.timeout)
+	client, err := httpclient.NewHTTPClient(proxyProfile, c.timeout)
 	if err != nil {
 		return nil, err
 	}
 	c.clients[key] = client
-	logging.Infof("Downloader: Using scraper-level proxy for media host via %s", httpclient.SanitizeProxyURL(proxyCfg.URL))
+	logging.Infof("Downloader: Using scraper-level proxy for media host via %s", httpclient.SanitizeProxyURL(proxyProfile.URL))
 	return client, nil
 }
 

@@ -337,7 +337,11 @@ func TestUpdateBatchMoviePosterCrop(t *testing.T) {
 		_ = os.Chdir(originalWd)
 	}()
 
-	cfg := &config.Config{}
+	cfg := &config.Config{
+		System: config.SystemConfig{
+			TempDir: "data/temp",
+		},
+	}
 	deps := createTestDeps(t, cfg, "")
 
 	job := deps.JobQueue.CreateJob([]string{"/path/to/IPX-535.mp4"})
@@ -1024,22 +1028,13 @@ func TestRescrapeBatchMovie(t *testing.T) {
 			// Initialize WebSocket hub
 			initTestWebSocket(t)
 
-			cfg := &config.Config{
-				Scrapers: config.ScrapersConfig{
-					UserAgent:             "Test Agent",
-					Referer:               "https://test.com",
-					RequestTimeoutSeconds: 30,
-					Priority:              []string{"r18dev"},
-					R18Dev:                config.R18DevConfig{Enabled: true},
-					DMM:                   config.DMMConfig{Enabled: true},
-					Proxy:                 config.ProxyConfig{Enabled: false},
-				},
-				API: config.APIConfig{
-					Security: config.SecurityConfig{
-						AllowedDirectories: []string{"/test"},
-					},
-				},
-			}
+			cfg := config.DefaultConfig()
+			cfg.Scrapers.UserAgent = "Test Agent"
+			cfg.Scrapers.Referer = "https://test.com"
+			cfg.Scrapers.RequestTimeoutSeconds = 30
+			cfg.Scrapers.Priority = []string{"r18dev"}
+			cfg.Scrapers.Proxy = config.ProxyConfig{Enabled: false}
+			cfg.API.Security.AllowedDirectories = []string{"/test"}
 
 			deps := createTestDeps(t, cfg, "")
 			jobID, movieID := tt.setupJob(deps.JobQueue)

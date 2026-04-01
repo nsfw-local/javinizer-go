@@ -211,6 +211,7 @@ func TestDockerAutoDetection(t *testing.T) {
 
 // TestApplyScrapeFlagOverrides_ScrapeActress tests scrape-actress flags
 func TestApplyScrapeFlagOverrides_ScrapeActress(t *testing.T) {
+	RegisterTestScraperConfigs()
 	tests := []struct {
 		name     string
 		flag     string
@@ -236,10 +237,11 @@ func TestApplyScrapeFlagOverrides_ScrapeActress(t *testing.T) {
 			}
 
 			cfg := DefaultConfig()
+			cfg.Scrapers.NormalizeScraperConfigs()
 			ApplyScrapeFlagOverrides(cmd, cfg)
 
-			if cfg.Scrapers.DMM.ScrapeActress != tt.expected {
-				t.Errorf("Expected ScrapeActress %v, got %v", tt.expected, cfg.Scrapers.DMM.ScrapeActress)
+			if cfg.Scrapers.Overrides["dmm"].Extra["scrape_actress"].(bool) != tt.expected {
+				t.Errorf("Expected ScrapeActress %v, got %v", tt.expected, cfg.Scrapers.Overrides["dmm"].Extra["scrape_actress"].(bool))
 			}
 		})
 	}
@@ -247,6 +249,7 @@ func TestApplyScrapeFlagOverrides_ScrapeActress(t *testing.T) {
 
 // TestApplyScrapeFlagOverrides_Browser tests browser mode flags
 func TestApplyScrapeFlagOverrides_Browser(t *testing.T) {
+	RegisterTestScraperConfigs()
 	tests := []struct {
 		name     string
 		flag     string
@@ -276,10 +279,11 @@ func TestApplyScrapeFlagOverrides_Browser(t *testing.T) {
 			}
 
 			cfg := DefaultConfig()
+			cfg.Scrapers.NormalizeScraperConfigs()
 			ApplyScrapeFlagOverrides(cmd, cfg)
 
-			if cfg.Scrapers.DMM.EnableBrowser != tt.expected {
-				t.Errorf("Expected EnableBrowser %v, got %v", tt.expected, cfg.Scrapers.DMM.EnableBrowser)
+			if cfg.Scrapers.Overrides["dmm"].Extra["enable_browser"].(bool) != tt.expected {
+				t.Errorf("Expected EnableBrowser %v, got %v", tt.expected, cfg.Scrapers.Overrides["dmm"].Extra["enable_browser"].(bool))
 			}
 		})
 	}
@@ -299,20 +303,23 @@ func TestApplyScrapeFlagOverrides_BrowserTimeout(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			RegisterTestScraperConfigs()
 			cmd := &cobra.Command{}
 			cmd.Flags().Int("browser-timeout", 0, "")
 			_ = cmd.Flags().Set("browser-timeout", string(rune(tt.timeout)+'0'))
 
 			cfg := DefaultConfig()
-			originalTimeout := cfg.Scrapers.DMM.BrowserTimeout
+			cfg.Scrapers.NormalizeScraperConfigs()
+			cfg.Scrapers.Overrides["dmm"].Extra["browser_timeout"] = 30 // set default
+			originalTimeout := cfg.Scrapers.Overrides["dmm"].Extra["browser_timeout"].(int)
 
 			// Set flag properly
 			_ = cmd.Flags().Set("browser-timeout", "60")
 			ApplyScrapeFlagOverrides(cmd, cfg)
 
 			// Since we set it to 60, expect 60
-			if cfg.Scrapers.DMM.BrowserTimeout != 60 {
-				t.Errorf("Expected timeout 60, got %d", cfg.Scrapers.DMM.BrowserTimeout)
+			if cfg.Scrapers.Overrides["dmm"].Extra["browser_timeout"].(int) != 60 {
+				t.Errorf("Expected timeout 60, got %d", cfg.Scrapers.Overrides["dmm"].Extra["browser_timeout"].(int))
 			}
 
 			// Test zero timeout (should not override)
@@ -321,10 +328,13 @@ func TestApplyScrapeFlagOverrides_BrowserTimeout(t *testing.T) {
 			_ = cmd2.Flags().Set("browser-timeout", "0")
 
 			cfg2 := DefaultConfig()
+			cfg2.Scrapers.NormalizeScraperConfigs()
+			// Initialize with a default timeout value
+			cfg2.Scrapers.Overrides["dmm"].Extra["browser_timeout"] = originalTimeout
 			ApplyScrapeFlagOverrides(cmd2, cfg2)
 
-			if cfg2.Scrapers.DMM.BrowserTimeout != originalTimeout {
-				t.Errorf("Zero timeout should not override, expected %d, got %d", originalTimeout, cfg2.Scrapers.DMM.BrowserTimeout)
+			if cfg2.Scrapers.Overrides["dmm"].Extra["browser_timeout"].(int) != originalTimeout {
+				t.Errorf("Zero timeout should not override, expected %d, got %d", originalTimeout, cfg2.Scrapers.Overrides["dmm"].Extra["browser_timeout"].(int))
 			}
 		})
 	}
@@ -400,15 +410,17 @@ func TestApplyScrapeFlagOverrides_GenreReplacement(t *testing.T) {
 
 // TestBackwardCompatibilityFlags tests deprecated --headless flags
 func TestBackwardCompatibilityFlags(t *testing.T) {
+	RegisterTestScraperConfigs()
 	t.Run("deprecated headless flag", func(t *testing.T) {
 		cmd := &cobra.Command{}
 		cmd.Flags().Bool("headless", false, "")
 		_ = cmd.Flags().Set("headless", "true")
 
 		cfg := DefaultConfig()
+		cfg.Scrapers.NormalizeScraperConfigs()
 		ApplyScrapeFlagOverrides(cmd, cfg)
 
-		if !cfg.Scrapers.DMM.EnableBrowser {
+		if !cfg.Scrapers.Overrides["dmm"].Extra["enable_browser"].(bool) {
 			t.Error("Expected EnableBrowser true via deprecated --headless")
 		}
 	})
@@ -419,10 +431,11 @@ func TestBackwardCompatibilityFlags(t *testing.T) {
 		_ = cmd.Flags().Set("no-headless", "true")
 
 		cfg := DefaultConfig()
-		cfg.Scrapers.DMM.EnableBrowser = true // Start with true
+		cfg.Scrapers.NormalizeScraperConfigs()
+		cfg.Scrapers.Overrides["dmm"].Extra["enable_browser"] = true // Start with true
 		ApplyScrapeFlagOverrides(cmd, cfg)
 
-		if cfg.Scrapers.DMM.EnableBrowser {
+		if cfg.Scrapers.Overrides["dmm"].Extra["enable_browser"].(bool) {
 			t.Error("Expected EnableBrowser false via deprecated --no-headless")
 		}
 	})
@@ -433,16 +446,18 @@ func TestBackwardCompatibilityFlags(t *testing.T) {
 		_ = cmd.Flags().Set("headless-timeout", "90")
 
 		cfg := DefaultConfig()
+		cfg.Scrapers.NormalizeScraperConfigs()
 		ApplyScrapeFlagOverrides(cmd, cfg)
 
-		if cfg.Scrapers.DMM.BrowserTimeout != 90 {
-			t.Errorf("Expected timeout 90 via deprecated --headless-timeout, got %d", cfg.Scrapers.DMM.BrowserTimeout)
+		if cfg.Scrapers.Overrides["dmm"].Extra["browser_timeout"].(int) != 90 {
+			t.Errorf("Expected timeout 90 via deprecated --headless-timeout, got %d", cfg.Scrapers.Overrides["dmm"].Extra["browser_timeout"].(int))
 		}
 	})
 }
 
 // TestFlagPrecedence tests that new flags override deprecated ones
 func TestFlagPrecedence(t *testing.T) {
+	RegisterTestScraperConfigs()
 	t.Run("browser overrides headless", func(t *testing.T) {
 		cmd := &cobra.Command{}
 		cmd.Flags().Bool("browser", false, "")
@@ -453,10 +468,11 @@ func TestFlagPrecedence(t *testing.T) {
 		_ = cmd.Flags().Set("browser", "true")
 
 		cfg := DefaultConfig()
+		cfg.Scrapers.NormalizeScraperConfigs()
 		ApplyScrapeFlagOverrides(cmd, cfg)
 
 		// New flag should win
-		if !cfg.Scrapers.DMM.EnableBrowser {
+		if !cfg.Scrapers.Overrides["dmm"].Extra["enable_browser"].(bool) {
 			t.Error("Expected --browser to override --headless")
 		}
 	})
@@ -470,11 +486,12 @@ func TestFlagPrecedence(t *testing.T) {
 		_ = cmd.Flags().Set("no-browser", "true")   // This should disable
 
 		cfg := DefaultConfig()
-		cfg.Scrapers.DMM.EnableBrowser = true
+		cfg.Scrapers.NormalizeScraperConfigs()
+		cfg.Scrapers.Overrides["dmm"].Extra["enable_browser"] = true
 		ApplyScrapeFlagOverrides(cmd, cfg)
 
 		// New flag should win
-		if cfg.Scrapers.DMM.EnableBrowser {
+		if cfg.Scrapers.Overrides["dmm"].Extra["enable_browser"].(bool) {
 			t.Error("Expected --no-browser to override --no-headless")
 		}
 	})
@@ -488,11 +505,12 @@ func TestFlagPrecedence(t *testing.T) {
 		_ = cmd.Flags().Set("browser-timeout", "90")
 
 		cfg := DefaultConfig()
+		cfg.Scrapers.NormalizeScraperConfigs()
 		ApplyScrapeFlagOverrides(cmd, cfg)
 
 		// New flag should win
-		if cfg.Scrapers.DMM.BrowserTimeout != 90 {
-			t.Errorf("Expected --browser-timeout (90) to override --headless-timeout, got %d", cfg.Scrapers.DMM.BrowserTimeout)
+		if cfg.Scrapers.Overrides["dmm"].Extra["browser_timeout"].(int) != 90 {
+			t.Errorf("Expected --browser-timeout (90) to override --headless-timeout, got %d", cfg.Scrapers.Overrides["dmm"].Extra["browser_timeout"].(int))
 		}
 	})
 }

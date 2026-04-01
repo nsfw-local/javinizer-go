@@ -45,8 +45,8 @@ func (m *mockScraper) IsEnabled() bool {
 
 func (m *mockScraper) Close() error { return nil }
 
-func (m *mockScraper) Config() *config.ScraperConfig {
-	return &config.ScraperConfig{Enabled: m.enabled}
+func (m *mockScraper) Config() *config.ScraperSettings {
+	return &config.ScraperSettings{Enabled: m.enabled}
 }
 
 func TestHealthCheck(t *testing.T) {
@@ -191,14 +191,13 @@ func TestGetAvailableScrapers(t *testing.T) {
 				assert.Equal(t, "r18dev", resp.Scrapers[0].Name)
 				assert.Equal(t, "R18.dev", resp.Scrapers[0].DisplayName)
 				assert.True(t, resp.Scrapers[0].Enabled)
-				assert.Len(t, resp.Scrapers[0].Options, 7)
+				assert.Len(t, resp.Scrapers[0].Options, 6)
 				optionKeys := make(map[string]bool)
 				for _, opt := range resp.Scrapers[0].Options {
 					optionKeys[opt.Key] = true
 				}
 				assert.True(t, optionKeys["language"])
-				assert.True(t, optionKeys["use_fake_user_agent"])
-				assert.True(t, optionKeys["fake_user_agent"])
+				assert.True(t, optionKeys["user_agent"])
 				assert.True(t, optionKeys["proxy.enabled"])
 				assert.True(t, optionKeys["proxy.profile"])
 				assert.True(t, optionKeys["download_proxy.enabled"])
@@ -216,7 +215,7 @@ func TestGetAvailableScrapers(t *testing.T) {
 				assert.Equal(t, "dmm", resp.Scrapers[0].Name)
 				assert.Equal(t, "DMM/Fanza", resp.Scrapers[0].DisplayName)
 				assert.True(t, resp.Scrapers[0].Enabled)
-				assert.Len(t, resp.Scrapers[0].Options, 9)
+				assert.Len(t, resp.Scrapers[0].Options, 8)
 
 				// Verify options exist
 				optionKeys := make(map[string]bool)
@@ -226,8 +225,7 @@ func TestGetAvailableScrapers(t *testing.T) {
 				assert.True(t, optionKeys["scrape_actress"])
 				assert.True(t, optionKeys["enable_browser"])
 				assert.True(t, optionKeys["browser_timeout"])
-				assert.True(t, optionKeys["use_fake_user_agent"])
-				assert.True(t, optionKeys["fake_user_agent"])
+				assert.True(t, optionKeys["user_agent"])
 				assert.True(t, optionKeys["proxy.enabled"])
 				assert.True(t, optionKeys["proxy.profile"])
 				assert.True(t, optionKeys["download_proxy.enabled"])
@@ -256,7 +254,7 @@ func TestGetAvailableScrapers(t *testing.T) {
 				assert.Equal(t, "javdb", resp.Scrapers[0].Name)
 				assert.Equal(t, "JavDB", resp.Scrapers[0].DisplayName)
 				assert.True(t, resp.Scrapers[0].Enabled)
-				assert.Len(t, resp.Scrapers[0].Options, 9)
+				assert.Len(t, resp.Scrapers[0].Options, 8)
 
 				optionKeys := make(map[string]bool)
 				for _, opt := range resp.Scrapers[0].Options {
@@ -265,8 +263,7 @@ func TestGetAvailableScrapers(t *testing.T) {
 				assert.True(t, optionKeys["request_delay"])
 				assert.True(t, optionKeys["base_url"])
 				assert.True(t, optionKeys["use_flaresolverr"])
-				assert.True(t, optionKeys["use_fake_user_agent"])
-				assert.True(t, optionKeys["fake_user_agent"])
+				assert.True(t, optionKeys["user_agent"])
 				assert.True(t, optionKeys["proxy.enabled"])
 				assert.True(t, optionKeys["proxy.profile"])
 				assert.True(t, optionKeys["download_proxy.enabled"])
@@ -284,7 +281,7 @@ func TestGetAvailableScrapers(t *testing.T) {
 				assert.Equal(t, "libredmm", resp.Scrapers[0].Name)
 				assert.Equal(t, "LibreDMM", resp.Scrapers[0].DisplayName)
 				assert.True(t, resp.Scrapers[0].Enabled)
-				assert.Len(t, resp.Scrapers[0].Options, 8)
+				assert.Len(t, resp.Scrapers[0].Options, 7)
 
 				optionKeys := make(map[string]bool)
 				for _, opt := range resp.Scrapers[0].Options {
@@ -292,8 +289,7 @@ func TestGetAvailableScrapers(t *testing.T) {
 				}
 				assert.True(t, optionKeys["request_delay"])
 				assert.True(t, optionKeys["base_url"])
-				assert.True(t, optionKeys["use_fake_user_agent"])
-				assert.True(t, optionKeys["fake_user_agent"])
+				assert.True(t, optionKeys["user_agent"])
 				assert.True(t, optionKeys["proxy.enabled"])
 				assert.True(t, optionKeys["proxy.profile"])
 				assert.True(t, optionKeys["download_proxy.enabled"])
@@ -311,7 +307,7 @@ func TestGetAvailableScrapers(t *testing.T) {
 				assert.Equal(t, "caribbeancom", resp.Scrapers[0].Name)
 				assert.Equal(t, "Caribbeancom", resp.Scrapers[0].DisplayName)
 				assert.True(t, resp.Scrapers[0].Enabled)
-				assert.Len(t, resp.Scrapers[0].Options, 9)
+				assert.Len(t, resp.Scrapers[0].Options, 8)
 
 				optionKeys := make(map[string]bool)
 				for _, opt := range resp.Scrapers[0].Options {
@@ -320,8 +316,7 @@ func TestGetAvailableScrapers(t *testing.T) {
 				assert.True(t, optionKeys["language"])
 				assert.True(t, optionKeys["request_delay"])
 				assert.True(t, optionKeys["base_url"])
-				assert.True(t, optionKeys["use_fake_user_agent"])
-				assert.True(t, optionKeys["fake_user_agent"])
+				assert.True(t, optionKeys["user_agent"])
 				assert.True(t, optionKeys["proxy.enabled"])
 				assert.True(t, optionKeys["proxy.profile"])
 				assert.True(t, optionKeys["download_proxy.enabled"])
@@ -339,7 +334,7 @@ func TestGetAvailableScrapers(t *testing.T) {
 				assert.Equal(t, "fc2", resp.Scrapers[0].Name)
 				assert.Equal(t, "FC2", resp.Scrapers[0].DisplayName)
 				assert.True(t, resp.Scrapers[0].Enabled)
-				assert.Len(t, resp.Scrapers[0].Options, 8)
+				assert.Len(t, resp.Scrapers[0].Options, 7)
 
 				optionKeys := make(map[string]bool)
 				for _, opt := range resp.Scrapers[0].Options {
@@ -347,8 +342,7 @@ func TestGetAvailableScrapers(t *testing.T) {
 				}
 				assert.True(t, optionKeys["request_delay"])
 				assert.True(t, optionKeys["base_url"])
-				assert.True(t, optionKeys["use_fake_user_agent"])
-				assert.True(t, optionKeys["fake_user_agent"])
+				assert.True(t, optionKeys["user_agent"])
 				assert.True(t, optionKeys["proxy.enabled"])
 				assert.True(t, optionKeys["proxy.profile"])
 				assert.True(t, optionKeys["download_proxy.enabled"])
@@ -471,8 +465,15 @@ func TestTestProxy(t *testing.T) {
 		proxy := startTestForwardProxy(t)
 		defer proxy.Close()
 
+		cfg := config.DefaultConfig()
+		cfg.Scrapers.Proxy.Enabled = true
+		cfg.Scrapers.Proxy.DefaultProfile = "main"
+		cfg.Scrapers.Proxy.Profiles = map[string]config.ProxyProfile{
+			"main": {URL: proxy.URL},
+		}
+
 		deps := &ServerDependencies{}
-		deps.SetConfig(config.DefaultConfig())
+		deps.SetConfig(cfg)
 
 		router := gin.New()
 		router.POST("/proxy/test", testProxy(deps))
@@ -482,7 +483,6 @@ func TestTestProxy(t *testing.T) {
 			TargetURL: target.URL,
 			Proxy: config.ProxyConfig{
 				Enabled: true,
-				URL:     proxy.URL,
 			},
 		}
 		body, err := json.Marshal(reqBody)
@@ -520,14 +520,13 @@ func TestTestProxy(t *testing.T) {
 		reqBody := ProxyTestRequest{
 			Mode:      "flaresolverr",
 			TargetURL: "https://javdb.com",
-			Proxy: config.ProxyConfig{
-				FlareSolverr: config.FlareSolverrConfig{
-					Enabled:    true,
-					URL:        fs.URL,
-					Timeout:    30,
-					MaxRetries: 0,
-					SessionTTL: 300,
-				},
+			Proxy:     config.ProxyConfig{},
+			FlareSolverr: config.FlareSolverrConfig{
+				Enabled:    true,
+				URL:        fs.URL,
+				Timeout:    30,
+				MaxRetries: 0,
+				SessionTTL: 300,
 			},
 		}
 		body, err := json.Marshal(reqBody)
@@ -781,7 +780,7 @@ func TestGetAvailableScrapers_OptionsValidation(t *testing.T) {
 
 	require.Len(t, response.Scrapers, 1)
 	scraper := response.Scrapers[0]
-	require.Len(t, scraper.Options, 9)
+	require.Len(t, scraper.Options, 8)
 
 	// Test scrape_actress option
 	var scrapeActressOpt *ScraperOption

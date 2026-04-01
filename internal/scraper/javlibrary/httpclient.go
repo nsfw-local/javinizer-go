@@ -14,9 +14,14 @@ import (
 // The bool parameter (useFlareSolverr) indicates whether to enable FlareSolverr
 // based on scraperCfg.UseFlareSolverr from the javlibrary config.
 // Returns client, flaresolverr, and error.
-func NewHTTPClient(cfg *config.ScraperConfig, globalProxy *config.ProxyConfig, useFlareSolverr bool) (*resty.Client, *httpclient.FlareSolverr, error) {
+func NewHTTPClient(cfg *config.ScraperSettings, globalProxy *config.ProxyConfig, globalFlareSolverr config.FlareSolverrConfig, useFlareSolverr bool) (*resty.Client, *httpclient.FlareSolverr, error) {
+	// Handle nil globalProxy to avoid dereference panic
+	globalProxyVal := config.ProxyConfig{}
+	if globalProxy != nil {
+		globalProxyVal = *globalProxy
+	}
 	// Resolve proxy per-scraper (HTTP-02)
-	proxyCfg := config.ResolveScraperProxy(*globalProxy, cfg.Proxy)
+	proxyCfg := config.ResolveScraperProxy(globalProxyVal, cfg.Proxy)
 
 	// Use timeout from ScraperConfig, default to 30s
 	timeout := time.Duration(cfg.Timeout) * time.Second
@@ -30,38 +35,27 @@ func NewHTTPClient(cfg *config.ScraperConfig, globalProxy *config.ProxyConfig, u
 		retryCount = 3
 	}
 
-	// When cfg.FlareSolverr.Enabled is true, the ScraperConfig has been set up
-	// with FlareSolverr.Enabled=true (via useFlareSolverr bool in javlibrary.go).
-	// In this case, proxy must be enabled so buildFlareSolverrRequestProxy sets
-	// fs.requestProxy for HTTP CONNECT tunneling to the FlareSolverr proxy server.
+	// When useFlareSolverr is true (passed from javlibrary.go based on
+	// scraperCfg.UseFlareSolverr), the FlareSolverr client will be initialized.
+	// Proxy profile is used directly by NewRestyClientWithFlareSolverr via buildFlareSolverrRequestProxy.
 	var client *resty.Client
 	var fs *httpclient.FlareSolverr
 	var err error
 
-	if cfg.FlareSolverr.Enabled {
-		// When using FlareSolverr, we need to ensure:
-		// 1. proxyWithFlareSolverr.Enabled is true so buildFlareSolverrRequestProxy works
-		// 2. The FlareSolverr server has access to the global proxy to reach target sites
-		// Use global proxy URL if scraper-specific proxy URL is empty but global proxy has one
-		flareProxyURL := proxyCfg.URL
-		flareUsername := proxyCfg.Username
-		flarePassword := proxyCfg.Password
-		if flareProxyURL == "" && globalProxy.URL != "" {
-			// Scraper has no proxy override; use global proxy for FlareSolverr
-			flareProxyURL = globalProxy.URL
-			flareUsername = globalProxy.Username
-			flarePassword = globalProxy.Password
+	if useFlareSolverr {
+		// Use global proxy profile if scraper-specific proxy URL is empty but global proxy has one
+		proxyForFS := proxyCfg
+		if proxyCfg.URL == "" {
+			globalProfile := config.ResolveGlobalProxy(globalProxyVal)
+			if globalProfile != nil && globalProfile.URL != "" {
+				proxyForFS = globalProfile
+			}
 		}
 
-		proxyWithFlareSolverr := &config.ProxyConfig{
-			Enabled:      true, // Must be true so buildFlareSolverrRequestProxy sets fs.requestProxy
-			URL:          flareProxyURL,
-			Username:     flareUsername,
-			Password:     flarePassword,
-			FlareSolverr: cfg.FlareSolverr,
-		}
+		// Pass FlareSolverr config separately since it's no longer embedded in ProxyConfig
 		client, fs, err = httpclient.NewRestyClientWithFlareSolverr(
-			proxyWithFlareSolverr,
+			proxyForFS,
+			cfg.FlareSolverr,
 			timeout,
 			retryCount,
 		)

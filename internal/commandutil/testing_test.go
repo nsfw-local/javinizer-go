@@ -132,8 +132,8 @@ func (m *mockScraper) IsEnabled() bool {
 }
 
 // Config returns a minimal ScraperConfig for the mock scraper.
-func (m *mockScraper) Config() *config.ScraperConfig {
-	return &config.ScraperConfig{
+func (m *mockScraper) Config() *config.ScraperSettings {
+	return &config.ScraperSettings{
 		Enabled: true,
 	}
 }
@@ -844,8 +844,8 @@ func (m *MockScraper) Close() error {
 }
 
 // Config returns a minimal ScraperConfig for the mock scraper
-func (m *MockScraper) Config() *config.ScraperConfig {
-	return &config.ScraperConfig{Enabled: m.enabled}
+func (m *MockScraper) Config() *config.ScraperSettings {
+	return &config.ScraperSettings{Enabled: m.enabled}
 }
 
 // createMockScraperRegistry creates a scraper registry with mock scrapers for testing

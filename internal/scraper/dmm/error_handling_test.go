@@ -56,12 +56,10 @@ func TestErrorMessages_ContainScraperName(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			cfg := &config.Config{
-				Scrapers: config.ScrapersConfig{
-					DMM: config.DMMConfig{Enabled: true},
-				},
+			settings := config.ScraperSettings{
+				Enabled: true,
 			}
-			scraper := New(cfg, nil) // nil repo to trigger errors
+			scraper := New(settings, nil, &config.ProxyConfig{}, config.FlareSolverrConfig{}) // nil repo to trigger errors
 
 			err := tt.triggerFunc(scraper)
 
@@ -78,12 +76,10 @@ func TestErrorMessages_ContainScraperName(t *testing.T) {
 
 // TestErrorMessages_NoSensitiveData ensures no API keys or internal paths in errors
 func TestErrorMessages_NoSensitiveData(t *testing.T) {
-	cfg := &config.Config{
-		Scrapers: config.ScrapersConfig{
-			DMM: config.DMMConfig{Enabled: true},
-		},
+	settings := config.ScraperSettings{
+		Enabled: true,
 	}
-	scraper := New(cfg, nil)
+	scraper := New(settings, nil, &config.ProxyConfig{}, config.FlareSolverrConfig{})
 
 	// Trigger various errors and check none leak sensitive data
 	sensitivePatterns := []string{
@@ -151,14 +147,12 @@ func TestResolveContentID_ErrorCases(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			cfg := &config.Config{
-				Scrapers: config.ScrapersConfig{
-					DMM: config.DMMConfig{Enabled: true},
-				},
+			settings := config.ScraperSettings{
+				Enabled: true,
 			}
 
 			repo := tt.setupRepo()
-			scraper := New(cfg, repo)
+			scraper := New(settings, repo, &config.ProxyConfig{}, config.FlareSolverrConfig{})
 
 			contentID, err := scraper.ResolveContentID(tt.movieID)
 
@@ -195,10 +189,8 @@ func TestGetURL_ErrorPropagation(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			cfg := &config.Config{
-				Scrapers: config.ScrapersConfig{
-					DMM: config.DMMConfig{Enabled: true},
-				},
+			settings := config.ScraperSettings{
+				Enabled: true,
 			}
 
 			var repo *database.ContentIDMappingRepository
@@ -206,7 +198,7 @@ func TestGetURL_ErrorPropagation(t *testing.T) {
 				repo = database.NewContentIDMappingRepository(nil)
 			}
 
-			scraper := New(cfg, repo)
+			scraper := New(settings, repo, &config.ProxyConfig{}, config.FlareSolverrConfig{})
 
 			url, err := scraper.GetURL(tt.movieID)
 
@@ -237,12 +229,10 @@ func TestSearch_ErrorHandling(t *testing.T) {
 			name:    "GetURL failure propagates",
 			movieID: "INVALID-123",
 			setupFunc: func() (*Scraper, func()) {
-				cfg := &config.Config{
-					Scrapers: config.ScrapersConfig{
-						DMM: config.DMMConfig{Enabled: true},
-					},
+				settings := config.ScraperSettings{
+					Enabled: true,
 				}
-				scraper := New(cfg, nil) // nil repo causes GetURL to fail
+				scraper := New(settings, nil, &config.ProxyConfig{}, config.FlareSolverrConfig{}) // nil repo causes GetURL to fail
 				return scraper, func() {}
 			},
 			wantErr:     true,
@@ -273,12 +263,10 @@ func TestSearch_ErrorHandling(t *testing.T) {
 
 // Benchmark_ErrorHandling measures performance of error path
 func Benchmark_ErrorHandling(b *testing.B) {
-	cfg := &config.Config{
-		Scrapers: config.ScrapersConfig{
-			DMM: config.DMMConfig{Enabled: true},
-		},
+	settings := config.ScraperSettings{
+		Enabled: true,
 	}
-	scraper := New(cfg, nil)
+	scraper := New(settings, nil, &config.ProxyConfig{}, config.FlareSolverrConfig{})
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {

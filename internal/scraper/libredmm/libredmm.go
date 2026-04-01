@@ -62,7 +62,6 @@ type moviePayload struct {
 // Scraper implements the LibreDMM scraper.
 type Scraper struct {
 	client          *resty.Client
-	cfg             *config.LibreDMMConfig
 	enabled         bool
 	baseURL         string
 	requestDelay    time.Duration
@@ -71,33 +70,41 @@ type Scraper struct {
 	lastRequestTime atomic.Value
 	pollInterval    time.Duration
 	maxPollAttempts int
+	settings        config.ScraperSettings // stores the full settings for Config() method
 }
 
 // New creates a new LibreDMM scraper.
-func New(cfg *config.Config) *Scraper {
-	scraperCfg := cfg.Scrapers.LibreDMM
-	proxyCfg := config.ResolveScraperProxy(cfg.Scrapers.Proxy, scraperCfg.Proxy)
+func New(settings config.ScraperSettings, globalProxy *config.ProxyConfig, globalFlareSolverr config.FlareSolverrConfig) *Scraper {
+	// Handle nil globalProxy to avoid dereference panic
+	globalProxyVal := config.ProxyConfig{}
+	if globalProxy != nil {
+		globalProxyVal = *globalProxy
+	}
+	proxyCfg := config.ResolveScraperProxy(globalProxyVal, settings.Proxy)
 
 	// Build ScraperConfig for HTTP client (HTTP-01 pattern)
-	configForHTTP := &config.ScraperConfig{
-		Enabled:          scraperCfg.Enabled,
-		Timeout:          30,
-		RateLimit:        scraperCfg.RequestDelay,
-		RetryCount:       3,
-		UseFakeUserAgent: scraperCfg.UseFakeUserAgent,
-		UserAgent:        scraperCfg.FakeUserAgent,
-		Proxy:            scraperCfg.Proxy,
-		DownloadProxy:    scraperCfg.DownloadProxy,
+	configForHTTP := &config.ScraperSettings{
+		Enabled:       settings.Enabled,
+		Timeout:       30,
+		RateLimit:     settings.RateLimit,
+		RetryCount:    3,
+		UserAgent:     settings.UserAgent,
+		Proxy:         settings.Proxy,
+		DownloadProxy: settings.DownloadProxy,
 	}
 
-	client, err := NewHTTPClient(configForHTTP, &cfg.Scrapers.Proxy)
-	usingProxy := err == nil && proxyCfg.Enabled && strings.TrimSpace(proxyCfg.URL) != ""
+	client, err := NewHTTPClient(configForHTTP, globalProxy, globalFlareSolverr)
+	proxyEnabled := globalProxy != nil && globalProxy.Enabled
+	if settings.Proxy != nil && settings.Proxy.Enabled {
+		proxyEnabled = true
+	}
+	usingProxy := err == nil && proxyEnabled && strings.TrimSpace(proxyCfg.URL) != ""
 	if err != nil {
 		logging.Errorf("LibreDMM: Failed to create HTTP client with proxy: %v, using explicit no-proxy fallback", err)
 		client = httpclient.NewRestyClientNoProxy(30*time.Second, 3)
 	}
 
-	base := strings.TrimSpace(scraperCfg.BaseURL)
+	base := strings.TrimSpace(settings.BaseURL)
 	if base == "" {
 		base = defaultBaseURL
 	}
@@ -105,14 +112,14 @@ func New(cfg *config.Config) *Scraper {
 
 	s := &Scraper{
 		client:          client,
-		cfg:             &cfg.Scrapers.LibreDMM,
-		enabled:         scraperCfg.Enabled,
+		enabled:         settings.Enabled,
 		baseURL:         base,
-		requestDelay:    time.Duration(scraperCfg.RequestDelay) * time.Millisecond,
-		proxyOverride:   scraperCfg.Proxy,
-		downloadProxy:   scraperCfg.DownloadProxy,
+		requestDelay:    time.Duration(settings.RateLimit) * time.Millisecond,
+		proxyOverride:   settings.Proxy,
+		downloadProxy:   settings.DownloadProxy,
 		pollInterval:    defaultPollInterval,
 		maxPollAttempts: defaultPollAttempts,
+		settings:        settings,
 	}
 	s.lastRequestTime.Store(time.Time{})
 
@@ -130,18 +137,8 @@ func (s *Scraper) Name() string { return "libredmm" }
 func (s *Scraper) IsEnabled() bool { return s.enabled }
 
 // Config returns the scraper's configuration
-func (s *Scraper) Config() *config.ScraperConfig {
-	return &config.ScraperConfig{
-		Enabled:          s.cfg.Enabled,
-		RateLimit:        s.cfg.RequestDelay,
-		Timeout:          30,
-		RetryCount:       3,
-		UseFakeUserAgent: s.cfg.UseFakeUserAgent,
-		UserAgent:        s.cfg.FakeUserAgent,
-		Proxy:            s.cfg.Proxy,
-		DownloadProxy:    s.cfg.DownloadProxy,
-		Extra:            make(map[string]any),
-	}
+func (s *Scraper) Config() *config.ScraperSettings {
+	return s.settings.DeepCopy()
 }
 
 // Close cleans up resources held by the scraper
@@ -151,7 +148,7 @@ func (s *Scraper) Close() error {
 
 // ValidateConfig validates the scraper configuration.
 // Returns error if config is invalid, nil if valid.
-func (s *Scraper) ValidateConfig(cfg *config.ScraperConfig) error {
+func (s *Scraper) ValidateConfig(cfg *config.ScraperSettings) error {
 	if cfg == nil {
 		return fmt.Errorf("libredmm: config is nil")
 	}
@@ -720,7 +717,18 @@ func isHTTPURL(v string) bool {
 }
 
 func init() {
-	scraper.RegisterScraper("libredmm", func(cfg *config.Config, db *database.DB) (models.Scraper, error) {
-		return New(cfg), nil
+	scraper.RegisterScraper("libredmm", func(settings config.ScraperSettings, db *database.DB, globalProxy *config.ProxyConfig, globalFlareSolverr config.FlareSolverrConfig) (models.Scraper, error) {
+		return New(settings, globalProxy, globalFlareSolverr), nil
+	})
+	// Register default settings and priority
+	scraper.RegisterScraperDefaults("libredmm", scraper.DefaultSettings{
+		Settings: config.ScraperSettings{
+			Enabled:   false,
+			RateLimit: 1000,
+			Extra: map[string]any{
+				"base_url": "https://www.libredmm.com",
+			},
+		},
+		Priority: 95,
 	})
 }

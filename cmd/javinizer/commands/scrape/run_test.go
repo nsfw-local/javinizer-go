@@ -12,6 +12,9 @@ import (
 	"github.com/javinizer/javinizer-go/internal/models"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	// Register scraper defaults for NormalizeScraperConfigs
+	_ "github.com/javinizer/javinizer-go/internal/scraper/dmm"
 )
 
 // Integration Tests for Run() Function (Epic 7 Story 7.2)
@@ -66,8 +69,8 @@ func (m *MockScraper) Close() error {
 	return nil
 }
 
-func (m *MockScraper) Config() *config.ScraperConfig {
-	return &config.ScraperConfig{Enabled: true}
+func (m *MockScraper) Config() *config.ScraperSettings {
+	return &config.ScraperSettings{Enabled: true}
 }
 
 // setupTestDB creates a temporary database and config for testing
@@ -138,7 +141,6 @@ func TestRun_ConfigNotFound(t *testing.T) {
 }
 
 // TestRun_CacheHit tests that Run() returns cached movie without scraping
-// UNSKIPPED in Epic 8 Story 8.3: aggregator.NewWithOptions() enables testable aggregator initialization
 func TestRun_CacheHit(t *testing.T) {
 	if testing.Short() {
 		t.Skip("integration test")
@@ -180,7 +182,6 @@ func TestRun_CacheHit(t *testing.T) {
 }
 
 // TestRun_ForceRefresh tests that --force flag clears cache and scrapes fresh
-// UNSKIPPED in Epic 8 Story 8.3: aggregator.NewWithOptions() enables testable aggregator initialization
 func TestRun_ForceRefresh(t *testing.T) {
 	if testing.Short() {
 		t.Skip("integration test")
@@ -227,7 +228,6 @@ func TestRun_ForceRefresh(t *testing.T) {
 }
 
 // TestRun_CustomScrapers tests --scrapers flag overrides config priority
-// UNSKIPPED in Epic 8 Story 8.3: aggregator.NewWithOptions() enables testable aggregator initialization
 func TestRun_CustomScrapers(t *testing.T) {
 	if testing.Short() {
 		t.Skip("integration test")
@@ -330,7 +330,6 @@ matching:
 }
 
 // TestRun_EmptyResults tests error handling when no scrapers return results
-// UNSKIPPED in Epic 8 Story 8.3: aggregator.NewWithOptions() enables testable aggregator initialization
 func TestRun_EmptyResults(t *testing.T) {
 	if testing.Short() {
 		t.Skip("integration test")
@@ -368,7 +367,6 @@ func TestRun_EmptyResults(t *testing.T) {
 }
 
 // TestRun_Aggregation tests that multiple scraper results are aggregated correctly
-// UNSKIPPED in Epic 8 Story 8.3: aggregator.NewWithOptions() enables testable aggregator initialization
 func TestRun_Aggregation(t *testing.T) {
 	if testing.Short() {
 		t.Skip("integration test")
@@ -411,7 +409,6 @@ func TestRun_Aggregation(t *testing.T) {
 }
 
 // TestRun_DatabaseSave tests that scraped movie is persisted to database
-// UNSKIPPED in Epic 8 Story 8.3: aggregator.NewWithOptions() enables testable aggregator initialization
 func TestRun_DatabaseSave(t *testing.T) {
 	if testing.Short() {
 		t.Skip("integration test")
@@ -456,7 +453,6 @@ func TestRun_DatabaseSave(t *testing.T) {
 }
 
 // TestRun_FlagOverrides tests that flag overrides are applied to config
-// UNSKIPPED in Epic 8 Story 8.3: aggregator.NewWithOptions() enables testable aggregator initialization
 func TestRun_FlagOverrides(t *testing.T) {
 	if testing.Short() {
 		t.Skip("integration test")
@@ -474,7 +470,8 @@ func TestRun_FlagOverrides(t *testing.T) {
 	require.NoError(t, err)
 
 	// Verify initial state
-	assert.False(t, cfg.Scrapers.DMM.ScrapeActress, "Should start as false")
+	cfg.Scrapers.NormalizeScraperConfigs()
+	assert.False(t, cfg.Scrapers.Overrides["dmm"].GetBoolExtra("scrape_actress", false), "Should start as false")
 
 	// Create mock dependencies using Epic 6/8 pattern
 	registry := models.NewScraperRegistry()
@@ -513,8 +510,9 @@ func TestRun_EnvironmentOverridesValidated(t *testing.T) {
 	movie, results, err := scrape.Run(cmd, []string{"TEST-ENV"}, tmpFile, nil)
 
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "invalid configuration after CLI overrides")
-	assert.Contains(t, err.Error(), "metadata.translation.provider")
+	// Validation now happens earlier (during config load/env override application)
+	assert.Contains(t, err.Error(), "failed to load config")
+	assert.Contains(t, err.Error(), "invalid configuration")
 	assert.Nil(t, movie)
 	assert.Nil(t, results)
 }

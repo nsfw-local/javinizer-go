@@ -42,49 +42,51 @@ var (
 type Scraper struct {
 	client          *resty.Client
 	flaresolverr    *httpclient.FlareSolverr
-	cfg             *config.JavDBConfig
 	enabled         bool
 	baseURL         string
 	requestDelay    time.Duration
 	proxyOverride   *config.ProxyConfig
 	downloadProxy   *config.ProxyConfig
 	lastRequestTime atomic.Value
+	settings        config.ScraperSettings // stores the full settings for Config() method
 }
 
 // New creates a new JavDB scraper.
-func New(cfg *config.Config) *Scraper {
-	scraperCfg := cfg.Scrapers.JavDB
-
+func New(settings config.ScraperSettings, globalProxy *config.ProxyConfig, globalFlareSolverr config.FlareSolverrConfig) *Scraper {
 	// Create scraper config for HTTP client ownership (HTTP-01)
-	// HTTP-03: FlareSolverr enabled if scraper config says so, inherits global settings
-	flareSolverrCfg := cfg.Scrapers.Proxy.FlareSolverr
-	if scraperCfg.UseFlareSolverr {
+	// HTTP-03: FlareSolverr inherits global settings; per-scraper can only override if global is enabled
+	flareSolverrCfg := globalFlareSolverr
+	if globalFlareSolverr.Enabled && settings.FlareSolverr.Enabled {
+		// Per-scraper override only works when global is enabled
 		flareSolverrCfg.Enabled = true
 	}
-	avdbScraperCfg := &config.ScraperConfig{
-		Enabled:          scraperCfg.Enabled,
-		Timeout:          30, // default
-		RateLimit:        scraperCfg.RequestDelay,
-		RetryCount:       3, // default
-		UseFakeUserAgent: scraperCfg.UseFakeUserAgent,
-		UserAgent:        scraperCfg.FakeUserAgent,
-		Proxy:            scraperCfg.Proxy,
-		DownloadProxy:    scraperCfg.DownloadProxy,
-		FlareSolverr:     flareSolverrCfg,
-		Extra:            make(map[string]any),
+	avdbScraperCfg := &config.ScraperSettings{
+		Enabled:       settings.Enabled,
+		Timeout:       30, // default
+		RateLimit:     settings.RateLimit,
+		RetryCount:    3, // default
+		UserAgent:     settings.UserAgent,
+		Proxy:         settings.Proxy,
+		DownloadProxy: settings.DownloadProxy,
+		FlareSolverr:  flareSolverrCfg,
+		Extra:         make(map[string]any),
 	}
 
 	// Create HTTP client and FlareSolverr via per-scraper NewHTTPClient (HTTP-01, HTTP-03)
-	client, flaresolverr, err := NewHTTPClient(avdbScraperCfg, &cfg.Scrapers.Proxy)
-	proxyCfg := config.ResolveScraperProxy(cfg.Scrapers.Proxy, scraperCfg.Proxy)
-	usingProxy := err == nil && proxyCfg.Enabled && strings.TrimSpace(proxyCfg.URL) != ""
+	client, flaresolverr, err := NewHTTPClient(avdbScraperCfg, globalProxy, globalFlareSolverr)
+	proxyEnabled := globalProxy.Enabled
+	if settings.Proxy != nil && settings.Proxy.Enabled {
+		proxyEnabled = true
+	}
+	proxyCfg := config.ResolveScraperProxy(*globalProxy, settings.Proxy)
+	usingProxy := err == nil && proxyEnabled && strings.TrimSpace(proxyCfg.URL) != ""
 	if err != nil {
 		logging.Errorf("JavDB: Failed to create HTTP client with proxy/flaresolverr: %v, using explicit no-proxy fallback", err)
 		client = httpclient.NewRestyClientNoProxy(30*time.Second, 3)
 		flaresolverr = nil
 	}
 
-	baseURL := scraperCfg.BaseURL
+	baseURL := settings.BaseURL
 	if baseURL == "" {
 		baseURL = defaultBaseURL
 	}
@@ -92,12 +94,12 @@ func New(cfg *config.Config) *Scraper {
 	s := &Scraper{
 		client:        client,
 		flaresolverr:  flaresolverr,
-		cfg:           &scraperCfg,
-		enabled:       scraperCfg.Enabled,
+		enabled:       settings.Enabled,
 		baseURL:       strings.TrimRight(baseURL, "/"),
-		requestDelay:  time.Duration(scraperCfg.RequestDelay) * time.Millisecond,
-		proxyOverride: scraperCfg.Proxy,
-		downloadProxy: scraperCfg.DownloadProxy,
+		requestDelay:  time.Duration(settings.RateLimit) * time.Millisecond,
+		proxyOverride: settings.Proxy,
+		downloadProxy: settings.DownloadProxy,
+		settings:      settings,
 	}
 
 	s.lastRequestTime.Store(time.Time{})
@@ -105,8 +107,8 @@ func New(cfg *config.Config) *Scraper {
 	if usingProxy {
 		logging.Infof("JavDB: Using proxy %s", httpclient.SanitizeProxyURL(proxyCfg.URL))
 	}
-	if scraperCfg.UseFlareSolverr && flaresolverr == nil {
-		logging.Warn("JavDB: use_flaresolverr=true but no FlareSolverr client is configured")
+	if settings.FlareSolverr.Enabled && flaresolverr == nil {
+		logging.Warn("JavDB: flaresolverr.enabled=true but no FlareSolverr client is configured")
 	}
 
 	return s
@@ -123,18 +125,8 @@ func (s *Scraper) IsEnabled() bool {
 }
 
 // Config returns the scraper's configuration
-func (s *Scraper) Config() *config.ScraperConfig {
-	return &config.ScraperConfig{
-		Enabled:          s.cfg.Enabled,
-		RateLimit:        s.cfg.RequestDelay,
-		UseFakeUserAgent: s.cfg.UseFakeUserAgent,
-		UserAgent:        s.cfg.FakeUserAgent,
-		Proxy:            s.cfg.Proxy,
-		DownloadProxy:    s.cfg.DownloadProxy,
-		// HTTP-03: FlareSolverr from ScraperConfig directly
-		FlareSolverr: s.cfg.Proxy.FlareSolverr,
-		Extra:        make(map[string]any),
-	}
+func (s *Scraper) Config() *config.ScraperSettings {
+	return s.settings.DeepCopy()
 }
 
 // Close cleans up resources held by the scraper (HTTP client, FlareSolverr).
@@ -149,7 +141,7 @@ func (s *Scraper) Close() error {
 
 // ValidateConfig validates the scraper configuration.
 // Returns error if config is invalid, nil if valid.
-func (s *Scraper) ValidateConfig(cfg *config.ScraperConfig) error {
+func (s *Scraper) ValidateConfig(cfg *config.ScraperSettings) error {
 	if cfg == nil {
 		return fmt.Errorf("javdb: config is nil")
 	}
@@ -323,7 +315,7 @@ func (s *Scraper) fetchPage(targetURL string) (string, error) {
 		logging.Debugf("JavDB: Direct request returned status %d for %s", resp.StatusCode(), targetURL)
 	}
 
-	if s.cfg.UseFlareSolverr && s.flaresolverr != nil {
+	if s.settings.FlareSolverr.Enabled && s.flaresolverr != nil {
 		logging.Debugf("JavDB: Resolving via FlareSolverr: %s", targetURL)
 		html, cookies, fsErr := s.flaresolverr.ResolveURL(targetURL)
 		if fsErr == nil {
@@ -1048,7 +1040,15 @@ func extractTrailerURL(doc *goquery.Document, baseURL string) string {
 }
 
 func init() {
-	scraper.RegisterScraper("javdb", func(cfg *config.Config, db *database.DB) (models.Scraper, error) {
-		return New(cfg), nil
+	scraper.RegisterScraper("javdb", func(settings config.ScraperSettings, db *database.DB, globalProxy *config.ProxyConfig, globalFlareSolverr config.FlareSolverrConfig) (models.Scraper, error) {
+		return New(settings, globalProxy, globalFlareSolverr), nil
+	})
+	// Register default settings and priority
+	scraper.RegisterScraperDefaults("javdb", scraper.DefaultSettings{
+		Settings: config.ScraperSettings{
+			Enabled:   false,
+			RateLimit: 1000,
+		},
+		Priority: 75,
 	})
 }

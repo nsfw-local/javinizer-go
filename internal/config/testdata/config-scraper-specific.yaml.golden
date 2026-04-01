@@ -1,0 +1,78 @@
+# Golden file for testing config round-trip with scraper-specific fields
+# Tests that per-scraper unique fields are preserved in YAML round-trip
+
+scrapers:
+    user_agent: Javinizer-Scraper-Test/1.0
+    referer: https://www.dmm.co.jp/
+    timeout_seconds: 45
+    request_timeout_seconds: 90
+    priority:
+        - r18dev
+        - dmm
+        - javlibrary
+    flaresolverr:
+        enabled: false
+        url: ""
+        timeout: 30
+        max_retries: 3
+        session_ttl: 300
+    proxy:
+        enabled: false
+        url: ""
+        username: ""
+        password: ""
+        use_main_proxy: false
+        default_profile: ""
+        profiles: {}
+    r18dev:
+        enabled: true
+        language: en
+        request_delay: 2000
+        max_retries: 5
+        respect_retry_after: true
+        timeout: 30
+        rate_limit: 2000
+        retry_count: 5
+        user_agent: ""
+        extra:
+            respect_retry_after: true
+        flaresolverr:
+            enabled: false
+            url: ""
+            timeout: 0
+            max_retries: 0
+            session_ttl: 0
+    dmm:
+        enabled: true
+        scrape_actress: true
+        enable_browser: true
+        browser_timeout: 45
+        language: ja
+        timeout: 30
+        rate_limit: 0
+        retry_count: 3
+        user_agent: ""
+        extra:
+            browser_timeout: 45
+            enable_browser: true
+            scrape_actress: true
+        flaresolverr:
+            enabled: false
+            url: ""
+            timeout: 0
+            max_retries: 0
+            session_ttl: 0
+    javlibrary:
+        enabled: true
+        language: en
+        timeout: 30
+        rate_limit: 0
+        retry_count: 3
+        user_agent: ""
+        base_url: "https://javlibrary.com"
+        flaresolverr:
+            enabled: true
+            url: "http://localhost:8191/v1"
+            timeout: 45
+            max_retries: 3
+            session_ttl: 300

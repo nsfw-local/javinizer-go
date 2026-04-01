@@ -67,8 +67,8 @@ func (s *runBatchTestScraper) ResolveSearchQuery(input string) (string, bool) {
 
 func (s *runBatchTestScraper) Close() error { return nil }
 
-func (s *runBatchTestScraper) Config() *config.ScraperConfig {
-	return &config.ScraperConfig{Enabled: s.enabled}
+func (s *runBatchTestScraper) Config() *config.ScraperSettings {
+	return &config.ScraperSettings{Enabled: s.enabled}
 }
 
 func newRunBatchTestEnv(t *testing.T, scraperName string) (*config.Config, *database.DB, *database.MovieRepository, *aggregator.Aggregator, *matcher.Matcher) {
@@ -84,13 +84,7 @@ func newRunBatchTestEnv(t *testing.T, scraperName string) (*config.Config, *data
 		},
 		Metadata: config.MetadataConfig{
 			Priority: config.PriorityConfig{
-				ID:          []string{scraperName},
-				ContentID:   []string{scraperName},
-				Title:       []string{scraperName},
-				Description: []string{scraperName},
-				Maker:       []string{scraperName},
-				Actress:     []string{scraperName},
-				Genre:       []string{scraperName},
+				Priority: []string{scraperName},
 			},
 			NFO: config.NFOConfig{
 				FilenameTemplate: "<ID>.nfo",
@@ -104,6 +98,9 @@ func newRunBatchTestEnv(t *testing.T, scraperName string) (*config.Config, *data
 		},
 		Logging: config.LoggingConfig{
 			Level: "error",
+		},
+		System: config.SystemConfig{
+			TempDir: "data/temp",
 		},
 	}
 
@@ -320,6 +317,66 @@ func TestRunBatchScrapeOnce_RetriesOriginalIDAfterMappedQueryFails(t *testing.T)
 	}
 	if cached.Title != "Recovered Title" {
 		t.Fatalf("cached.Title = %q", cached.Title)
+	}
+}
+
+func TestRunBatchScrapeOnce_DefaultModeUsesConfiguredScraperPriority(t *testing.T) {
+	cfg, db, movieRepo, _, fileMatcher := newRunBatchTestEnv(t, "r18dev")
+	cfg.Scrapers.Priority = []string{"r18dev", "dmm"}
+	cfg.Metadata.Priority.Priority = []string{"r18dev", "dmm"}
+	agg := aggregator.NewWithDatabase(cfg, db)
+
+	registry := models.NewScraperRegistry()
+	// Register in opposite order so test validates config priority, not registration order.
+	registry.Register(&runBatchTestScraper{
+		name:     "dmm",
+		enabled:  true,
+		mappings: map[string]string{},
+		results: map[string]*models.ScraperResult{
+			"ABC-123": testRunBatchResult("dmm", "ABC-123", "DMM Title", "abc123"),
+		},
+		errors: map[string]error{},
+	})
+	registry.Register(&runBatchTestScraper{
+		name:     "r18dev",
+		enabled:  true,
+		mappings: map[string]string{},
+		results: map[string]*models.ScraperResult{
+			"ABC-123": testRunBatchResult("r18dev", "ABC-123", "R18 Title", "abc123"),
+		},
+		errors: map[string]error{},
+	})
+
+	filePath := filepath.Join(t.TempDir(), "ABC-123.mp4")
+	movie, result, err := RunBatchScrapeOnce(
+		context.Background(),
+		&BatchJob{ID: "job-default-priority"},
+		filePath,
+		0,
+		"",
+		registry,
+		agg,
+		movieRepo,
+		fileMatcher,
+		nil,
+		"test-agent",
+		"test-ref",
+		false,
+		false,
+		nil, // default mode (no manual/custom scrapers)
+		nil,
+		cfg,
+		"prefer-scraper",
+		"merge",
+	)
+	if err != nil {
+		t.Fatalf("RunBatchScrapeOnce() error = %v", err)
+	}
+	if result.Status != JobStatusCompleted {
+		t.Fatalf("result.Status = %q, want completed", result.Status)
+	}
+	if movie.SourceName != "r18dev" {
+		t.Fatalf("movie.SourceName = %q, want r18dev", movie.SourceName)
 	}
 }
 

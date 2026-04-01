@@ -2,6 +2,7 @@ package javdb
 
 import (
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -23,6 +24,28 @@ func (rt *errorRoundTripper) RoundTrip(*http.Request) (*http.Response, error) {
 	return nil, rt.err
 }
 
+type staticRoundTripper struct {
+	responses map[string]string
+}
+
+func (s *staticRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
+	if body, ok := s.responses[req.URL.String()]; ok {
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     make(http.Header),
+			Body:       io.NopCloser(strings.NewReader(body)),
+			Request:    req,
+		}, nil
+	}
+
+	return &http.Response{
+		StatusCode: http.StatusNotFound,
+		Header:     make(http.Header),
+		Body:       io.NopCloser(strings.NewReader("not found")),
+		Request:    req,
+	}, nil
+}
+
 func docFromHTML(t *testing.T, raw string) *goquery.Document {
 	t.Helper()
 	doc, err := goquery.NewDocumentFromReader(strings.NewReader(raw))
@@ -33,8 +56,8 @@ func docFromHTML(t *testing.T, raw string) *goquery.Document {
 }
 
 func TestResolveDownloadProxyForHost(t *testing.T) {
-	downloadProxy := &config.ProxyConfig{Enabled: true, URL: "http://download.example:8080"}
-	overrideProxy := &config.ProxyConfig{Enabled: true, URL: "http://override.example:8080"}
+	downloadProxy := &config.ProxyConfig{Enabled: true, Profile: "download", Profiles: map[string]config.ProxyProfile{"download": {URL: "http://download.example:8080"}}}
+	overrideProxy := &config.ProxyConfig{Enabled: true, Profile: "override", Profiles: map[string]config.ProxyProfile{"override": {URL: "http://override.example:8080"}}}
 	scraper := &Scraper{
 		downloadProxy: downloadProxy,
 		proxyOverride: overrideProxy,
@@ -74,10 +97,10 @@ func TestFindDetailURL_Fallbacks(t *testing.T) {
 
 		scraper := &Scraper{
 			client:       client,
-			cfg:          &config.JavDBConfig{Enabled: true},
 			enabled:      true,
 			baseURL:      "https://javdb.test",
 			requestDelay: 0,
+			settings:     config.ScraperSettings{Enabled: true},
 		}
 		scraper.lastRequestTime.Store(time.Time{})
 
@@ -100,10 +123,10 @@ func TestFindDetailURL_Fallbacks(t *testing.T) {
 
 		scraper := &Scraper{
 			client:       client,
-			cfg:          &config.JavDBConfig{Enabled: true},
 			enabled:      true,
 			baseURL:      "https://javdb.test",
 			requestDelay: 0,
+			settings:     config.ScraperSettings{Enabled: true},
 		}
 		scraper.lastRequestTime.Store(time.Time{})
 
@@ -196,10 +219,10 @@ func TestFetchPage(t *testing.T) {
 		client := resty.New()
 		scraper := &Scraper{
 			client:       client,
-			cfg:          &config.JavDBConfig{Enabled: true},
 			enabled:      true,
 			baseURL:      server.URL,
 			requestDelay: 0,
+			settings:     config.ScraperSettings{Enabled: true},
 		}
 		scraper.lastRequestTime.Store(time.Time{})
 
@@ -218,10 +241,10 @@ func TestFetchPage(t *testing.T) {
 
 		scraper := &Scraper{
 			client:       client,
-			cfg:          &config.JavDBConfig{Enabled: true},
 			enabled:      true,
 			baseURL:      "https://javdb.test",
 			requestDelay: 0,
+			settings:     config.ScraperSettings{Enabled: true},
 		}
 		scraper.lastRequestTime.Store(time.Time{})
 

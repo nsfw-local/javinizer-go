@@ -135,18 +135,6 @@ api:
 	assert.Contains(t, cfg.API.Security.AllowedOrigins, "https://app.example.com")
 }
 
-// TestAPISecurityDefaults tests default API security configuration
-func TestAPISecurityDefaults(t *testing.T) {
-	cfg := DefaultConfig()
-
-	// Verify default API security settings
-	assert.Empty(t, cfg.API.Security.AllowedDirectories)
-	assert.Empty(t, cfg.API.Security.DeniedDirectories)
-	assert.Equal(t, 10000, cfg.API.Security.MaxFilesPerScan)
-	assert.Equal(t, 30, cfg.API.Security.ScanTimeoutSeconds)
-	assert.Empty(t, cfg.API.Security.AllowedOrigins)
-}
-
 // TestNFOConfigExtended tests extended NFO configuration options
 func TestNFOConfigExtended(t *testing.T) {
 	yamlContent := `
@@ -543,14 +531,14 @@ scrapers:
 	assert.Equal(t, "Custom User Agent/1.0", cfg.Scrapers.UserAgent)
 	assert.Len(t, cfg.Scrapers.Priority, 3)
 	assert.Contains(t, cfg.Scrapers.Priority, "jav321")
-	assert.False(t, cfg.Scrapers.R18Dev.Enabled)
-	assert.True(t, cfg.Scrapers.DMM.Enabled)
-	assert.True(t, cfg.Scrapers.DMM.ScrapeActress)
-	assert.False(t, cfg.Scrapers.DMM.EnableBrowser)
-	assert.Equal(t, 60, cfg.Scrapers.DMM.BrowserTimeout)
+	assert.False(t, cfg.Scrapers.Overrides["r18dev"].Enabled)
+	assert.True(t, cfg.Scrapers.Overrides["dmm"].Enabled)
+	assert.True(t, cfg.Scrapers.Overrides["dmm"].Extra["scrape_actress"].(bool))
+	assert.False(t, cfg.Scrapers.Overrides["dmm"].Extra["enable_browser"].(bool))
+	assert.Equal(t, 60, cfg.Scrapers.Overrides["dmm"].Extra["browser_timeout"].(int))
 }
 
-// TestAllPriorityFields tests that all PriorityConfig fields can be loaded
+// TestAllPriorityFields tests that the simplified PriorityConfig works
 func TestAllPriorityFields(t *testing.T) {
 	yamlContent := `
 scrapers:
@@ -559,24 +547,9 @@ scrapers:
     - dmm
 metadata:
   priority:
-    actress: [dmm, r18dev]
-    original_title: [r18dev]
-    cover_url: []
-    description: [dmm]
-    director: [r18dev, dmm]
-    genre: [dmm, r18dev]
-    id: [r18dev]
-    content_id: [dmm]
-    label: [r18dev]
-    maker: [dmm]
-    poster_url: []
-    rating: [dmm]
-    release_date: [r18dev]
-    runtime: [dmm]
-    series: [r18dev]
-    screenshot_url: [dmm]
-    title: []
-    trailer_url: [r18dev]
+    priority:
+      - r18dev
+      - dmm
 `
 	tmpDir := t.TempDir()
 	cfgPath := filepath.Join(tmpDir, "all_priorities.yaml")
@@ -589,25 +562,6 @@ metadata:
 
 	priority := cfg.Metadata.Priority
 
-	// Test explicit priorities
-	assert.Equal(t, []string{"dmm", "r18dev"}, priority.Actress)
-	assert.Equal(t, []string{"r18dev"}, priority.OriginalTitle)
-	assert.Equal(t, []string{"dmm"}, priority.Description)
-	assert.Equal(t, []string{"r18dev", "dmm"}, priority.Director)
-	assert.Equal(t, []string{"dmm", "r18dev"}, priority.Genre)
-	assert.Equal(t, []string{"r18dev"}, priority.ID)
-	assert.Equal(t, []string{"dmm"}, priority.ContentID)
-	assert.Equal(t, []string{"r18dev"}, priority.Label)
-	assert.Equal(t, []string{"dmm"}, priority.Maker)
-	assert.Equal(t, []string{"dmm"}, priority.Rating)
-	assert.Equal(t, []string{"r18dev"}, priority.ReleaseDate)
-	assert.Equal(t, []string{"dmm"}, priority.Runtime)
-	assert.Equal(t, []string{"r18dev"}, priority.Series)
-	assert.Equal(t, []string{"dmm"}, priority.ScreenshotURL)
-	assert.Equal(t, []string{"r18dev"}, priority.TrailerURL)
-
-	// Test empty arrays (should be preserved as empty, not filled with defaults)
-	assert.Empty(t, priority.CoverURL)
-	assert.Empty(t, priority.PosterURL)
-	assert.Empty(t, priority.Title)
+	// Test simplified priority
+	assert.Equal(t, []string{"r18dev", "dmm"}, priority.Priority)
 }

@@ -108,10 +108,13 @@ func TestApplyCompatibilityRules_NewerVersionReturnsErrorWithoutMutation(t *test
 }
 
 func TestNormalize_Idempotent(t *testing.T) {
+	RegisterTestScraperConfigs()
 	cfg := DefaultConfig()
 	cfg.Database.Type = " SQLITE "
-	cfg.Scrapers.R18Dev.Language = ""
-	cfg.Scrapers.JavLibrary.Language = " JA "
+	// Populate Overrides from scraperConfigs
+	cfg.Scrapers.NormalizeScraperConfigs()
+	cfg.Scrapers.Overrides["r18dev"].Language = ""
+	cfg.Scrapers.Overrides["javlibrary"].Language = " JA "
 	cfg.Scrapers.Referer = ""
 	cfg.Metadata.Translation.Provider = " OpenAI "
 	cfg.Metadata.Translation.TimeoutSeconds = 0
@@ -119,8 +122,8 @@ func TestNormalize_Idempotent(t *testing.T) {
 	changed := Normalize(cfg)
 	require.True(t, changed)
 	assert.Equal(t, "sqlite", cfg.Database.Type)
-	assert.Equal(t, "en", cfg.Scrapers.R18Dev.Language)
-	assert.Equal(t, "ja", cfg.Scrapers.JavLibrary.Language)
+	assert.Equal(t, "en", cfg.Scrapers.Overrides["r18dev"].Language)
+	assert.Equal(t, "ja", cfg.Scrapers.Overrides["javlibrary"].Language)
 	assert.Equal(t, "https://www.dmm.co.jp/", cfg.Scrapers.Referer)
 	assert.Equal(t, "openai", cfg.Metadata.Translation.Provider)
 	assert.Equal(t, 60, cfg.Metadata.Translation.TimeoutSeconds)
@@ -149,7 +152,8 @@ func TestPrepare_RunsCompatibilityNormalizeAndValidate(t *testing.T) {
 func TestValidate_DoesNotMutateConfig(t *testing.T) {
 	cfg := DefaultConfig()
 	cfg.Database.Type = " SQLITE "
-	cfg.Scrapers.R18Dev.Language = ""
+	cfg.Scrapers.NormalizeScraperConfigs()
+	cfg.Scrapers.Overrides["r18dev"].Language = ""
 	cfg.Scrapers.Referer = ""
 
 	before := *cfg
@@ -157,7 +161,7 @@ func TestValidate_DoesNotMutateConfig(t *testing.T) {
 
 	require.NoError(t, cfg.Validate())
 	assert.Equal(t, before.Database.Type, cfg.Database.Type)
-	assert.Equal(t, before.Scrapers.R18Dev.Language, cfg.Scrapers.R18Dev.Language)
+	assert.Equal(t, before.Scrapers.Overrides["r18dev"].Language, cfg.Scrapers.Overrides["r18dev"].Language)
 	assert.Equal(t, before.Scrapers.Referer, cfg.Scrapers.Referer)
 }
 

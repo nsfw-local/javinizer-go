@@ -165,8 +165,8 @@ func (m *MockScraper) IsEnabled() bool {
 	return m.enabled
 }
 
-func (m *MockScraper) Config() *config.ScraperConfig {
-	return &config.ScraperConfig{
+func (m *MockScraper) Config() *config.ScraperSettings {
+	return &config.ScraperSettings{
 		Enabled: m.enabled,
 	}
 }

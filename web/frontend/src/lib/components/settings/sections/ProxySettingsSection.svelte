@@ -45,10 +45,10 @@
 		runProxyTest
 	}: Props = $props();
 	const scraperProxyEnabled = $derived(config?.scrapers?.proxy?.enabled ?? false);
-	const flaresolverrEnabled = $derived(scraperProxyEnabled && (config?.scrapers?.proxy?.flaresolverr?.enabled ?? false));
+	const flaresolverrEnabled = $derived(config?.scrapers?.flaresolverr?.enabled ?? false);
 </script>
 
-<SettingsSection title="Proxy Settings" description="Configure global proxy fallback and reusable proxy profiles" defaultExpanded={false}>
+<SettingsSection title="Proxy and Flaresolverr Settings" description="Configure global proxy fallback, reusable proxy profiles, and FlareSolverr for Cloudflare bypass" defaultExpanded={false}>
 	<SettingsSubsection title="Scraper Proxy">
 		<FormToggle
 			label="Enable scraper proxy"
@@ -192,12 +192,10 @@
 		<FormToggle
 			label="Enable FlareSolverr"
 			description="Use FlareSolverr to bypass Cloudflare protection (required for JavLibrary). Run FlareSolverr via Docker: docker run -p 8191:8191 ghcr.io/flaresolverr/flaresolverr:latest"
-			checked={config.scrapers.proxy?.flaresolverr?.enabled ?? false}
-			disabled={!scraperProxyEnabled}
+			checked={config.scrapers?.flaresolverr?.enabled ?? false}
 			onchange={(val) => {
-				if (!config.scrapers.proxy) config.scrapers.proxy = {};
-				if (!config.scrapers.proxy.flaresolverr) config.scrapers.proxy.flaresolverr = {};
-				config.scrapers.proxy.flaresolverr.enabled = val;
+				if (!config.scrapers.flaresolverr) config.scrapers.flaresolverr = {};
+				config.scrapers.flaresolverr.enabled = val;
 			}}
 		/>
 
@@ -205,53 +203,49 @@
 			<FormTextInput
 				label="FlareSolverr URL"
 				description="FlareSolverr API endpoint"
-				value={config.scrapers.proxy?.flaresolverr?.url ?? 'http://localhost:8191/v1'}
+				value={config.scrapers?.flaresolverr?.url ?? 'http://localhost:8191/v1'}
 				placeholder="http://localhost:8191/v1"
 				onchange={(val) => {
-					if (!config.scrapers.proxy) config.scrapers.proxy = {};
-					if (!config.scrapers.proxy.flaresolverr) config.scrapers.proxy.flaresolverr = {};
-					config.scrapers.proxy.flaresolverr.url = val;
+					if (!config.scrapers.flaresolverr) config.scrapers.flaresolverr = {};
+					config.scrapers.flaresolverr.url = val;
 				}}
 			/>
 
 			<FormNumberInput
 				label="Timeout"
 				description="Maximum time to wait for FlareSolverr to solve challenges"
-				value={config.scrapers.proxy?.flaresolverr?.timeout ?? 30}
+				value={config.scrapers?.flaresolverr?.timeout ?? 30}
 				min={5}
 				max={300}
 				unit="seconds"
 				onchange={(val) => {
-					if (!config.scrapers.proxy) config.scrapers.proxy = {};
-					if (!config.scrapers.proxy.flaresolverr) config.scrapers.proxy.flaresolverr = {};
-					config.scrapers.proxy.flaresolverr.timeout = val;
+					if (!config.scrapers.flaresolverr) config.scrapers.flaresolverr = {};
+					config.scrapers.flaresolverr.timeout = val;
 				}}
 			/>
 
 			<FormNumberInput
 				label="Max retries"
 				description="Number of retry attempts for failed FlareSolverr requests"
-				value={config.scrapers.proxy?.flaresolverr?.max_retries ?? 3}
+				value={config.scrapers?.flaresolverr?.max_retries ?? 3}
 				min={0}
 				max={10}
 				onchange={(val) => {
-					if (!config.scrapers.proxy) config.scrapers.proxy = {};
-					if (!config.scrapers.proxy.flaresolverr) config.scrapers.proxy.flaresolverr = {};
-					config.scrapers.proxy.flaresolverr.max_retries = val;
+					if (!config.scrapers.flaresolverr) config.scrapers.flaresolverr = {};
+					config.scrapers.flaresolverr.max_retries = val;
 				}}
 			/>
 
 			<FormNumberInput
 				label="Session TTL"
 				description="How long to keep FlareSolverr browser sessions alive"
-				value={config.scrapers.proxy?.flaresolverr?.session_ttl ?? 300}
+				value={config.scrapers?.flaresolverr?.session_ttl ?? 300}
 				min={60}
 				max={3600}
 				unit="seconds"
 				onchange={(val) => {
-					if (!config.scrapers.proxy) config.scrapers.proxy = {};
-					if (!config.scrapers.proxy.flaresolverr) config.scrapers.proxy.flaresolverr = {};
-					config.scrapers.proxy.flaresolverr.session_ttl = val;
+					if (!config.scrapers.flaresolverr) config.scrapers.flaresolverr = {};
+					config.scrapers.flaresolverr.session_ttl = val;
 				}}
 			/>
 

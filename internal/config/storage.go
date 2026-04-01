@@ -51,7 +51,7 @@ func decodeConfig(data []byte) (*Config, error) {
 
 	// CONF-02: Populate Overrides and flatConfigs maps from flat per-scraper structs.
 	// This enables generic iteration in Validate() without scraper-name branching.
-	cfg.Scrapers.normalizeScraperConfigs()
+	cfg.Scrapers.NormalizeScraperConfigs()
 
 	return cfg, nil
 }
@@ -494,17 +494,26 @@ func Save(cfg *Config, path string) error {
 }
 
 // LoadOrCreate loads config from file or creates it with defaults.
+// When creating a new file, it uses the embedded config.yaml.example to preserve
+// all comments and documentation, ensuring Docker and non-Docker deployments
+// generate identical commented configurations.
 func LoadOrCreate(path string) (*Config, error) {
-	cfg, err := Load(path)
-	if err != nil {
-		return nil, err
-	}
-
-	// Capture whether file existed prior to potential migration/save.
+	// Check if file exists before attempting to load
 	_, statErr := os.Stat(path)
 	fileMissing := os.IsNotExist(statErr)
 	if statErr != nil && !fileMissing {
 		return nil, fmt.Errorf("failed to stat config file: %w", statErr)
+	}
+
+	// If file doesn't exist, create from embedded config
+	if fileMissing {
+		return createConfigFromEmbedded(path)
+	}
+
+	// File exists - load and process normally
+	cfg, err := Load(path)
+	if err != nil {
+		return nil, err
 	}
 
 	changed, err := Prepare(cfg)
@@ -512,15 +521,93 @@ func LoadOrCreate(path string) (*Config, error) {
 		return nil, err
 	}
 
-	// Save when created or normalized/migrated to keep on-disk config in sync.
-	if fileMissing || changed {
+	// Save if migrations changed the config
+	if changed {
 		if err := Save(cfg, path); err != nil {
-			if fileMissing {
-				return nil, fmt.Errorf("failed to save default config: %w", err)
-			}
 			return nil, fmt.Errorf("failed to save migrated config: %w", err)
 		}
 	}
 
 	return cfg, nil
+}
+
+// createConfigFromEmbedded creates a new config file from the embedded example.
+// This preserves all comments and documentation from config.yaml.example.
+func createConfigFromEmbedded(path string) (*Config, error) {
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, DirPermConfig); err != nil {
+		return nil, fmt.Errorf("failed to create config directory: %w", err)
+	}
+
+	// Get embedded config content (raw bytes with all comments preserved)
+	embeddedData := EmbeddedConfigBytes()
+
+	// Write the raw embedded config first to preserve all comments
+	if err := atomicReplaceFile(path, embeddedData, FilePermConfig); err != nil {
+		return nil, fmt.Errorf("failed to save default config: %w", err)
+	}
+
+	// Load the config we just wrote
+	cfg, err := Load(path)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load newly created config: %w", err)
+	}
+
+	// Populate scraper overrides from registry
+	cfg.Scrapers.NormalizeScraperConfigs()
+
+	// Apply environment-based initialization overrides if any
+	if applyInitDefaultsFromEnv(cfg) {
+		// Save with overrides - mergeYAMLNode will preserve existing comments
+		if err := Save(cfg, path); err != nil {
+			return nil, fmt.Errorf("failed to save config with environment overrides: %w", err)
+		}
+	}
+
+	return cfg, nil
+}
+
+func applyInitDefaultsFromEnv(cfg *Config) bool {
+	if cfg == nil {
+		return false
+	}
+
+	changed := false
+
+	if initHost := strings.TrimSpace(os.Getenv("JAVINIZER_INIT_SERVER_HOST")); initHost != "" {
+		cfg.Server.Host = initHost
+		changed = true
+	}
+
+	if rawDirs := strings.TrimSpace(os.Getenv("JAVINIZER_INIT_ALLOWED_DIRECTORIES")); rawDirs != "" {
+		parts := strings.Split(rawDirs, ",")
+		dirs := make([]string, 0, len(parts))
+		for _, part := range parts {
+			dir := strings.TrimSpace(part)
+			if dir != "" {
+				dirs = append(dirs, dir)
+			}
+		}
+		if len(dirs) > 0 {
+			cfg.API.Security.AllowedDirectories = dirs
+			changed = true
+		}
+	}
+
+	if rawOrigins := strings.TrimSpace(os.Getenv("JAVINIZER_INIT_ALLOWED_ORIGINS")); rawOrigins != "" {
+		parts := strings.Split(rawOrigins, ",")
+		origins := make([]string, 0, len(parts))
+		for _, part := range parts {
+			origin := strings.TrimSpace(part)
+			if origin != "" {
+				origins = append(origins, origin)
+			}
+		}
+		if len(origins) > 0 {
+			cfg.API.Security.AllowedOrigins = origins
+			changed = true
+		}
+	}
+
+	return changed
 }

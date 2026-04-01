@@ -20,8 +20,7 @@ func TestAggregateBasic(t *testing.T) {
 		},
 		Metadata: config.MetadataConfig{
 			Priority: config.PriorityConfig{
-				Title:       []string{"r18dev", "dmm"},
-				Description: []string{"dmm", "r18dev"},
+				Priority: []string{"r18dev", "dmm"},
 			},
 		},
 	}
@@ -51,10 +50,11 @@ func TestAggregateBasic(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, movie)
 
+	// With simplified priorities, all fields use the same global priority
 	// Title should use r18dev (first priority)
 	assert.Equal(t, "R18 Title", movie.Title)
-	// Description should use dmm (first priority)
-	assert.Equal(t, "DMM Description", movie.Description)
+	// Description should also use r18dev (first priority - same for all fields)
+	assert.Equal(t, "R18 Description", movie.Description)
 	// ID should match
 	assert.Equal(t, "IPX-001", movie.ID)
 	// Release date should be set
@@ -86,14 +86,14 @@ func TestAggregateEmptyPriorityUsesGlobal(t *testing.T) {
 		},
 		Metadata: config.MetadataConfig{
 			Priority: config.PriorityConfig{
-				Title: []string{}, // Empty - should use global
+				Priority: []string{"r18dev", "dmm"},
 			},
 		},
 	}
 
 	agg := New(cfg)
 
-	// Verify resolved priorities
+	// Verify resolved priorities - all fields use the same global priority
 	assert.Equal(t, []string{"r18dev", "dmm"}, agg.resolvedPriorities["Title"])
 }
 
@@ -187,8 +187,7 @@ func TestValidateRequiredFields_AdditionalFields(t *testing.T) {
 				},
 			}
 
-			agg := New(cfg)
-			err := agg.validateRequiredFields(tt.movie)
+			err := validateRequiredFields(tt.movie, cfg.Metadata.RequiredFields)
 
 			if tt.expectError {
 				assert.Error(t, err)
@@ -609,7 +608,14 @@ func TestBuildTranslations(t *testing.T) {
 		},
 	}
 
-	translations := agg.buildTranslations(results)
+	// Create a movie where both scrapers are "winners":
+	// r18dev wins Title, dmm wins Description
+	movie := &models.Movie{
+		Title:       "English Title",        // from r18dev
+		Description: "Japanese Description", // from dmm
+	}
+
+	translations := agg.buildTranslations(results, movie)
 	require.Len(t, translations, 2)
 
 	// Find each translation
@@ -652,7 +658,8 @@ func TestBuildTranslationsSkipsNoLanguage(t *testing.T) {
 		},
 	}
 
-	translations := agg.buildTranslations(results)
+	movie := &models.Movie{Title: "Title"}
+	translations := agg.buildTranslations(results, movie)
 	assert.Len(t, translations, 0)
 }
 
@@ -818,31 +825,26 @@ func TestCopySlice(t *testing.T) {
 
 // TestGetFieldPriorityFromConfig tests config field extraction
 func TestGetFieldPriorityFromConfig(t *testing.T) {
+	// Test with explicit priority set
 	cfg := &config.Config{
 		Metadata: config.MetadataConfig{
 			Priority: config.PriorityConfig{
-				ID:          []string{"r18dev", "dmm"},
-				Title:       []string{"dmm"},
-				Description: []string{},
+				Priority: []string{"dmm", "r18dev"},
 			},
 		},
 	}
 
-	// Test defined field
+	// Test that explicit priority is returned (fieldKey is ignored for simplified priorities)
 	priority := getFieldPriorityFromConfig(cfg, "ID")
-	assert.Equal(t, []string{"r18dev", "dmm"}, priority)
+	assert.Equal(t, []string{"dmm", "r18dev"}, priority)
 
-	// Test different field
+	// Test that same priority is returned for any field (fieldKey is always ignored)
 	priority = getFieldPriorityFromConfig(cfg, "Title")
-	assert.Equal(t, []string{"dmm"}, priority)
+	assert.Equal(t, []string{"dmm", "r18dev"}, priority)
 
-	// Test empty array
-	priority = getFieldPriorityFromConfig(cfg, "Description")
-	assert.Equal(t, []string{}, priority)
-
-	// Test unknown field
+	// With simplified priorities, fieldKey is always ignored - returns explicit priority
 	priority = getFieldPriorityFromConfig(cfg, "UnknownField")
-	assert.Nil(t, priority)
+	assert.Equal(t, []string{"dmm", "r18dev"}, priority)
 }
 
 // TestAggregateSourceMetadata tests that source name and URL are set
@@ -908,6 +910,11 @@ func TestAggregateWithAllFields(t *testing.T) {
 	cfg := &config.Config{
 		Scrapers: config.ScrapersConfig{
 			Priority: []string{"r18dev"},
+		},
+		Metadata: config.MetadataConfig{
+			Priority: config.PriorityConfig{
+				Priority: []string{"r18dev"},
+			},
 		},
 	}
 
@@ -986,19 +993,24 @@ func TestAggregateWithAllFields(t *testing.T) {
 
 // TestNewAggregatorResolvesDefaultPriority tests default priority fallback
 func TestNewAggregatorResolvesDefaultPriority(t *testing.T) {
+	// Test with empty config - priority should be derived from scraper registrations
+	// (which won't happen in this test since scrapers aren't imported)
 	cfg := &config.Config{
 		Scrapers: config.ScrapersConfig{
 			Priority: []string{}, // Empty global priority
 		},
 		Metadata: config.MetadataConfig{
-			Priority: config.PriorityConfig{},
+			Priority: config.PriorityConfig{
+				Priority: nil,
+			},
 		},
 	}
 
 	agg := New(cfg)
 
-	// Should fall back to sensible default
-	assert.Equal(t, []string{"r18dev", "dmm"}, agg.resolvedPriorities["Title"])
+	// With simplified priorities and no configured or derived priority,
+	// resolved priorities should be empty (scrapers not imported in tests)
+	assert.Empty(t, agg.resolvedPriorities["Title"])
 }
 
 // TestAggregateGenresWithFiltering tests genre filtering in aggregation

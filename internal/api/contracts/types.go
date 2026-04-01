@@ -111,9 +111,10 @@ type AvailableScrapersResponse struct {
 
 // ProxyTestRequest represents a proxy connectivity test request.
 type ProxyTestRequest struct {
-	Mode      string             `json:"mode" binding:"required,oneof=direct flaresolverr"` // direct or flaresolverr
-	Proxy     config.ProxyConfig `json:"proxy"`
-	TargetURL string             `json:"target_url,omitempty"` // Optional override target URL
+	Mode         string                    `json:"mode" binding:"required,oneof=direct flaresolverr"` // direct or flaresolverr
+	Proxy        config.ProxyConfig        `json:"proxy"`
+	FlareSolverr config.FlareSolverrConfig `json:"flaresolverr"`         // FlareSolverr config (separate from ProxyConfig)
+	TargetURL    string                    `json:"target_url,omitempty"` // Optional override target URL
 }
 
 // ProxyTestResponse represents proxy connectivity test results.

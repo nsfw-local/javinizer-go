@@ -2,7 +2,6 @@ package dlgetchu
 
 import (
 	"fmt"
-	"github.com/go-resty/resty/v2"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -10,17 +9,17 @@ import (
 	"time"
 
 	"github.com/PuerkitoBio/goquery"
+	"github.com/go-resty/resty/v2"
 	"github.com/javinizer/javinizer-go/internal/config"
 	"github.com/stretchr/testify/assert"
 )
 
-func testConfig(baseURL string) *config.Config {
-	cfg := config.DefaultConfig()
-	cfg.Scrapers.DLGetchu.Enabled = true
-	cfg.Scrapers.DLGetchu.BaseURL = baseURL
-	cfg.Scrapers.DLGetchu.RequestDelay = 0
-	cfg.Scrapers.Proxy.Enabled = false
-	return cfg
+func testSettings(baseURL string) config.ScraperSettings {
+	return config.ScraperSettings{
+		Enabled:   true,
+		RateLimit: 0,
+		BaseURL:   baseURL,
+	}
 }
 
 func TestSearch(t *testing.T) {
@@ -53,7 +52,7 @@ func TestSearch(t *testing.T) {
 	}))
 	defer server.Close()
 
-	s := New(testConfig(server.URL))
+	s := New(testSettings(server.URL), nil, config.FlareSolverrConfig{})
 	result, err := s.Search("ABC-123")
 	if err != nil {
 		t.Fatalf("Search returned error: %v", err)
@@ -276,9 +275,8 @@ func TestFetchPage(t *testing.T) {
 			server := httptest.NewServer(tt.handler)
 			defer server.Close()
 
-			cfg := testConfig(server.URL)
-			cfg.Scrapers.DLGetchu.RequestDelay = 0
-			s := New(cfg)
+			settings := testSettings(server.URL)
+			s := New(settings, nil, config.FlareSolverrConfig{})
 
 			result, status, err := s.fetchPage(server.URL)
 
@@ -305,9 +303,9 @@ func TestDecodeBody(t *testing.T) {
 
 // TestWaitForRateLimit tests rate limiting behavior
 func TestWaitForRateLimit(t *testing.T) {
-	cfg := testConfig("https://dl.getchu.com")
-	cfg.Scrapers.DLGetchu.RequestDelay = 50
-	s := New(cfg)
+	settings := testSettings("https://dl.getchu.com")
+	settings.RateLimit = 50
+	s := New(settings, nil, config.FlareSolverrConfig{})
 
 	// Set last request time to 10ms ago, should wait ~40ms
 	s.lastRequestTime.Store(time.Now().Add(-10 * time.Millisecond))
@@ -323,9 +321,9 @@ func TestWaitForRateLimit(t *testing.T) {
 
 // TestWaitForRateLimitNoWait tests that no wait occurs when enough time has passed
 func TestWaitForRateLimitNoWait(t *testing.T) {
-	cfg := testConfig("https://dl.getchu.com")
-	cfg.Scrapers.DLGetchu.RequestDelay = 50
-	s := New(cfg)
+	settings := testSettings("https://dl.getchu.com")
+	settings.RateLimit = 50
+	s := New(settings, nil, config.FlareSolverrConfig{})
 
 	// Set last request time to 100ms ago, should not wait
 	s.lastRequestTime.Store(time.Now().Add(-100 * time.Millisecond))
@@ -338,8 +336,8 @@ func TestWaitForRateLimitNoWait(t *testing.T) {
 }
 
 func TestUpdateLastRequestTime(t *testing.T) {
-	cfg := testConfig("https://dl.getchu.com")
-	s := New(cfg)
+	settings := testSettings("https://dl.getchu.com")
+	s := New(settings, nil, config.FlareSolverrConfig{})
 	s.updateLastRequestTime()
 	loadedTime, ok := s.lastRequestTime.Load().(time.Time)
 	assert.True(t, ok)
@@ -422,9 +420,8 @@ func TestScraper_IsEnabled(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			cfg := config.DefaultConfig()
-			cfg.Scrapers.DLGetchu.Enabled = tt.enabled
-			scraper := New(cfg)
+			settings := config.ScraperSettings{Enabled: tt.enabled}
+			scraper := New(settings, nil, config.FlareSolverrConfig{})
 			assert.Equal(t, tt.enabled, scraper.IsEnabled(), "IsEnabled should match config")
 		})
 	}
@@ -432,8 +429,8 @@ func TestScraper_IsEnabled(t *testing.T) {
 
 // TestScraper_Name tests the Name method
 func TestScraper_Name(t *testing.T) {
-	cfg := config.DefaultConfig()
-	scraper := New(cfg)
+	settings := testSettings("https://dl.getchu.com")
+	scraper := New(settings, nil, config.FlareSolverrConfig{})
 	assert.Equal(t, "dlgetchu", scraper.Name())
 }
 
@@ -461,8 +458,8 @@ func TestScraper_GetURL(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			cfg := testConfig("https://dl.getchu.com")
-			scraper := New(cfg)
+			settings := testSettings("https://dl.getchu.com")
+			scraper := New(settings, nil, config.FlareSolverrConfig{})
 			url, err := scraper.GetURL(tt.id)
 			if tt.expectedErr {
 				assert.Error(t, err, "GetURL should fail for empty ID")
@@ -481,8 +478,8 @@ func TestScraper_GetURLNumeric(t *testing.T) {
 		t.Skip("skipping network-dependent test")
 	}
 
-	cfg := testConfig("https://dl.getchu.com")
-	scraper := New(cfg)
+	settings := testSettings("https://dl.getchu.com")
+	scraper := New(settings, nil, config.FlareSolverrConfig{})
 
 	// This test may fail if the URL doesn't exist
 	// It's designed to test the actual network behavior
@@ -524,8 +521,8 @@ func TestScraper_GetURL_Search(t *testing.T) {
 	}))
 	defer server.Close()
 
-	cfg := testConfig(server.URL)
-	s := New(cfg)
+	settings := testSettings(server.URL)
+	s := New(settings, nil, config.FlareSolverrConfig{})
 
 	// Test search fallback
 	url, err := s.GetURL("ABC-123")
@@ -651,8 +648,8 @@ func TestNormalizeFullWidthDigits(t *testing.T) {
 
 // TestResolveDownloadProxyForHost tests proxy resolution
 func TestResolveDownloadProxyForHost(t *testing.T) {
-	cfg := config.DefaultConfig()
-	scraper := New(cfg)
+	settings := testSettings("https://dl.getchu.com")
+	scraper := New(settings, nil, config.FlareSolverrConfig{})
 
 	tests := []struct {
 		name     string
@@ -876,9 +873,9 @@ func TestResolveURLEdgeCases(t *testing.T) {
 
 // TestSearchDisabled tests Search behavior when scraper is disabled
 func TestSearchDisabled(t *testing.T) {
-	cfg := testConfig("https://dl.getchu.com")
-	cfg.Scrapers.DLGetchu.Enabled = false
-	s := New(cfg)
+	settings := testSettings("https://dl.getchu.com")
+	settings.Enabled = false
+	s := New(settings, nil, config.FlareSolverrConfig{})
 
 	result, err := s.Search("12345")
 
@@ -895,8 +892,8 @@ func TestSearchWithHTTPError(t *testing.T) {
 	}))
 	defer server.Close()
 
-	cfg := testConfig(server.URL)
-	s := New(cfg)
+	settings := testSettings(server.URL)
+	s := New(settings, nil, config.FlareSolverrConfig{})
 
 	result, err := s.Search("12345")
 

@@ -11,7 +11,7 @@ import (
 )
 
 func TestResolveSearchQuery(t *testing.T) {
-	s := New(config.DefaultConfig())
+	s := New(config.ScraperSettings{Enabled: true}, nil, config.FlareSolverrConfig{})
 
 	tests := []struct {
 		name  string
@@ -216,13 +216,11 @@ func TestExtractActresses_IgnoresRelatedActors(t *testing.T) {
 }
 
 func TestApplyLanguage(t *testing.T) {
-	cfg := config.DefaultConfig()
-	cfg.Scrapers.Caribbeancom.Language = "en"
-	sEn := New(cfg)
+	enSettings := config.ScraperSettings{Enabled: true, Language: "en"}
+	sEn := New(enSettings, nil, config.FlareSolverrConfig{})
 
-	cfgJa := config.DefaultConfig()
-	cfgJa.Scrapers.Caribbeancom.Language = "ja"
-	sJa := New(cfgJa)
+	jaSettings := config.ScraperSettings{Enabled: true, Language: "ja"}
+	sJa := New(jaSettings, nil, config.FlareSolverrConfig{})
 
 	enURL := sEn.applyLanguage("https://www.caribbeancom.com/moviepages/120614-753/index.html")
 	if enURL != "https://en.caribbeancom.com/eng/moviepages/120614-753/index.html" {

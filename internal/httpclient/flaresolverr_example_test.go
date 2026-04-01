@@ -25,8 +25,11 @@ type ExampleScraper struct {
 // NewExampleScraper creates a new example scraper with optional FlareSolverr support
 func NewExampleScraper(cfg *config.Config) (*ExampleScraper, error) {
 	// Create HTTP client with FlareSolverr support
+	// Resolve the effective proxy profile from the global proxy config
+	proxyProfile := config.ResolveGlobalProxy(cfg.Scrapers.Proxy)
 	client, fs, err := httpclient.NewRestyClientWithFlareSolverr(
-		&cfg.Scrapers.Proxy,
+		proxyProfile,
+		cfg.Scrapers.FlareSolverr,
 		30*time.Second,
 		3,
 	)
@@ -116,14 +119,12 @@ func (s *ExampleScraper) fetchMultiplePagesDirect(urls []string) (map[string]str
 func TestExampleScraper_FlareSolverrIntegration(t *testing.T) {
 	cfg := &config.Config{
 		Scrapers: config.ScrapersConfig{
-			Proxy: config.ProxyConfig{
-				FlareSolverr: config.FlareSolverrConfig{
-					Enabled:    true,
-					URL:        "http://localhost:8191/v1",
-					Timeout:    30,
-					MaxRetries: 3,
-					SessionTTL: 300,
-				},
+			FlareSolverr: config.FlareSolverrConfig{
+				Enabled:    true,
+				URL:        "http://localhost:8191/v1",
+				Timeout:    30,
+				MaxRetries: 3,
+				SessionTTL: 300,
 			},
 		},
 	}
@@ -141,10 +142,8 @@ func TestExampleScraper_FlareSolverrIntegration(t *testing.T) {
 func TestExampleScraper_NoFlareSolverr(t *testing.T) {
 	cfg := &config.Config{
 		Scrapers: config.ScrapersConfig{
-			Proxy: config.ProxyConfig{
-				FlareSolverr: config.FlareSolverrConfig{
-					Enabled: false,
-				},
+			FlareSolverr: config.FlareSolverrConfig{
+				Enabled: false,
 			},
 		},
 	}

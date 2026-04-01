@@ -9,11 +9,7 @@ import (
 )
 
 func TestNewTransport_NoProxy(t *testing.T) {
-	proxyConfig := &config.ProxyConfig{
-		Enabled: false,
-	}
-
-	transport, err := NewTransport(proxyConfig)
+	transport, err := NewTransport(nil)
 	if err != nil {
 		t.Fatalf("NewTransport failed: %v", err)
 	}
@@ -28,33 +24,29 @@ func TestNewTransport_NoProxy(t *testing.T) {
 	}
 }
 
-func TestNewTransport_ProxyDisabled(t *testing.T) {
-	proxyConfig := &config.ProxyConfig{
-		Enabled: false,
-		URL:     "http://proxy.example.com:8080",
-	}
+func TestNewTransport_EmptyProxyProfile(t *testing.T) {
+	proxyProfile := &config.ProxyProfile{}
 
-	transport, err := NewTransport(proxyConfig)
+	transport, err := NewTransport(proxyProfile)
 	if err != nil {
 		t.Fatalf("NewTransport failed: %v", err)
 	}
 
-	// Even with URL set, disabled means URL is ignored
+	// Empty URL means no proxy should be configured
 	if transport == nil {
-		t.Fatal("Expected valid transport when proxy disabled")
+		t.Fatal("Expected valid transport when proxy URL is empty")
 	}
 	if transport.Proxy != nil {
-		t.Error("Expected transport.Proxy to be nil when proxy is disabled")
+		t.Error("Expected transport.Proxy to be nil when proxy URL is empty")
 	}
 }
 
 func TestNewTransport_HTTPProxy(t *testing.T) {
-	proxyConfig := &config.ProxyConfig{
-		Enabled: true,
-		URL:     "http://proxy.example.com:8080",
+	proxyProfile := &config.ProxyProfile{
+		URL: "http://proxy.example.com:8080",
 	}
 
-	transport, err := NewTransport(proxyConfig)
+	transport, err := NewTransport(proxyProfile)
 	if err != nil {
 		t.Fatalf("NewTransport failed: %v", err)
 	}
@@ -65,12 +57,11 @@ func TestNewTransport_HTTPProxy(t *testing.T) {
 }
 
 func TestNewTransport_HTTPProxyWithoutScheme(t *testing.T) {
-	proxyConfig := &config.ProxyConfig{
-		Enabled: true,
-		URL:     "proxy.example.com:8080",
+	proxyProfile := &config.ProxyProfile{
+		URL: "proxy.example.com:8080",
 	}
 
-	transport, err := NewTransport(proxyConfig)
+	transport, err := NewTransport(proxyProfile)
 	if err != nil {
 		t.Fatalf("NewTransport failed: %v", err)
 	}
@@ -98,12 +89,11 @@ func TestNewTransport_HTTPProxyWithoutScheme(t *testing.T) {
 }
 
 func TestNewTransport_HTTPSProxy(t *testing.T) {
-	proxyConfig := &config.ProxyConfig{
-		Enabled: true,
-		URL:     "https://proxy.example.com:8080",
+	proxyProfile := &config.ProxyProfile{
+		URL: "https://proxy.example.com:8080",
 	}
 
-	transport, err := NewTransport(proxyConfig)
+	transport, err := NewTransport(proxyProfile)
 	if err != nil {
 		t.Fatalf("NewTransport failed: %v", err)
 	}
@@ -114,12 +104,11 @@ func TestNewTransport_HTTPSProxy(t *testing.T) {
 }
 
 func TestNewTransport_SOCKS5Proxy(t *testing.T) {
-	proxyConfig := &config.ProxyConfig{
-		Enabled: true,
-		URL:     "socks5://localhost:1080",
+	proxyProfile := &config.ProxyProfile{
+		URL: "socks5://localhost:1080",
 	}
 
-	transport, err := NewTransport(proxyConfig)
+	transport, err := NewTransport(proxyProfile)
 	if err != nil {
 		t.Fatalf("NewTransport failed: %v", err)
 	}
@@ -131,14 +120,13 @@ func TestNewTransport_SOCKS5Proxy(t *testing.T) {
 }
 
 func TestNewTransport_ProxyWithAuth(t *testing.T) {
-	proxyConfig := &config.ProxyConfig{
-		Enabled:  true,
+	proxyProfile := &config.ProxyProfile{
 		URL:      "http://proxy.example.com:8080",
 		Username: "testuser",
 		Password: "testpass",
 	}
 
-	transport, err := NewTransport(proxyConfig)
+	transport, err := NewTransport(proxyProfile)
 	if err != nil {
 		t.Fatalf("NewTransport failed: %v", err)
 	}
@@ -149,14 +137,13 @@ func TestNewTransport_ProxyWithAuth(t *testing.T) {
 }
 
 func TestNewTransport_SOCKS5ProxyWithAuth(t *testing.T) {
-	proxyConfig := &config.ProxyConfig{
-		Enabled:  true,
+	proxyProfile := &config.ProxyProfile{
 		URL:      "socks5://localhost:1080",
 		Username: "testuser",
 		Password: "testpass",
 	}
 
-	transport, err := NewTransport(proxyConfig)
+	transport, err := NewTransport(proxyProfile)
 	if err != nil {
 		t.Fatalf("NewTransport failed: %v", err)
 	}
@@ -168,43 +155,18 @@ func TestNewTransport_SOCKS5ProxyWithAuth(t *testing.T) {
 }
 
 func TestNewTransport_InvalidURL(t *testing.T) {
-	proxyConfig := &config.ProxyConfig{
-		Enabled: true,
-		URL:     "://invalid",
+	proxyProfile := &config.ProxyProfile{
+		URL: "://invalid",
 	}
 
-	_, err := NewTransport(proxyConfig)
+	_, err := NewTransport(proxyProfile)
 	if err == nil {
 		t.Error("Expected error for invalid proxy URL")
 	}
 }
 
-func TestNewTransport_EmptyURL(t *testing.T) {
-	proxyConfig := &config.ProxyConfig{
-		Enabled: true,
-		URL:     "",
-	}
-
-	transport, err := NewTransport(proxyConfig)
-	if err != nil {
-		t.Fatalf("NewTransport failed: %v", err)
-	}
-
-	// Empty URL with enabled should still create valid transport (no-op proxy config)
-	if transport == nil {
-		t.Fatal("Expected valid transport for empty URL")
-	}
-	if transport.Proxy != nil {
-		t.Error("Expected transport.Proxy to be nil when proxy URL is empty")
-	}
-}
-
 func TestNewHTTPClient_NoProxy(t *testing.T) {
-	proxyConfig := &config.ProxyConfig{
-		Enabled: false,
-	}
-
-	client, err := NewHTTPClient(proxyConfig, 30*time.Second)
+	client, err := NewHTTPClient(nil, 30*time.Second)
 	if err != nil {
 		t.Fatalf("NewHTTPClient failed: %v", err)
 	}
@@ -215,12 +177,11 @@ func TestNewHTTPClient_NoProxy(t *testing.T) {
 }
 
 func TestNewHTTPClient_WithProxy(t *testing.T) {
-	proxyConfig := &config.ProxyConfig{
-		Enabled: true,
-		URL:     "http://proxy.example.com:8080",
+	proxyProfile := &config.ProxyProfile{
+		URL: "http://proxy.example.com:8080",
 	}
 
-	client, err := NewHTTPClient(proxyConfig, 60*time.Second)
+	client, err := NewHTTPClient(proxyProfile, 60*time.Second)
 	if err != nil {
 		t.Fatalf("NewHTTPClient failed: %v", err)
 	}
@@ -231,23 +192,18 @@ func TestNewHTTPClient_WithProxy(t *testing.T) {
 }
 
 func TestNewHTTPClient_InvalidProxy(t *testing.T) {
-	proxyConfig := &config.ProxyConfig{
-		Enabled: true,
-		URL:     "://invalid",
+	proxyProfile := &config.ProxyProfile{
+		URL: "://invalid",
 	}
 
-	_, err := NewHTTPClient(proxyConfig, 30*time.Second)
+	_, err := NewHTTPClient(proxyProfile, 30*time.Second)
 	if err == nil {
 		t.Error("Expected error for invalid proxy URL")
 	}
 }
 
 func TestNewRestyClient_NoProxy(t *testing.T) {
-	proxyConfig := &config.ProxyConfig{
-		Enabled: false,
-	}
-
-	client, err := NewRestyClient(proxyConfig, 30*time.Second, 3)
+	client, err := NewRestyClient(nil, 30*time.Second, 3)
 	if err != nil {
 		t.Fatalf("NewRestyClient failed: %v", err)
 	}
@@ -258,12 +214,11 @@ func TestNewRestyClient_NoProxy(t *testing.T) {
 }
 
 func TestNewRestyClient_WithProxy(t *testing.T) {
-	proxyConfig := &config.ProxyConfig{
-		Enabled: true,
-		URL:     "http://proxy.example.com:8080",
+	proxyProfile := &config.ProxyProfile{
+		URL: "http://proxy.example.com:8080",
 	}
 
-	client, err := NewRestyClient(proxyConfig, 45*time.Second, 5)
+	client, err := NewRestyClient(proxyProfile, 45*time.Second, 5)
 	if err != nil {
 		t.Fatalf("NewRestyClient failed: %v", err)
 	}
@@ -274,51 +229,13 @@ func TestNewRestyClient_WithProxy(t *testing.T) {
 }
 
 func TestNewRestyClient_InvalidProxy(t *testing.T) {
-	proxyConfig := &config.ProxyConfig{
-		Enabled: true,
-		URL:     "://invalid",
+	proxyProfile := &config.ProxyProfile{
+		URL: "://invalid",
 	}
 
-	_, err := NewRestyClient(proxyConfig, 30*time.Second, 3)
+	_, err := NewRestyClient(proxyProfile, 30*time.Second, 3)
 	if err == nil {
 		t.Error("Expected error for invalid proxy URL")
-	}
-}
-
-func TestNewTransport_NilConfig(t *testing.T) {
-	transport, err := NewTransport(nil)
-	if err != nil {
-		t.Fatalf("NewTransport with nil config failed: %v", err)
-	}
-
-	// Nil config should create valid transport with defaults
-	if transport == nil {
-		t.Fatal("Expected valid transport with nil config")
-	}
-	if transport.Proxy != nil {
-		t.Error("Expected transport.Proxy to be nil for nil config")
-	}
-}
-
-func TestNewHTTPClient_NilConfig(t *testing.T) {
-	client, err := NewHTTPClient(nil, 30*time.Second)
-	if err != nil {
-		t.Fatalf("NewHTTPClient with nil config failed: %v", err)
-	}
-
-	if client == nil {
-		t.Error("Expected valid client with nil config")
-	}
-}
-
-func TestNewRestyClient_NilConfig(t *testing.T) {
-	client, err := NewRestyClient(nil, 30*time.Second, 3)
-	if err != nil {
-		t.Fatalf("NewRestyClient with nil config failed: %v", err)
-	}
-
-	if client == nil {
-		t.Error("Expected valid resty client with nil config")
 	}
 }
 
@@ -381,12 +298,11 @@ func TestSanitizeProxyURL_WithCredentials(t *testing.T) {
 }
 
 func TestNewTransport_SOCKS5ClearsHTTPProxy(t *testing.T) {
-	proxyConfig := &config.ProxyConfig{
-		Enabled: true,
-		URL:     "socks5://localhost:1080",
+	proxyProfile := &config.ProxyProfile{
+		URL: "socks5://localhost:1080",
 	}
 
-	transport, err := NewTransport(proxyConfig)
+	transport, err := NewTransport(proxyProfile)
 	if err != nil {
 		t.Fatalf("NewTransport failed: %v", err)
 	}

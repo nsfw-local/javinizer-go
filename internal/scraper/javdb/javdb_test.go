@@ -1,9 +1,6 @@
 package javdb
 
 import (
-	"io"
-	"net/http"
-	"strings"
 	"testing"
 	"time"
 
@@ -14,20 +11,14 @@ import (
 )
 
 func TestNewScraper(t *testing.T) {
-	cfg := config.DefaultConfig()
-	cfg.Scrapers.JavDB.Enabled = true
-
-	scraper := New(cfg)
+	scraper := New(config.ScraperSettings{Enabled: true}, &config.ProxyConfig{}, config.FlareSolverrConfig{})
 	require.NotNil(t, scraper)
 	assert.Equal(t, "javdb", scraper.Name())
 	assert.True(t, scraper.IsEnabled())
 }
 
 func TestSearch_Disabled(t *testing.T) {
-	cfg := config.DefaultConfig()
-	cfg.Scrapers.JavDB.Enabled = false
-
-	scraper := New(cfg)
+	scraper := New(config.ScraperSettings{Enabled: false}, &config.ProxyConfig{}, config.FlareSolverrConfig{})
 	_, err := scraper.Search("IPX-123")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "disabled")
@@ -86,10 +77,10 @@ func TestSearch_Success(t *testing.T) {
 
 	scraper := &Scraper{
 		client:       client,
-		cfg:          &config.JavDBConfig{Enabled: true},
 		enabled:      true,
 		baseURL:      "https://javdb.test",
 		requestDelay: 0,
+		settings:     config.ScraperSettings{Enabled: true},
 	}
 	scraper.lastRequestTime.Store(time.Time{})
 
@@ -163,10 +154,10 @@ func TestSearch_Success_EnglishLabels(t *testing.T) {
 
 	scraper := &Scraper{
 		client:       client,
-		cfg:          &config.JavDBConfig{Enabled: true},
 		enabled:      true,
 		baseURL:      "https://javdb.test",
 		requestDelay: 0,
+		settings:     config.ScraperSettings{Enabled: true},
 	}
 	scraper.lastRequestTime.Store(time.Time{})
 
@@ -218,10 +209,10 @@ func TestSearch_ActorNAIsIgnored(t *testing.T) {
 
 	scraper := &Scraper{
 		client:       client,
-		cfg:          &config.JavDBConfig{Enabled: true},
 		enabled:      true,
 		baseURL:      "https://javdb.test",
 		requestDelay: 0,
+		settings:     config.ScraperSettings{Enabled: true},
 	}
 	scraper.lastRequestTime.Store(time.Time{})
 
@@ -260,10 +251,10 @@ func TestSearch_ScreenshotSkipsLoginLink(t *testing.T) {
 
 	scraper := &Scraper{
 		client:       client,
-		cfg:          &config.JavDBConfig{Enabled: true},
 		enabled:      true,
 		baseURL:      "https://javdb.test",
 		requestDelay: 0,
+		settings:     config.ScraperSettings{Enabled: true},
 	}
 	scraper.lastRequestTime.Store(time.Time{})
 
@@ -327,10 +318,10 @@ func TestSearch_PrefersExactIDOverVariant(t *testing.T) {
 
 	scraper := &Scraper{
 		client:       client,
-		cfg:          &config.JavDBConfig{Enabled: true},
 		enabled:      true,
 		baseURL:      "https://javdb.test",
 		requestDelay: 0,
+		settings:     config.ScraperSettings{Enabled: true},
 	}
 	scraper.lastRequestTime.Store(time.Time{})
 
@@ -387,10 +378,10 @@ func TestSearch_FiltersMaleActorsFromActresses(t *testing.T) {
 
 	scraper := &Scraper{
 		client:       client,
-		cfg:          &config.JavDBConfig{Enabled: true},
 		enabled:      true,
 		baseURL:      "https://javdb.test",
 		requestDelay: 0,
+		settings:     config.ScraperSettings{Enabled: true},
 	}
 	scraper.lastRequestTime.Store(time.Time{})
 
@@ -439,10 +430,10 @@ func TestSearch_PrefersFemaleActressRowOverGenericCast(t *testing.T) {
 
 	scraper := &Scraper{
 		client:       client,
-		cfg:          &config.JavDBConfig{Enabled: true},
 		enabled:      true,
 		baseURL:      "https://javdb.test",
 		requestDelay: 0,
+		settings:     config.ScraperSettings{Enabled: true},
 	}
 	scraper.lastRequestTime.Store(time.Time{})
 
@@ -498,10 +489,10 @@ func TestSearch_UsesSymbolGenderMarkersForCast(t *testing.T) {
 
 	scraper := &Scraper{
 		client:       client,
-		cfg:          &config.JavDBConfig{Enabled: true},
 		enabled:      true,
 		baseURL:      "https://javdb.test",
 		requestDelay: 0,
+		settings:     config.ScraperSettings{Enabled: true},
 	}
 	scraper.lastRequestTime.Store(time.Time{})
 
@@ -511,26 +502,4 @@ func TestSearch_UsesSymbolGenderMarkersForCast(t *testing.T) {
 
 	require.Len(t, result.Actresses, 1)
 	assert.Equal(t, "河合あすな", result.Actresses[0].JapaneseName)
-}
-
-type staticRoundTripper struct {
-	responses map[string]string
-}
-
-func (s *staticRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
-	if body, ok := s.responses[req.URL.String()]; ok {
-		return &http.Response{
-			StatusCode: http.StatusOK,
-			Header:     make(http.Header),
-			Body:       io.NopCloser(strings.NewReader(body)),
-			Request:    req,
-		}, nil
-	}
-
-	return &http.Response{
-		StatusCode: http.StatusNotFound,
-		Header:     make(http.Header),
-		Body:       io.NopCloser(strings.NewReader("not found")),
-		Request:    req,
-	}, nil
 }

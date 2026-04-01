@@ -18,6 +18,21 @@ import (
 	"github.com/javinizer/javinizer-go/internal/worker"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	// Register scrapers via init() functions (standard Go plugin pattern)
+	_ "github.com/javinizer/javinizer-go/internal/scraper/aventertainment"
+	_ "github.com/javinizer/javinizer-go/internal/scraper/caribbeancom"
+	_ "github.com/javinizer/javinizer-go/internal/scraper/dlgetchu"
+	_ "github.com/javinizer/javinizer-go/internal/scraper/dmm"
+	_ "github.com/javinizer/javinizer-go/internal/scraper/fc2"
+	_ "github.com/javinizer/javinizer-go/internal/scraper/jav321"
+	_ "github.com/javinizer/javinizer-go/internal/scraper/javbus"
+	_ "github.com/javinizer/javinizer-go/internal/scraper/javdb"
+	_ "github.com/javinizer/javinizer-go/internal/scraper/javlibrary"
+	_ "github.com/javinizer/javinizer-go/internal/scraper/libredmm"
+	_ "github.com/javinizer/javinizer-go/internal/scraper/mgstage"
+	_ "github.com/javinizer/javinizer-go/internal/scraper/r18dev"
+	_ "github.com/javinizer/javinizer-go/internal/scraper/tokyohot"
 )
 
 // MockScraper is a mock scraper for testing
@@ -52,8 +67,8 @@ func (m *MockScraper) Close() error {
 	return nil
 }
 
-func (m *MockScraper) Config() *config.ScraperConfig {
-	return &config.ScraperConfig{Enabled: true}
+func (m *MockScraper) Config() *config.ScraperSettings {
+	return &config.ScraperSettings{Enabled: true}
 }
 
 // createTestMovie creates a test movie for database operations
@@ -74,6 +89,13 @@ database:
   dsn: ":memory:"
 scrapers:
   priority: ["r18dev", "dmm"]
+  timeout_seconds: 30
+  request_timeout_seconds: 60
+  r18dev:
+    enabled: true
+    language: en
+  dmm:
+    enabled: true
 metadata:
   priority: {}
 matching:

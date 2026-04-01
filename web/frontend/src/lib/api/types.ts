@@ -374,6 +374,7 @@ export interface AvailableScrapersResponse {
 export interface ProxyTestRequest {
 	mode: 'direct' | 'flaresolverr';
 	proxy: any;
+	flaresolverr?: any;
 	target_url?: string;
 }
 

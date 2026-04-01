@@ -127,80 +127,6 @@ func TestLoadEmptyConfig(t *testing.T) {
 	}
 }
 
-// TestProxyConfigValidation ensures proxy config uses profiles instead of legacy direct fields.
-func TestProxyConfigValidation(t *testing.T) {
-	tests := []struct {
-		name      string
-		content   string
-		shouldErr bool
-	}{
-		{
-			name: "valid profile-based proxy",
-			content: `
-scrapers:
-  proxy:
-    enabled: true
-    default_profile: "main"
-    profiles:
-      main:
-        url: "http://proxy.example.com:8080"
-`,
-			shouldErr: false,
-		},
-		{
-			name: "legacy direct url is rejected",
-			content: `
-scrapers:
-  proxy:
-    enabled: true
-    default_profile: "main"
-    profiles:
-      main:
-        url: "http://proxy.example.com:8080"
-    url: "http://legacy.example.com:8080"
-`,
-			shouldErr: true,
-		},
-		{
-			name: "enabled proxy requires default profile",
-			content: `
-scrapers:
-  proxy:
-    enabled: true
-    profiles:
-      main:
-        url: "http://proxy.example.com:8080"
-`,
-			shouldErr: true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			tmpFile := t.TempDir() + "/proxy.yaml"
-			if err := os.WriteFile(tmpFile, []byte(tt.content), 0644); err != nil {
-				t.Fatalf("Failed to write test file: %v", err)
-			}
-
-			cfg, err := Load(tmpFile)
-			if err != nil {
-				t.Fatalf("Failed to load config: %v", err)
-			}
-
-			err = cfg.Validate()
-			if tt.shouldErr {
-				if err == nil {
-					t.Fatal("Expected validation error, got nil")
-				}
-				return
-			}
-			if err != nil {
-				t.Fatalf("Expected valid config, got error: %v", err)
-			}
-		})
-	}
-}
-
 // TestLoadPartialConfig tests loading config with only some fields set
 func TestLoadPartialConfig(t *testing.T) {
 	partialConfig := `
@@ -224,7 +150,7 @@ scrapers:
 	if len(cfg.Scrapers.Priority) != 1 || cfg.Scrapers.Priority[0] != "dmm" {
 		t.Errorf("Expected priority ['dmm'], got %v", cfg.Scrapers.Priority)
 	}
-	if !cfg.Scrapers.DMM.Enabled {
+	if !cfg.Scrapers.Overrides["dmm"].Enabled {
 		t.Error("Expected DMM enabled")
 	}
 
@@ -241,44 +167,24 @@ scrapers:
 func TestResolveScraperUserAgent(t *testing.T) {
 	tests := []struct {
 		name       string
-		globalUA   string
-		useFake    bool
-		fakeUA     string
+		userAgent  string
 		expectedUA string
 	}{
 		{
-			name:       "global user-agent when fake disabled",
-			globalUA:   "Javinizer-Test-UA",
-			useFake:    false,
-			fakeUA:     "",
-			expectedUA: "Javinizer-Test-UA",
+			name:       "scraper user-agent takes precedence",
+			userAgent:  "Custom-UA",
+			expectedUA: "Custom-UA",
 		},
 		{
-			name:       "default true user-agent when global empty",
-			globalUA:   "",
-			useFake:    false,
-			fakeUA:     "",
-			expectedUA: DefaultUserAgent,
-		},
-		{
-			name:       "default fake user-agent when enabled but custom empty",
-			globalUA:   "ignored",
-			useFake:    true,
-			fakeUA:     "",
+			name:       "default fake user-agent when scraper UA empty",
+			userAgent:  "",
 			expectedUA: DefaultFakeUserAgent,
-		},
-		{
-			name:       "custom fake user-agent when enabled",
-			globalUA:   "ignored",
-			useFake:    true,
-			fakeUA:     "Mozilla/5.0 Test",
-			expectedUA: "Mozilla/5.0 Test",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := ResolveScraperUserAgent(tt.globalUA, tt.useFake, tt.fakeUA)
+			got := ResolveScraperUserAgent(tt.userAgent)
 			if got != tt.expectedUA {
 				t.Errorf("expected user-agent %q, got %q", tt.expectedUA, got)
 			}

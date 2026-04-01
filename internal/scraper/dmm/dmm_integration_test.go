@@ -33,15 +33,13 @@ func TestParseHTML_EdgeCases(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			cfg := &config.Config{
-				Scrapers: config.ScrapersConfig{
-					DMM: config.DMMConfig{
-						Enabled:       true,
-						ScrapeActress: true,
-					},
+			settings := config.ScraperSettings{
+				Enabled: true,
+				Extra: map[string]any{
+					"scrape_actress": true,
 				},
 			}
-			scraper := New(cfg, nil)
+			scraper := New(settings, nil, &config.ProxyConfig{}, config.FlareSolverrConfig{})
 
 			doc, err := parseHTMLString(tt.html)
 			require.NoError(t, err)
@@ -85,12 +83,10 @@ func TestExtractDescription_BothSites(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			cfg := &config.Config{
-				Scrapers: config.ScrapersConfig{
-					DMM: config.DMMConfig{Enabled: true},
-				},
+			settings := config.ScraperSettings{
+				Enabled: true,
 			}
-			scraper := New(cfg, nil)
+			scraper := New(settings, nil, &config.ProxyConfig{}, config.FlareSolverrConfig{})
 
 			doc, err := parseHTMLString(tt.html)
 			require.NoError(t, err)
@@ -136,12 +132,10 @@ func TestExtractMaker_BothSites(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			cfg := &config.Config{
-				Scrapers: config.ScrapersConfig{
-					DMM: config.DMMConfig{Enabled: true},
-				},
+			settings := config.ScraperSettings{
+				Enabled: true,
 			}
-			scraper := New(cfg, nil)
+			scraper := New(settings, nil, &config.ProxyConfig{}, config.FlareSolverrConfig{})
 
 			doc, err := parseHTMLString(tt.html)
 			require.NoError(t, err)
@@ -156,12 +150,10 @@ func TestExtractMaker_BothSites(t *testing.T) {
 // Note: Old site series extraction uses complex regex that requires exact HTML structure
 func TestExtractSeries_BothSites(t *testing.T) {
 	t.Run("new site series", func(t *testing.T) {
-		cfg := &config.Config{
-			Scrapers: config.ScrapersConfig{
-				DMM: config.DMMConfig{Enabled: true},
-			},
+		settings := config.ScraperSettings{
+			Enabled: true,
 		}
-		scraper := New(cfg, nil)
+		scraper := New(settings, nil, &config.ProxyConfig{}, config.FlareSolverrConfig{})
 
 		html := `<html><body><table><tr><th>シリーズ</th><td><a href="/series/1">New Series</a></td></tr></table></body></html>`
 		doc, err := parseHTMLString(html)
@@ -172,12 +164,10 @@ func TestExtractSeries_BothSites(t *testing.T) {
 	})
 
 	t.Run("no series", func(t *testing.T) {
-		cfg := &config.Config{
-			Scrapers: config.ScrapersConfig{
-				DMM: config.DMMConfig{Enabled: true},
-			},
+		settings := config.ScraperSettings{
+			Enabled: true,
 		}
-		scraper := New(cfg, nil)
+		scraper := New(settings, nil, &config.ProxyConfig{}, config.FlareSolverrConfig{})
 
 		html := `<html><body></body></html>`
 		doc, err := parseHTMLString(html)
@@ -218,12 +208,10 @@ func TestExtractCoverURL_BothSites(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			cfg := &config.Config{
-				Scrapers: config.ScrapersConfig{
-					DMM: config.DMMConfig{Enabled: true},
-				},
+			settings := config.ScraperSettings{
+				Enabled: true,
 			}
-			scraper := New(cfg, nil)
+			scraper := New(settings, nil, &config.ProxyConfig{}, config.FlareSolverrConfig{})
 
 			doc, err := parseHTMLString(tt.html)
 			require.NoError(t, err)
@@ -270,12 +258,10 @@ func TestExtractScreenshots_BothSites(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			cfg := &config.Config{
-				Scrapers: config.ScrapersConfig{
-					DMM: config.DMMConfig{Enabled: true},
-				},
+			settings := config.ScraperSettings{
+				Enabled: true,
 			}
-			scraper := New(cfg, nil)
+			scraper := New(settings, nil, &config.ProxyConfig{}, config.FlareSolverrConfig{})
 
 			doc, err := parseHTMLString(tt.html)
 			require.NoError(t, err)
@@ -289,12 +275,10 @@ func TestExtractScreenshots_BothSites(t *testing.T) {
 // TestExtractRating_BothSites tests rating extraction for both site formats
 func TestExtractRating_BothSites(t *testing.T) {
 	t.Run("new site with JSON-LD", func(t *testing.T) {
-		cfg := &config.Config{
-			Scrapers: config.ScrapersConfig{
-				DMM: config.DMMConfig{Enabled: true},
-			},
+		settings := config.ScraperSettings{
+			Enabled: true,
 		}
-		scraper := New(cfg, nil)
+		scraper := New(settings, nil, &config.ProxyConfig{}, config.FlareSolverrConfig{})
 
 		html := `<html><head><script type="application/ld+json">{"aggregateRating":{"ratingValue":4.0,"ratingCount":150}}</script></head><body></body></html>`
 		doc, err := parseHTMLString(html)
@@ -307,12 +291,10 @@ func TestExtractRating_BothSites(t *testing.T) {
 	})
 
 	t.Run("no rating", func(t *testing.T) {
-		cfg := &config.Config{
-			Scrapers: config.ScrapersConfig{
-				DMM: config.DMMConfig{Enabled: true},
-			},
+		settings := config.ScraperSettings{
+			Enabled: true,
 		}
-		scraper := New(cfg, nil)
+		scraper := New(settings, nil, &config.ProxyConfig{}, config.FlareSolverrConfig{})
 
 		html := `<html><body></body></html>`
 		doc, err := parseHTMLString(html)

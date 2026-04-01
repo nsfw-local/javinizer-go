@@ -9,11 +9,16 @@ import (
 )
 
 // NewHTTPClient creates a new HTTP client for the R18.dev scraper.
-// It accepts *ScraperConfig to enable generic HTTP client setup without scraper-name branching.
+// It accepts *ScraperSettings to enable generic HTTP client setup without scraper-name branching.
 // HTTP-01: Per-scraper HTTP client ownership.
-func NewHTTPClient(cfg *config.ScraperConfig, globalProxy *config.ProxyConfig) (*resty.Client, error) {
+func NewHTTPClient(cfg *config.ScraperSettings, globalProxy *config.ProxyConfig, globalFlareSolverr config.FlareSolverrConfig) (*resty.Client, error) {
+	// Handle nil globalProxy to avoid dereference panic
+	globalProxyVal := config.ProxyConfig{}
+	if globalProxy != nil {
+		globalProxyVal = *globalProxy
+	}
 	// Resolve proxy per-scraper (HTTP-02)
-	proxyCfg := config.ResolveScraperProxy(*globalProxy, cfg.Proxy)
+	proxyCfg := config.ResolveScraperProxy(globalProxyVal, cfg.Proxy)
 
 	// Use timeout from ScraperConfig, default to 30s
 	timeout := time.Duration(cfg.Timeout) * time.Second
@@ -32,16 +37,10 @@ func NewHTTPClient(cfg *config.ScraperConfig, globalProxy *config.ProxyConfig) (
 	var err error
 
 	if cfg.FlareSolverr.Enabled {
-		// Build a ProxyConfig with FlareSolverr for the factory function
-		proxyWithFlareSolverr := &config.ProxyConfig{
-			Enabled:      proxyCfg.Enabled,
-			URL:          proxyCfg.URL,
-			Username:     proxyCfg.Username,
-			Password:     proxyCfg.Password,
-			FlareSolverr: cfg.FlareSolverr,
-		}
+		// Pass FlareSolverr config separately since it's no longer embedded in ProxyConfig
 		client, _, err = httpclient.NewRestyClientWithFlareSolverr(
-			proxyWithFlareSolverr,
+			proxyCfg,
+			cfg.FlareSolverr,
 			timeout,
 			retryCount,
 		)
@@ -54,7 +53,7 @@ func NewHTTPClient(cfg *config.ScraperConfig, globalProxy *config.ProxyConfig) (
 	}
 
 	// Apply UserAgent from ScraperConfig
-	userAgent := config.ResolveScraperUserAgent("", cfg.UseFakeUserAgent, cfg.UserAgent)
+	userAgent := config.ResolveScraperUserAgent(cfg.UserAgent)
 	client.SetHeader("User-Agent", userAgent)
 	client.SetHeader("Accept", "application/json, text/html, */*")
 	client.SetHeader("Referer", "https://r18.dev/")

@@ -25,6 +25,8 @@
 		onScraperRowKeydown: (event: KeyboardEvent, index: number) => void;
 		toggleScraper: (index: number) => void;
 		toggleExpanded: (index: number) => void;
+		selectAllScrapers: () => void;
+		clearAllScrapers: () => void;
 		getScraperUsage: (scraperName: string) => { count: number; fields: string[] };
 		scraperSupportsProxyOptions: (scraper: ScraperItem) => boolean;
 		getScraperProxyMode: (scraperName: string) => ScraperProxyMode;
@@ -46,6 +48,8 @@
 		onScraperRowKeydown,
 		toggleScraper,
 		toggleExpanded,
+		selectAllScrapers,
+		clearAllScrapers,
 		getScraperUsage,
 		scraperSupportsProxyOptions,
 		getScraperProxyMode,
@@ -62,7 +66,17 @@
 <SettingsSection title="Scraper Settings" description="Enable/disable scrapers and configure user agent. Scraper priority is managed in Metadata Priority section." defaultExpanded={false}>
 	<div class="space-y-4">
 		<div>
-			<span class="block text-sm font-medium mb-2">Available Scrapers</span>
+			<div class="flex items-center justify-between mb-2">
+				<span class="text-sm font-medium">Available Scrapers</span>
+				<div class="flex gap-2">
+					<Button variant="outline" size="sm" onclick={selectAllScrapers}>
+						{#snippet children()}Select All{/snippet}
+					</Button>
+					<Button variant="outline" size="sm" onclick={clearAllScrapers}>
+						{#snippet children()}Clear All{/snippet}
+					</Button>
+				</div>
+			</div>
 			<p class="text-xs text-muted-foreground mb-3">
 				Per-scraper proxy routing is configured inside each scraper: Scraper profile, then global proxy fallback, otherwise direct when disabled.
 			</p>
@@ -257,9 +271,5 @@
 			</div>
 		</div>
 
-		<div>
-			<label class="block text-sm font-medium mb-2" for="user-agent">User Agent</label>
-			<input id="user-agent" type="text" bind:value={config.scrapers.user_agent} class={inputClass} />
-		</div>
 	</div>
 </SettingsSection>

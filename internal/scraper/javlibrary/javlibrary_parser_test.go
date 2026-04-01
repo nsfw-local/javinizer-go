@@ -10,25 +10,13 @@ import (
 	"github.com/javinizer/javinizer-go/internal/config"
 )
 
-func createTestConfig(javlibraryCfg config.JavLibraryConfig, proxyCfg config.ProxyConfig) *config.Config {
-	return &config.Config{
-		Scrapers: config.ScrapersConfig{
-			JavLibrary: javlibraryCfg,
-			Proxy:      proxyCfg,
-		},
-	}
-}
-
 func TestParseDetailPage(t *testing.T) {
-	cfg := createTestConfig(
-		config.JavLibraryConfig{
-			Enabled:  true,
-			Language: "en",
-			BaseURL:  "https://www.javlibrary.com",
-		},
-		config.ProxyConfig{},
-	)
-	s := New(cfg)
+	settings := config.ScraperSettings{
+		Enabled:  true,
+		Language: "en",
+		BaseURL:  "https://www.javlibrary.com",
+	}
+	s := New(settings, &config.ProxyConfig{}, config.FlareSolverrConfig{})
 
 	html := `<html><head><title>IPX-123 Sample Title - JAVLibrary</title></head><body>
 <div id="video_info"></div>
@@ -113,15 +101,12 @@ func TestSearch_SearchResultFlow(t *testing.T) {
 	}))
 	defer server.Close()
 
-	cfg := createTestConfig(
-		config.JavLibraryConfig{
-			Enabled:  true,
-			Language: "en",
-			BaseURL:  server.URL,
-		},
-		config.ProxyConfig{},
-	)
-	s := New(cfg)
+	settings := config.ScraperSettings{
+		Enabled:  true,
+		Language: "en",
+		BaseURL:  server.URL,
+	}
+	s := New(settings, &config.ProxyConfig{}, config.FlareSolverrConfig{})
 
 	result, err := s.Search("IPX-123")
 	if err != nil {
@@ -140,15 +125,12 @@ func TestSearch_SearchResultFlow(t *testing.T) {
 }
 
 func TestHelpers(t *testing.T) {
-	cfg := createTestConfig(
-		config.JavLibraryConfig{
-			Enabled:  true,
-			Language: "en",
-			BaseURL:  "https://www.javlibrary.com",
-		},
-		config.ProxyConfig{},
-	)
-	s := New(cfg)
+	settings := config.ScraperSettings{
+		Enabled:  true,
+		Language: "en",
+		BaseURL:  "https://www.javlibrary.com",
+	}
+	s := New(settings, &config.ProxyConfig{}, config.FlareSolverrConfig{})
 
 	if got := s.extractMovieURLFromHTML(`<a href="/en/?v=javli43uqe">match</a>`); got != "/en/?v=javli43uqe" {
 		t.Fatalf("extractMovieURLFromHTML absolute = %q", got)
@@ -168,18 +150,24 @@ func TestHelpers(t *testing.T) {
 	if _, _, ok := s.ResolveDownloadProxyForHost("www.javlibrary.com"); !ok {
 		t.Fatal("expected JavLibrary host to be recognized")
 	}
+	if _, _, ok := s.ResolveDownloadProxyForHost("c.impact.jp"); !ok {
+		t.Fatal("expected c.impact.jp (JavLibrary CDN) to be recognized")
+	}
+	if _, _, ok := s.ResolveDownloadProxyForHost("img.javlibrary.com"); !ok {
+		t.Fatal("expected img.javlibrary.com to be recognized")
+	}
+	if _, _, ok := s.ResolveDownloadProxyForHost("example.com"); ok {
+		t.Fatal("expected example.com to NOT be recognized")
+	}
 }
 
 func TestExtractDescription(t *testing.T) {
-	cfg := createTestConfig(
-		config.JavLibraryConfig{
-			Enabled:  true,
-			Language: "en",
-			BaseURL:  "https://www.javlibrary.com",
-		},
-		config.ProxyConfig{},
-	)
-	s := New(cfg)
+	settings := config.ScraperSettings{
+		Enabled:  true,
+		Language: "en",
+		BaseURL:  "https://www.javlibrary.com",
+	}
+	s := New(settings, &config.ProxyConfig{}, config.FlareSolverrConfig{})
 
 	// Test meta description tag (primary method)
 	html := `<html><head><meta name="description" content="This is a great movie with excellent quality!"></head><body><div id="video_review"><div class="text">This is a great movie with excellent quality!</div></div></body></html>`
@@ -202,15 +190,12 @@ func TestExtractDescription(t *testing.T) {
 }
 
 func TestExtractSeries(t *testing.T) {
-	cfg := createTestConfig(
-		config.JavLibraryConfig{
-			Enabled:  true,
-			Language: "en",
-			BaseURL:  "https://www.javlibrary.com",
-		},
-		config.ProxyConfig{},
-	)
-	s := New(cfg)
+	settings := config.ScraperSettings{
+		Enabled:  true,
+		Language: "en",
+		BaseURL:  "https://www.javlibrary.com",
+	}
+	s := New(settings, &config.ProxyConfig{}, config.FlareSolverrConfig{})
 
 	html := `<div id="video_series"><a href="/series/test">Test Series Name</a></div>`
 	if got := s.extractSeries(html); got != "Test Series Name" {
@@ -231,15 +216,12 @@ func TestExtractSeries(t *testing.T) {
 }
 
 func TestExtractRating(t *testing.T) {
-	cfg := createTestConfig(
-		config.JavLibraryConfig{
-			Enabled:  true,
-			Language: "en",
-			BaseURL:  "https://www.javlibrary.com",
-		},
-		config.ProxyConfig{},
-	)
-	s := New(cfg)
+	settings := config.ScraperSettings{
+		Enabled:  true,
+		Language: "en",
+		BaseURL:  "https://www.javlibrary.com",
+	}
+	s := New(settings, &config.ProxyConfig{}, config.FlareSolverrConfig{})
 
 	// Test standard rating format
 	html := `<div id="video_rating"><span class="num">4.5</span> / 5.0</div>`
@@ -261,15 +243,12 @@ func TestExtractRating(t *testing.T) {
 }
 
 func TestExtractScreenshotURLs(t *testing.T) {
-	cfg := createTestConfig(
-		config.JavLibraryConfig{
-			Enabled:  true,
-			Language: "en",
-			BaseURL:  "https://www.javlibrary.com",
-		},
-		config.ProxyConfig{},
-	)
-	s := New(cfg)
+	settings := config.ScraperSettings{
+		Enabled:  true,
+		Language: "en",
+		BaseURL:  "https://www.javlibrary.com",
+	}
+	s := New(settings, &config.ProxyConfig{}, config.FlareSolverrConfig{})
 
 	html := `<img src="https://example.com/pic01.jpg"><img src="https://example.com/pic02.jpg">`
 	got := s.extractScreenshotURLs(html)
@@ -292,16 +271,83 @@ func TestExtractScreenshotURLs(t *testing.T) {
 	}
 }
 
-func TestExtractTrailerURL(t *testing.T) {
-	cfg := createTestConfig(
-		config.JavLibraryConfig{
-			Enabled:  true,
-			Language: "en",
-			BaseURL:  "https://www.javlibrary.com",
+func TestExtractScreenshotURLs_DMMFiltering(t *testing.T) {
+	settings := config.ScraperSettings{
+		Enabled:  true,
+		Language: "en",
+		BaseURL:  "https://www.javlibrary.com",
+	}
+	s := New(settings, &config.ProxyConfig{}, config.FlareSolverrConfig{})
+
+	tests := []struct {
+		name    string
+		html    string
+		wantLen int
+	}{
+		{
+			name:    "filter pl.jpg cover URL",
+			html:    `<img src="https://images.example.com/ipx123pl.jpg">`,
+			wantLen: 0,
 		},
-		config.ProxyConfig{},
-	)
-	s := New(cfg)
+		{
+			name:    "filter ps.jpg poster URL",
+			html:    `<img src="https://images.example.com/ipx123ps.jpg">`,
+			wantLen: 0,
+		},
+		{
+			name:    "filter pl.jpg in path",
+			html:    `<img src="https://c.impact.jp/abc123/special/pl.jpg">`,
+			wantLen: 0,
+		},
+		{
+			name:    "numeric pattern /04.jpg passes filter",
+			html:    `<img src="https://c.impact.jp/abc123/04.jpg">`,
+			wantLen: 1,
+		},
+		{
+			name:    "numeric pattern /001.jpg passes filter",
+			html:    `<img src="https://c.impact.jp/abc123/001.jpg">`,
+			wantLen: 1,
+		},
+		{
+			name:    "numeric pattern in href passes filter",
+			html:    `<a href="https://c.impact.jp/abc123/04.jpg">screenshot</a>`,
+			wantLen: 1,
+		},
+		{
+			name:    "non-numeric jpg in src is filtered by stricter regex",
+			html:    `<img src="https://example.com/numericless.jpg">`,
+			wantLen: 0,
+		},
+		{
+			name:    "non-numeric jpg in href is filtered by stricter regex",
+			html:    `<a href="https://example.com/numericless.jpg">screenshot</a>`,
+			wantLen: 0,
+		},
+		{
+			name:    "mix of valid screenshots and filtered covers",
+			html:    `<img src="https://c.impact.jp/abc/04.jpg"><img src="https://c.impact.jp/abc/pl.jpg"><img src="https://c.impact.jp/abc/05.jpg">`,
+			wantLen: 2,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := s.extractScreenshotURLs(tt.html)
+			if len(got) != tt.wantLen {
+				t.Errorf("extractScreenshotURLs() len = %d, want %d, got URLs: %v", len(got), tt.wantLen, got)
+			}
+		})
+	}
+}
+
+func TestExtractTrailerURL(t *testing.T) {
+	settings := config.ScraperSettings{
+		Enabled:  true,
+		Language: "en",
+		BaseURL:  "https://www.javlibrary.com",
+	}
+	s := New(settings, &config.ProxyConfig{}, config.FlareSolverrConfig{})
 
 	// Test mp4 URL
 	html := `<a href="https://example.com/sample_movie.mp4">sample</a>`
@@ -317,15 +363,12 @@ func TestExtractTrailerURL(t *testing.T) {
 }
 
 func TestParseDetailPage_FullData(t *testing.T) {
-	cfg := createTestConfig(
-		config.JavLibraryConfig{
-			Enabled:  true,
-			Language: "en",
-			BaseURL:  "https://www.javlibrary.com",
-		},
-		config.ProxyConfig{},
-	)
-	s := New(cfg)
+	settings := config.ScraperSettings{
+		Enabled:  true,
+		Language: "en",
+		BaseURL:  "https://www.javlibrary.com",
+	}
+	s := New(settings, &config.ProxyConfig{}, config.FlareSolverrConfig{})
 
 	html := `<html><head><title>IPX-123 Full Data Test - JAVLibrary</title></head><body>
 <div id="video_info"></div>

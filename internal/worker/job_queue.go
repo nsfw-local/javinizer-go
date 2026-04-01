@@ -119,7 +119,8 @@ func (jq *JobQueue) GetJobPointer(id string) (*BatchJob, bool) {
 
 // DeleteJob removes a job from the queue and cleans up associated temp files
 // Cancels the job first and waits for it to fully finish before removing files
-func (jq *JobQueue) DeleteJob(id string) {
+// tempDir is the base temp directory (e.g., "data/temp")
+func (jq *JobQueue) DeleteJob(id string, tempDir string) {
 	// Get job without holding queue lock to avoid lock ordering issues
 	jq.mu.RLock()
 	job, ok := jq.jobs[id]
@@ -145,7 +146,7 @@ func (jq *JobQueue) DeleteJob(id string) {
 	defer jq.mu.Unlock()
 
 	// Clean up temp posters for this job (data/temp/posters/{jobID}/)
-	tempPosterDir := filepath.Join("data", "temp", "posters", id)
+	tempPosterDir := filepath.Join(tempDir, "posters", id)
 	if err := os.RemoveAll(tempPosterDir); err != nil {
 		logging.Warnf("Failed to clean up temp posters for job %s: %v", id, err)
 	}

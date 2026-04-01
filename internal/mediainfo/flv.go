@@ -4,7 +4,6 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
-	"math"
 	"os"
 )
 
@@ -467,9 +466,4 @@ func mapFLVSampleRate(code uint8) int {
 	default:
 		return 0
 	}
-}
-
-// Helper to check if float is NaN
-func isNaN(f float64) bool {
-	return math.IsNaN(f)
 }

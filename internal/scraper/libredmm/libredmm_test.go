@@ -712,9 +712,9 @@ func TestWaitForRateLimit(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			cfg := testConfig("https://www.libredmm.com")
+			settings := testSettings("https://www.libredmm.com")
 
-			scraper := New(cfg)
+			scraper := New(settings, nil, config.FlareSolverrConfig{})
 			scraper.requestDelay = tt.delay
 			scraper.pollInterval = 1 * time.Millisecond
 
@@ -743,8 +743,8 @@ func TestWaitForRateLimit(t *testing.T) {
 
 // TestUpdateLastRequestTime tests last request time update
 func TestUpdateLastRequestTime(t *testing.T) {
-	cfg := testConfig("https://www.libredmm.com")
-	scraper := New(cfg)
+	settings := testSettings("https://www.libredmm.com")
+	scraper := New(settings, nil, config.FlareSolverrConfig{})
 
 	// Store initial time
 	initial := time.Now()
@@ -901,8 +901,8 @@ func TestResolveSearchQuery(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			cfg := testConfig("https://www.libredmm.com")
-			scraper := New(cfg)
+			settings := testSettings("https://www.libredmm.com")
+			scraper := New(settings, nil, config.FlareSolverrConfig{})
 
 			result, ok := scraper.ResolveSearchQuery(tt.input)
 			assert.Equal(t, tt.ok, ok)
@@ -942,8 +942,8 @@ func TestGetURLErrorPaths(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			cfg := testConfig("https://www.libredmm.com")
-			scraper := New(cfg)
+			settings := testSettings("https://www.libredmm.com")
+			scraper := New(settings, nil, config.FlareSolverrConfig{})
 
 			url, err := scraper.GetURL(tt.input)
 
@@ -977,9 +977,9 @@ func TestSearchProcessingTimeout(t *testing.T) {
 	}))
 	defer server.Close()
 
-	cfg := testConfig(server.URL)
+	settings := testSettings(server.URL)
 
-	scraper := New(cfg)
+	scraper := New(settings, nil, config.FlareSolverrConfig{})
 	scraper.maxPollAttempts = 2
 	scraper.pollInterval = 1 * time.Millisecond
 
@@ -1175,14 +1175,13 @@ func TestHasJapanese_FullNames(t *testing.T) {
 
 // ========== Helper types and functions for testing ==========
 
-// testConfig creates a test configuration with LibreDMM enabled
-func testConfig(baseURL string) *config.Config {
-	cfg := config.DefaultConfig()
-	cfg.Scrapers.LibreDMM.Enabled = true
-	cfg.Scrapers.LibreDMM.RequestDelay = 0
-	cfg.Scrapers.LibreDMM.BaseURL = baseURL
-	cfg.Scrapers.Proxy.Enabled = false
-	return cfg
+// testSettings creates test scraper settings for LibreDMM
+func testSettings(baseURL string) config.ScraperSettings {
+	return config.ScraperSettings{
+		Enabled:   true,
+		RateLimit: 0,
+		BaseURL:   baseURL,
+	}
 }
 
 // roundTripperFunc is a test helper for HTTP round tripper

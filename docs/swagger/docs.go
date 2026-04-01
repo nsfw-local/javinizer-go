@@ -2118,54 +2118,6 @@ const docTemplate = `{
                 }
             }
         },
-        "config.AVEntertainmentConfig": {
-            "type": "object",
-            "properties": {
-                "base_url": {
-                    "description": "Base URL for AVEntertainment",
-                    "type": "string"
-                },
-                "download_proxy": {
-                    "description": "Optional scraper-specific download proxy override",
-                    "allOf": [
-                        {
-                            "$ref": "#/definitions/config.ProxyConfig"
-                        }
-                    ]
-                },
-                "enabled": {
-                    "type": "boolean"
-                },
-                "fake_user_agent": {
-                    "description": "Optional custom fake User-Agent (defaults to built-in browser UA)",
-                    "type": "string"
-                },
-                "language": {
-                    "description": "Language code: en, ja (default: en)",
-                    "type": "string"
-                },
-                "proxy": {
-                    "description": "Optional scraper-specific proxy override",
-                    "allOf": [
-                        {
-                            "$ref": "#/definitions/config.ProxyConfig"
-                        }
-                    ]
-                },
-                "request_delay": {
-                    "description": "Delay between requests in milliseconds (0 = no delay)",
-                    "type": "integer"
-                },
-                "scrape_bonus_screens": {
-                    "description": "Append bonus image files (e.g., \"特典ファイル\") to screenshot URLs",
-                    "type": "boolean"
-                },
-                "use_fake_user_agent": {
-                    "description": "Use browser-like User-Agent header for this scraper",
-                    "type": "boolean"
-                }
-            }
-        },
         "config.ActressDatabaseConfig": {
             "type": "object",
             "properties": {
@@ -2179,50 +2131,6 @@ const docTemplate = `{
                 },
                 "enabled": {
                     "description": "Enable actress image lookup from database",
-                    "type": "boolean"
-                }
-            }
-        },
-        "config.CaribbeancomConfig": {
-            "type": "object",
-            "properties": {
-                "base_url": {
-                    "description": "Base URL for Caribbeancom",
-                    "type": "string"
-                },
-                "download_proxy": {
-                    "description": "Optional scraper-specific download proxy override",
-                    "allOf": [
-                        {
-                            "$ref": "#/definitions/config.ProxyConfig"
-                        }
-                    ]
-                },
-                "enabled": {
-                    "type": "boolean"
-                },
-                "fake_user_agent": {
-                    "description": "Optional custom fake User-Agent (defaults to built-in browser UA)",
-                    "type": "string"
-                },
-                "language": {
-                    "description": "Language code: ja, en (default: ja)",
-                    "type": "string"
-                },
-                "proxy": {
-                    "description": "Optional scraper-specific proxy override",
-                    "allOf": [
-                        {
-                            "$ref": "#/definitions/config.ProxyConfig"
-                        }
-                    ]
-                },
-                "request_delay": {
-                    "description": "Delay between requests in milliseconds (0 = no delay)",
-                    "type": "integer"
-                },
-                "use_fake_user_agent": {
-                    "description": "Use browser-like User-Agent header for this scraper",
                     "type": "boolean"
                 }
             }
@@ -2268,97 +2176,6 @@ const docTemplate = `{
                 }
             }
         },
-        "config.DLGetchuConfig": {
-            "type": "object",
-            "properties": {
-                "base_url": {
-                    "description": "Base URL for DLgetchu",
-                    "type": "string"
-                },
-                "download_proxy": {
-                    "description": "Optional scraper-specific download proxy override",
-                    "allOf": [
-                        {
-                            "$ref": "#/definitions/config.ProxyConfig"
-                        }
-                    ]
-                },
-                "enabled": {
-                    "type": "boolean"
-                },
-                "fake_user_agent": {
-                    "description": "Optional custom fake User-Agent (defaults to built-in browser UA)",
-                    "type": "string"
-                },
-                "proxy": {
-                    "description": "Optional scraper-specific proxy override",
-                    "allOf": [
-                        {
-                            "$ref": "#/definitions/config.ProxyConfig"
-                        }
-                    ]
-                },
-                "request_delay": {
-                    "description": "Delay between requests in milliseconds (0 = no delay)",
-                    "type": "integer"
-                },
-                "use_fake_user_agent": {
-                    "description": "Use browser-like User-Agent header for this scraper",
-                    "type": "boolean"
-                }
-            }
-        },
-        "config.DMMConfig": {
-            "type": "object",
-            "properties": {
-                "browser_timeout": {
-                    "description": "Timeout in seconds for browser operations (default: 30)",
-                    "type": "integer"
-                },
-                "download_proxy": {
-                    "description": "Optional scraper-specific download proxy override",
-                    "allOf": [
-                        {
-                            "$ref": "#/definitions/config.ProxyConfig"
-                        }
-                    ]
-                },
-                "enable_browser": {
-                    "description": "Enable browser mode for video.dmm.co.jp (JavaScript rendering)",
-                    "type": "boolean"
-                },
-                "enabled": {
-                    "type": "boolean"
-                },
-                "fake_user_agent": {
-                    "description": "Optional custom fake User-Agent (defaults to built-in browser UA)",
-                    "type": "string"
-                },
-                "max_retries": {
-                    "description": "Maximum number of retry attempts for rate-limited requests",
-                    "type": "integer"
-                },
-                "proxy": {
-                    "description": "Optional scraper-specific proxy override",
-                    "allOf": [
-                        {
-                            "$ref": "#/definitions/config.ProxyConfig"
-                        }
-                    ]
-                },
-                "request_delay": {
-                    "description": "Delay between requests in milliseconds (0 = no delay)",
-                    "type": "integer"
-                },
-                "scrape_actress": {
-                    "type": "boolean"
-                },
-                "use_fake_user_agent": {
-                    "description": "Use browser-like User-Agent header for this scraper",
-                    "type": "boolean"
-                }
-            }
-        },
         "config.DatabaseConfig": {
             "type": "object",
             "properties": {
@@ -2390,46 +2207,6 @@ const docTemplate = `{
                 "mode": {
                     "description": "free or pro",
                     "type": "string"
-                }
-            }
-        },
-        "config.FC2Config": {
-            "type": "object",
-            "properties": {
-                "base_url": {
-                    "description": "Base URL for FC2",
-                    "type": "string"
-                },
-                "download_proxy": {
-                    "description": "Optional scraper-specific download proxy override",
-                    "allOf": [
-                        {
-                            "$ref": "#/definitions/config.ProxyConfig"
-                        }
-                    ]
-                },
-                "enabled": {
-                    "type": "boolean"
-                },
-                "fake_user_agent": {
-                    "description": "Optional custom fake User-Agent (defaults to built-in browser UA)",
-                    "type": "string"
-                },
-                "proxy": {
-                    "description": "Optional scraper-specific proxy override",
-                    "allOf": [
-                        {
-                            "$ref": "#/definitions/config.ProxyConfig"
-                        }
-                    ]
-                },
-                "request_delay": {
-                    "description": "Delay between requests in milliseconds (0 = no delay)",
-                    "type": "integer"
-                },
-                "use_fake_user_agent": {
-                    "description": "Use browser-like User-Agent header for this scraper",
-                    "type": "boolean"
                 }
             }
         },
@@ -2488,234 +2265,6 @@ const docTemplate = `{
                 }
             }
         },
-        "config.Jav321Config": {
-            "type": "object",
-            "properties": {
-                "base_url": {
-                    "description": "Base URL for Jav321",
-                    "type": "string"
-                },
-                "download_proxy": {
-                    "description": "Optional scraper-specific download proxy override",
-                    "allOf": [
-                        {
-                            "$ref": "#/definitions/config.ProxyConfig"
-                        }
-                    ]
-                },
-                "enabled": {
-                    "type": "boolean"
-                },
-                "fake_user_agent": {
-                    "description": "Optional custom fake User-Agent (defaults to built-in browser UA)",
-                    "type": "string"
-                },
-                "proxy": {
-                    "description": "Optional scraper-specific proxy override",
-                    "allOf": [
-                        {
-                            "$ref": "#/definitions/config.ProxyConfig"
-                        }
-                    ]
-                },
-                "request_delay": {
-                    "description": "Delay between requests in milliseconds (0 = no delay)",
-                    "type": "integer"
-                },
-                "use_fake_user_agent": {
-                    "description": "Use browser-like User-Agent header for this scraper",
-                    "type": "boolean"
-                }
-            }
-        },
-        "config.JavBusConfig": {
-            "type": "object",
-            "properties": {
-                "base_url": {
-                    "description": "Base URL for JavBus",
-                    "type": "string"
-                },
-                "download_proxy": {
-                    "description": "Optional scraper-specific download proxy override",
-                    "allOf": [
-                        {
-                            "$ref": "#/definitions/config.ProxyConfig"
-                        }
-                    ]
-                },
-                "enabled": {
-                    "type": "boolean"
-                },
-                "fake_user_agent": {
-                    "description": "Optional custom fake User-Agent (defaults to built-in browser UA)",
-                    "type": "string"
-                },
-                "language": {
-                    "description": "Language code: en, ja, zh (default: zh)",
-                    "type": "string"
-                },
-                "proxy": {
-                    "description": "Optional scraper-specific proxy override",
-                    "allOf": [
-                        {
-                            "$ref": "#/definitions/config.ProxyConfig"
-                        }
-                    ]
-                },
-                "request_delay": {
-                    "description": "Delay between requests in milliseconds (0 = no delay)",
-                    "type": "integer"
-                },
-                "use_fake_user_agent": {
-                    "description": "Use browser-like User-Agent header for this scraper",
-                    "type": "boolean"
-                }
-            }
-        },
-        "config.JavDBConfig": {
-            "type": "object",
-            "properties": {
-                "base_url": {
-                    "description": "Base URL for JavDB",
-                    "type": "string"
-                },
-                "download_proxy": {
-                    "description": "Optional scraper-specific download proxy override",
-                    "allOf": [
-                        {
-                            "$ref": "#/definitions/config.ProxyConfig"
-                        }
-                    ]
-                },
-                "enabled": {
-                    "type": "boolean"
-                },
-                "fake_user_agent": {
-                    "description": "Optional custom fake User-Agent (defaults to built-in browser UA)",
-                    "type": "string"
-                },
-                "proxy": {
-                    "description": "Optional scraper-specific proxy override",
-                    "allOf": [
-                        {
-                            "$ref": "#/definitions/config.ProxyConfig"
-                        }
-                    ]
-                },
-                "request_delay": {
-                    "description": "Delay between requests in milliseconds (0 = no delay)",
-                    "type": "integer"
-                },
-                "use_fake_user_agent": {
-                    "description": "Use browser-like User-Agent header for this scraper",
-                    "type": "boolean"
-                },
-                "use_flaresolverr": {
-                    "description": "Enable FlareSolverr for Cloudflare bypass",
-                    "type": "boolean"
-                }
-            }
-        },
-        "config.JavLibraryConfig": {
-            "type": "object",
-            "properties": {
-                "base_url": {
-                    "description": "Base URL for JavLibrary",
-                    "type": "string"
-                },
-                "cf_bm": {
-                    "description": "Cloudflare Bot Management cookie (deprecated)",
-                    "type": "string"
-                },
-                "cf_clearance": {
-                    "description": "Cloudflare clearance cookie (deprecated, use FlareSolverr)",
-                    "type": "string"
-                },
-                "download_proxy": {
-                    "description": "Optional scraper-specific download proxy override",
-                    "allOf": [
-                        {
-                            "$ref": "#/definitions/config.ProxyConfig"
-                        }
-                    ]
-                },
-                "enabled": {
-                    "type": "boolean"
-                },
-                "fake_user_agent": {
-                    "description": "Optional custom fake User-Agent (defaults to built-in browser UA)",
-                    "type": "string"
-                },
-                "language": {
-                    "description": "Language code: en, ja, cn, tw (default: en)",
-                    "type": "string"
-                },
-                "proxy": {
-                    "description": "Optional scraper-specific proxy override",
-                    "allOf": [
-                        {
-                            "$ref": "#/definitions/config.ProxyConfig"
-                        }
-                    ]
-                },
-                "request_delay": {
-                    "description": "Delay between requests in milliseconds (0 = no delay)",
-                    "type": "integer"
-                },
-                "use_fake_user_agent": {
-                    "description": "Use browser-like User-Agent header for this scraper",
-                    "type": "boolean"
-                },
-                "use_flaresolverr": {
-                    "description": "Enable FlareSolverr for Cloudflare bypass",
-                    "type": "boolean"
-                },
-                "user_agent": {
-                    "description": "Custom user agent (optional)",
-                    "type": "string"
-                }
-            }
-        },
-        "config.LibreDMMConfig": {
-            "type": "object",
-            "properties": {
-                "base_url": {
-                    "description": "Base URL for LibreDMM",
-                    "type": "string"
-                },
-                "download_proxy": {
-                    "description": "Optional scraper-specific download proxy override",
-                    "allOf": [
-                        {
-                            "$ref": "#/definitions/config.ProxyConfig"
-                        }
-                    ]
-                },
-                "enabled": {
-                    "type": "boolean"
-                },
-                "fake_user_agent": {
-                    "description": "Optional custom fake User-Agent (defaults to built-in browser UA)",
-                    "type": "string"
-                },
-                "proxy": {
-                    "description": "Optional scraper-specific proxy override",
-                    "allOf": [
-                        {
-                            "$ref": "#/definitions/config.ProxyConfig"
-                        }
-                    ]
-                },
-                "request_delay": {
-                    "description": "Delay between requests in milliseconds (0 = no delay)",
-                    "type": "integer"
-                },
-                "use_fake_user_agent": {
-                    "description": "Use browser-like User-Agent header for this scraper",
-                    "type": "boolean"
-                }
-            }
-        },
         "config.LoggingConfig": {
             "type": "object",
             "properties": {
@@ -2730,42 +2279,6 @@ const docTemplate = `{
                 "output": {
                     "description": "stdout, file path",
                     "type": "string"
-                }
-            }
-        },
-        "config.MGStageConfig": {
-            "type": "object",
-            "properties": {
-                "download_proxy": {
-                    "description": "Optional scraper-specific download proxy override",
-                    "allOf": [
-                        {
-                            "$ref": "#/definitions/config.ProxyConfig"
-                        }
-                    ]
-                },
-                "enabled": {
-                    "type": "boolean"
-                },
-                "fake_user_agent": {
-                    "description": "Optional custom fake User-Agent (defaults to built-in browser UA)",
-                    "type": "string"
-                },
-                "proxy": {
-                    "description": "Optional scraper-specific proxy override",
-                    "allOf": [
-                        {
-                            "$ref": "#/definitions/config.ProxyConfig"
-                        }
-                    ]
-                },
-                "request_delay": {
-                    "description": "Delay between requests in milliseconds (0 = no delay)",
-                    "type": "integer"
-                },
-                "use_fake_user_agent": {
-                    "description": "Use browser-like User-Agent header for this scraper",
-                    "type": "boolean"
                 }
             }
         },
@@ -3078,109 +2591,8 @@ const docTemplate = `{
         "config.PriorityConfig": {
             "type": "object",
             "properties": {
-                "actress": {
-                    "type": "array",
-                    "items": {
-                        "type": "string"
-                    }
-                },
-                "content_id": {
-                    "type": "array",
-                    "items": {
-                        "type": "string"
-                    }
-                },
-                "cover_url": {
-                    "type": "array",
-                    "items": {
-                        "type": "string"
-                    }
-                },
-                "description": {
-                    "type": "array",
-                    "items": {
-                        "type": "string"
-                    }
-                },
-                "director": {
-                    "type": "array",
-                    "items": {
-                        "type": "string"
-                    }
-                },
-                "genre": {
-                    "type": "array",
-                    "items": {
-                        "type": "string"
-                    }
-                },
-                "id": {
-                    "type": "array",
-                    "items": {
-                        "type": "string"
-                    }
-                },
-                "label": {
-                    "type": "array",
-                    "items": {
-                        "type": "string"
-                    }
-                },
-                "maker": {
-                    "type": "array",
-                    "items": {
-                        "type": "string"
-                    }
-                },
-                "original_title": {
-                    "type": "array",
-                    "items": {
-                        "type": "string"
-                    }
-                },
-                "poster_url": {
-                    "type": "array",
-                    "items": {
-                        "type": "string"
-                    }
-                },
-                "rating": {
-                    "type": "array",
-                    "items": {
-                        "type": "string"
-                    }
-                },
-                "release_date": {
-                    "type": "array",
-                    "items": {
-                        "type": "string"
-                    }
-                },
-                "runtime": {
-                    "type": "array",
-                    "items": {
-                        "type": "string"
-                    }
-                },
-                "screenshot_url": {
-                    "type": "array",
-                    "items": {
-                        "type": "string"
-                    }
-                },
-                "series": {
-                    "type": "array",
-                    "items": {
-                        "type": "string"
-                    }
-                },
-                "title": {
-                    "type": "array",
-                    "items": {
-                        "type": "string"
-                    }
-                },
-                "trailer_url": {
+                "priority": {
+                    "description": "Priority is the global scraper execution order.\nIf empty, derived from registered scraper priorities at initialization.\nIf set, used directly for all metadata fields.",
                     "type": "array",
                     "items": {
                         "type": "string"
@@ -3199,18 +2611,6 @@ const docTemplate = `{
                     "description": "Enable proxy for HTTP requests",
                     "type": "boolean"
                 },
-                "flaresolverr": {
-                    "description": "FlareSolverr for Cloudflare bypass",
-                    "allOf": [
-                        {
-                            "$ref": "#/definitions/config.FlareSolverrConfig"
-                        }
-                    ]
-                },
-                "password": {
-                    "description": "Legacy direct field (rejected by validation)",
-                    "type": "string"
-                },
                 "profile": {
                     "description": "Named profile to use (for scraper-specific overrides)",
                     "type": "string"
@@ -3221,27 +2621,12 @@ const docTemplate = `{
                     "additionalProperties": {
                         "$ref": "#/definitions/config.ProxyProfile"
                     }
-                },
-                "url": {
-                    "description": "Legacy direct field (rejected by validation)",
-                    "type": "string"
-                },
-                "use_main_proxy": {
-                    "description": "Legacy option (rejected by validation)",
-                    "type": "boolean"
-                },
-                "username": {
-                    "description": "Legacy direct field (rejected by validation)",
-                    "type": "string"
                 }
             }
         },
         "config.ProxyProfile": {
             "type": "object",
             "properties": {
-                "flaresolverr": {
-                    "$ref": "#/definitions/config.FlareSolverrConfig"
-                },
                 "password": {
                     "type": "string"
                 },
@@ -3253,157 +2638,16 @@ const docTemplate = `{
                 }
             }
         },
-        "config.R18DevConfig": {
+        "config.ScrapersConfig": {
             "type": "object",
             "properties": {
-                "download_proxy": {
-                    "description": "Optional scraper-specific download proxy override",
-                    "allOf": [
-                        {
-                            "$ref": "#/definitions/config.ProxyConfig"
-                        }
-                    ]
-                },
-                "enabled": {
-                    "type": "boolean"
-                },
-                "fake_user_agent": {
-                    "description": "Optional custom fake User-Agent (defaults to built-in browser UA)",
-                    "type": "string"
-                },
-                "language": {
-                    "description": "Language code: en, ja (default: en)",
-                    "type": "string"
-                },
-                "max_retries": {
-                    "description": "Maximum number of retry attempts for rate-limited requests",
-                    "type": "integer"
-                },
-                "proxy": {
-                    "description": "Optional scraper-specific proxy override",
-                    "allOf": [
-                        {
-                            "$ref": "#/definitions/config.ProxyConfig"
-                        }
-                    ]
-                },
-                "request_delay": {
-                    "description": "Delay between requests in milliseconds (0 = no delay)",
-                    "type": "integer"
-                },
-                "respect_retry_after": {
-                    "description": "Whether to respect Retry-After header from server",
-                    "type": "boolean"
-                },
-                "use_fake_user_agent": {
-                    "description": "Use browser-like User-Agent header for this scraper",
-                    "type": "boolean"
-                }
-            }
-        },
-        "config.ScraperConfig": {
-            "type": "object",
-            "properties": {
-                "download_proxy": {
-                    "description": "Optional scraper-specific download proxy override",
-                    "allOf": [
-                        {
-                            "$ref": "#/definitions/config.ProxyConfig"
-                        }
-                    ]
-                },
-                "enabled": {
-                    "type": "boolean"
-                },
-                "extra": {
-                    "description": "CONF-06: scraper-specific fields",
-                    "type": "object",
-                    "additionalProperties": {}
-                },
                 "flaresolverr": {
-                    "description": "HTTP-03: FlareSolverr on ScraperConfig",
+                    "description": "Global FlareSolverr config for Cloudflare bypass",
                     "allOf": [
                         {
                             "$ref": "#/definitions/config.FlareSolverrConfig"
                         }
                     ]
-                },
-                "language": {
-                    "description": "Language code varies by scraper",
-                    "type": "string"
-                },
-                "proxy": {
-                    "description": "Optional scraper-specific proxy override",
-                    "allOf": [
-                        {
-                            "$ref": "#/definitions/config.ProxyConfig"
-                        }
-                    ]
-                },
-                "rate_limit": {
-                    "description": "Request delay in milliseconds (mirrors RequestDelay)",
-                    "type": "integer"
-                },
-                "retry_count": {
-                    "description": "Max retries (mirrors MaxRetries)",
-                    "type": "integer"
-                },
-                "timeout": {
-                    "description": "HTTP client timeout in seconds",
-                    "type": "integer"
-                },
-                "use_fake_user_agent": {
-                    "description": "Use browser-like User-Agent header",
-                    "type": "boolean"
-                },
-                "user_agent": {
-                    "description": "Optional custom User-Agent (replaces FakeUserAgent)",
-                    "type": "string"
-                }
-            }
-        },
-        "config.ScrapersConfig": {
-            "type": "object",
-            "properties": {
-                "aventertainment": {
-                    "$ref": "#/definitions/config.AVEntertainmentConfig"
-                },
-                "caribbeancom": {
-                    "$ref": "#/definitions/config.CaribbeancomConfig"
-                },
-                "dlgetchu": {
-                    "$ref": "#/definitions/config.DLGetchuConfig"
-                },
-                "dmm": {
-                    "$ref": "#/definitions/config.DMMConfig"
-                },
-                "fc2": {
-                    "$ref": "#/definitions/config.FC2Config"
-                },
-                "jav321": {
-                    "$ref": "#/definitions/config.Jav321Config"
-                },
-                "javbus": {
-                    "$ref": "#/definitions/config.JavBusConfig"
-                },
-                "javdb": {
-                    "$ref": "#/definitions/config.JavDBConfig"
-                },
-                "javlibrary": {
-                    "$ref": "#/definitions/config.JavLibraryConfig"
-                },
-                "libredmm": {
-                    "$ref": "#/definitions/config.LibreDMMConfig"
-                },
-                "mgstage": {
-                    "$ref": "#/definitions/config.MGStageConfig"
-                },
-                "overrides": {
-                    "description": "Overrides: normalized map for generic iteration (populated at Load() time)\nCONF-02: This map is write-only populated from flat structs.\nNOT yaml-serializable (omitempty). The flat structs remain source of truth for YAML.",
-                    "type": "object",
-                    "additionalProperties": {
-                        "$ref": "#/definitions/config.ScraperConfig"
-                    }
                 },
                 "priority": {
                     "description": "Global scraper priority order",
@@ -3420,9 +2664,6 @@ const docTemplate = `{
                         }
                     ]
                 },
-                "r18dev": {
-                    "$ref": "#/definitions/config.R18DevConfig"
-                },
                 "referer": {
                     "description": "Referer header for CDN compatibility (default: https://www.dmm.co.jp/)",
                     "type": "string"
@@ -3434,9 +2675,6 @@ const docTemplate = `{
                 "timeout_seconds": {
                     "description": "HTTP client timeout in seconds (default: 30)",
                     "type": "integer"
-                },
-                "tokyohot": {
-                    "$ref": "#/definitions/config.TokyoHotConfig"
                 },
                 "user_agent": {
                     "type": "string"
@@ -3491,6 +2729,10 @@ const docTemplate = `{
         "config.SystemConfig": {
             "type": "object",
             "properties": {
+                "temp_dir": {
+                    "description": "TempDir is the base directory for temporary files (default: \"data/temp\").\nCan be overridden with JAVINIZER_TEMP_DIR environment variable.\nSubdirectory \"posters/{jobID}\" is created for batch job temp posters.",
+                    "type": "string"
+                },
                 "umask": {
                     "description": "Umask for file creation (e.g., \"002\" for rwxrwxr-x)\nCan be overridden with UMASK environment variable",
                     "type": "string"
@@ -3510,50 +2752,6 @@ const docTemplate = `{
             "properties": {
                 "enabled": {
                     "description": "Enable per-movie tag lookup from database",
-                    "type": "boolean"
-                }
-            }
-        },
-        "config.TokyoHotConfig": {
-            "type": "object",
-            "properties": {
-                "base_url": {
-                    "description": "Base URL for TokyoHot",
-                    "type": "string"
-                },
-                "download_proxy": {
-                    "description": "Optional scraper-specific download proxy override",
-                    "allOf": [
-                        {
-                            "$ref": "#/definitions/config.ProxyConfig"
-                        }
-                    ]
-                },
-                "enabled": {
-                    "type": "boolean"
-                },
-                "fake_user_agent": {
-                    "description": "Optional custom fake User-Agent (defaults to built-in browser UA)",
-                    "type": "string"
-                },
-                "language": {
-                    "description": "Language code: en, ja, zh (default: en)",
-                    "type": "string"
-                },
-                "proxy": {
-                    "description": "Optional scraper-specific proxy override",
-                    "allOf": [
-                        {
-                            "$ref": "#/definitions/config.ProxyConfig"
-                        }
-                    ]
-                },
-                "request_delay": {
-                    "description": "Delay between requests in milliseconds (0 = no delay)",
-                    "type": "integer"
-                },
-                "use_fake_user_agent": {
-                    "description": "Use browser-like User-Agent header for this scraper",
                     "type": "boolean"
                 }
             }
@@ -4644,6 +3842,14 @@ const docTemplate = `{
                 "mode"
             ],
             "properties": {
+                "flaresolverr": {
+                    "description": "FlareSolverr config (separate from ProxyConfig)",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/config.FlareSolverrConfig"
+                        }
+                    ]
+                },
                 "mode": {
                     "description": "direct or flaresolverr",
                     "type": "string",

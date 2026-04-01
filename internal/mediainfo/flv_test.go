@@ -343,7 +343,7 @@ func TestIsNaN(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := isNaN(tt.value)
+			result := math.IsNaN(tt.value)
 			assert.Equal(t, tt.expected, result)
 		})
 	}

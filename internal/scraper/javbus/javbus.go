@@ -38,7 +38,6 @@ var (
 // Scraper implements the JavBus scraper.
 type Scraper struct {
 	client          *resty.Client
-	cfg             *config.JavBusConfig
 	enabled         bool
 	baseURL         string
 	language        string
@@ -46,50 +45,57 @@ type Scraper struct {
 	proxyOverride   *config.ProxyConfig
 	downloadProxy   *config.ProxyConfig
 	lastRequestTime atomic.Value
+	settings        config.ScraperSettings // stores the full settings for Config() method
 }
 
 // New creates a new JavBus scraper.
-func New(cfg *config.Config) *Scraper {
-	scraperCfg := cfg.Scrapers.JavBus
-
+func New(settings config.ScraperSettings, globalProxy *config.ProxyConfig, globalFlareSolverr config.FlareSolverrConfig) *Scraper {
 	// Build ScraperConfig for HTTP client (HTTP-01 pattern)
-	configForHTTP := &config.ScraperConfig{
-		Enabled:          scraperCfg.Enabled,
-		Timeout:          30,
-		RateLimit:        scraperCfg.RequestDelay,
-		RetryCount:       3,
-		UseFakeUserAgent: scraperCfg.UseFakeUserAgent,
-		UserAgent:        scraperCfg.FakeUserAgent,
-		Proxy:            scraperCfg.Proxy,
-		DownloadProxy:    scraperCfg.DownloadProxy,
+	configForHTTP := &config.ScraperSettings{
+		Enabled:       settings.Enabled,
+		Timeout:       30,
+		RateLimit:     settings.RateLimit,
+		RetryCount:    3,
+		UserAgent:     settings.UserAgent,
+		Proxy:         settings.Proxy,
+		DownloadProxy: settings.DownloadProxy,
 	}
 
-	proxyCfg := config.ResolveScraperProxy(cfg.Scrapers.Proxy, scraperCfg.Proxy)
+	// Handle nil globalProxy to avoid dereference panic
+	globalProxyVal := config.ProxyConfig{}
+	if globalProxy != nil {
+		globalProxyVal = *globalProxy
+	}
+	proxyEnabled := globalProxyVal.Enabled
+	if settings.Proxy != nil && settings.Proxy.Enabled {
+		proxyEnabled = true
+	}
+	proxyCfg := config.ResolveScraperProxy(globalProxyVal, settings.Proxy)
 
-	client, err := NewHTTPClient(configForHTTP, &cfg.Scrapers.Proxy)
-	usingProxy := err == nil && proxyCfg.Enabled && strings.TrimSpace(proxyCfg.URL) != ""
+	client, err := NewHTTPClient(configForHTTP, globalProxy, globalFlareSolverr)
+	usingProxy := err == nil && proxyEnabled && strings.TrimSpace(proxyCfg.URL) != ""
 	if err != nil {
 		logging.Errorf("JavBus: Failed to create HTTP client with proxy: %v, using explicit no-proxy fallback", err)
 		client = httpclient.NewRestyClientNoProxy(30*time.Second, 3)
 	}
 
-	base := strings.TrimSpace(scraperCfg.BaseURL)
+	base := strings.TrimSpace(settings.BaseURL)
 	if base == "" {
 		base = defaultBaseURL
 	}
 	base = strings.TrimRight(base, "/")
 
-	lang := normalizeLanguage(scraperCfg.Language)
+	lang := normalizeLanguage(settings.Language)
 
 	s := &Scraper{
 		client:        client,
-		cfg:           &cfg.Scrapers.JavBus,
-		enabled:       scraperCfg.Enabled,
+		enabled:       settings.Enabled,
 		baseURL:       base,
 		language:      lang,
-		requestDelay:  time.Duration(scraperCfg.RequestDelay) * time.Millisecond,
-		proxyOverride: scraperCfg.Proxy,
-		downloadProxy: scraperCfg.DownloadProxy,
+		requestDelay:  time.Duration(settings.RateLimit) * time.Millisecond,
+		proxyOverride: settings.Proxy,
+		downloadProxy: settings.DownloadProxy,
+		settings:      settings,
 	}
 	s.lastRequestTime.Store(time.Time{})
 
@@ -111,19 +117,8 @@ func (s *Scraper) IsEnabled() bool {
 }
 
 // Config returns the scraper's configuration
-func (s *Scraper) Config() *config.ScraperConfig {
-	return &config.ScraperConfig{
-		Enabled:          s.cfg.Enabled,
-		Language:         s.cfg.Language,
-		RateLimit:        s.cfg.RequestDelay,
-		Timeout:          30,
-		RetryCount:       3,
-		UseFakeUserAgent: s.cfg.UseFakeUserAgent,
-		UserAgent:        s.cfg.FakeUserAgent,
-		Proxy:            s.cfg.Proxy,
-		DownloadProxy:    s.cfg.DownloadProxy,
-		Extra:            make(map[string]any),
-	}
+func (s *Scraper) Config() *config.ScraperSettings {
+	return s.settings.DeepCopy()
 }
 
 // Close cleans up resources held by the scraper
@@ -133,7 +128,7 @@ func (s *Scraper) Close() error {
 
 // ValidateConfig validates the scraper configuration.
 // Returns error if config is invalid, nil if valid.
-func (s *Scraper) ValidateConfig(cfg *config.ScraperConfig) error {
+func (s *Scraper) ValidateConfig(cfg *config.ScraperSettings) error {
 	if cfg == nil {
 		return fmt.Errorf("javbus: config is nil")
 	}
@@ -911,7 +906,16 @@ func sanitizeCookieValue(v string) string {
 }
 
 func init() {
-	scraper.RegisterScraper("javbus", func(cfg *config.Config, db *database.DB) (models.Scraper, error) {
-		return New(cfg), nil
+	scraper.RegisterScraper("javbus", func(settings config.ScraperSettings, db *database.DB, globalProxy *config.ProxyConfig, globalFlareSolverr config.FlareSolverrConfig) (models.Scraper, error) {
+		return New(settings, globalProxy, globalFlareSolverr), nil
+	})
+	// Register default settings and priority
+	scraper.RegisterScraperDefaults("javbus", scraper.DefaultSettings{
+		Settings: config.ScraperSettings{
+			Enabled:   false,
+			Language:  "ja",
+			RateLimit: 1000,
+		},
+		Priority: 70,
 	})
 }

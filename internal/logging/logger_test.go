@@ -13,9 +13,9 @@ func TestInitLogger_DefaultConfig(t *testing.T) {
 		t.Fatalf("InitLogger with nil config failed: %v", err)
 	}
 
-	logger := GetLogger()
+	logger := L()
 	if logger == nil {
-		t.Fatal("GetLogger returned nil after initialization")
+		t.Fatal("L() returned nil after initialization")
 	}
 }
 
@@ -301,13 +301,13 @@ func TestWithFields(t *testing.T) {
 	}
 }
 
-func TestGetLogger_UninitializedReturnsDefault(t *testing.T) {
+func TestL_UninitializedReturnsDefault(t *testing.T) {
 	// Reset logger state
 	current.Store((*loggerState)(nil))
 
-	logger := GetLogger()
+	logger := L()
 	if logger == nil {
-		t.Fatal("GetLogger returned nil when uninitialized")
+		t.Fatal("L() returned nil when uninitialized")
 	}
 }
 

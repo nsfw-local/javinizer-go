@@ -145,12 +145,8 @@ if [ -d "/media" ]; then
     fi
 fi
 
-# Copy default config if it doesn't exist
-if [ ! -f "/javinizer/config.yaml" ]; then
-    echo "No config file found, copying default configuration..."
-    cp /app/config/config.yaml.default /javinizer/config.yaml
-    echo "✓ Default configuration created at /javinizer/config.yaml"
-fi
+# Config initialization is handled by the app (config.LoadOrCreate) so Docker
+# and non-Docker flows share the same default generation path.
 
 # Execute the main command
 exec "$@"

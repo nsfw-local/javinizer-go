@@ -58,10 +58,10 @@ func TestSearch_RetriesSparseDetailWithDirectSuccess(t *testing.T) {
 
 	scraper := &Scraper{
 		client:       resty.New(),
-		cfg:          &config.JavDBConfig{Enabled: true},
 		enabled:      true,
 		baseURL:      server.URL,
 		requestDelay: 0,
+		settings:     config.ScraperSettings{Enabled: true},
 	}
 	scraper.lastRequestTime.Store(time.Time{})
 
@@ -104,10 +104,10 @@ func TestSearch_FailsWhenDirectRetryStillSparse(t *testing.T) {
 
 	scraper := &Scraper{
 		client:       resty.New(),
-		cfg:          &config.JavDBConfig{Enabled: true},
 		enabled:      true,
 		baseURL:      server.URL,
 		requestDelay: 0,
+		settings:     config.ScraperSettings{Enabled: true},
 	}
 	scraper.lastRequestTime.Store(time.Time{})
 

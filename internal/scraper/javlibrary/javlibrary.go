@@ -24,65 +24,58 @@ var SupportedLanguages = []string{"en", "ja", "cn", "tw"}
 type Scraper struct {
 	client        *resty.Client
 	flaresolverr  *httpclient.FlareSolverr
-	cfg           *config.JavLibraryConfig
 	enabled       bool
 	baseURL       string
 	language      string
 	proxyOverride *config.ProxyConfig
 	downloadProxy *config.ProxyConfig
+	settings      config.ScraperSettings // stores the full settings for Config() method
 }
 
 // New creates a new JavLibrary scraper.
-func New(cfg *config.Config) *Scraper {
-	scraperCfg := cfg.Scrapers.JavLibrary
-	proxyConfig := cfg.Scrapers.Proxy
-
+func New(settings config.ScraperSettings, globalProxy *config.ProxyConfig, globalFlareSolverr config.FlareSolverrConfig) *Scraper {
 	// Build FlareSolverrConfig for NewHTTPClient.
-	// When scraper-specific proxy is set (scraperCfg.Proxy != nil), use its FlareSolverr.
-	// Otherwise, inherit FlareSolverr from global proxy (proxyConfig).
-	// This allows use_flaresolverr=true with only global proxy config.
+	// When scraper-specific flaresolverr is set (settings.FlareSolverr.Enabled), use it.
+	// Otherwise, fall back to globalFlareSolverr parameter.
 	flaresolverrConfig := config.FlareSolverrConfig{}
-	if scraperCfg.Proxy != nil {
-		flaresolverrConfig = scraperCfg.Proxy.FlareSolverr
-	} else if proxyConfig.FlareSolverr.Enabled {
-		// No scraper-specific proxy; inherit FlareSolverr from global proxy
-		flaresolverrConfig = proxyConfig.FlareSolverr
-	}
-	// If scraper-level use_flaresolverr is set, ensure FlareSolverr is enabled
-	// (can be used with global proxy + global flaresolverr without scraper-specific proxy)
-	if scraperCfg.UseFlareSolverr {
-		flaresolverrConfig.Enabled = true
+	if settings.FlareSolverr.Enabled {
+		// Use scraper-specific FlareSolverr config
+		flaresolverrConfig = settings.FlareSolverr
+	} else if globalFlareSolverr.Enabled {
+		// Fall back to global FlareSolverr from registry
+		flaresolverrConfig = globalFlareSolverr
 	}
 
 	// Build ScraperConfig for NewHTTPClient (HTTP-01 pattern)
-	configForHTTP := &config.ScraperConfig{
-		Enabled:          scraperCfg.Enabled,
-		Language:         scraperCfg.Language,
-		RateLimit:        scraperCfg.RequestDelay,
-		Timeout:          30, // default, will be overridden if ScraperConfig has it
-		RetryCount:       3,  // default
-		UseFakeUserAgent: scraperCfg.UseFakeUserAgent,
-		UserAgent:        scraperCfg.FakeUserAgent,
-		Proxy:            scraperCfg.Proxy,
-		DownloadProxy:    scraperCfg.DownloadProxy,
-		FlareSolverr:     flaresolverrConfig,
+	configForHTTP := &config.ScraperSettings{
+		Enabled:       settings.Enabled,
+		Language:      settings.Language,
+		RateLimit:     settings.RateLimit,
+		Timeout:       30, // default, will be overridden if ScraperConfig has it
+		RetryCount:    3,  // default
+		UserAgent:     settings.UserAgent,
+		Proxy:         settings.Proxy,
+		DownloadProxy: settings.DownloadProxy,
+		FlareSolverr:  flaresolverrConfig,
 	}
 
-	client, flaresolverr, err := NewHTTPClient(configForHTTP, &proxyConfig, scraperCfg.UseFlareSolverr)
-	usingProxy := err == nil && proxyConfig.Enabled && strings.TrimSpace(proxyConfig.URL) != ""
+	client, flaresolverr, err := NewHTTPClient(configForHTTP, globalProxy, globalFlareSolverr, flaresolverrConfig.Enabled)
+	// Resolve proxy to check if it's actually being used
+	resolvedProxy := config.ResolveScraperProxy(*globalProxy, settings.Proxy)
+	usingProxy := err == nil && globalProxy != nil && globalProxy.Enabled && strings.TrimSpace(resolvedProxy.URL) != ""
 	if err != nil {
 		logging.Errorf("JavLibrary: Failed to create HTTP client with proxy/flaresolverr: %v, using explicit no-proxy fallback", err)
 		client = httpclient.NewRestyClientNoProxy(30*time.Second, 3)
 		flaresolverr = nil
 	}
 
-	baseURL := scraperCfg.BaseURL
+	baseURL := settings.BaseURL
 	if baseURL == "" {
 		baseURL = "http://www.javlibrary.com"
 	}
 
 	// Normalize language to a supported value
-	language := scraperCfg.Language
+	language := settings.Language
 	if language == "" {
 		language = "en"
 	}
@@ -91,26 +84,22 @@ func New(cfg *config.Config) *Scraper {
 		language = "en"
 	}
 
-	userAgent := config.ResolveScraperUserAgent(
-		cfg.Scrapers.UserAgent,
-		scraperCfg.UseFakeUserAgent,
-		scraperCfg.FakeUserAgent,
-	)
+	userAgent := config.ResolveScraperUserAgent(settings.UserAgent)
 	client.SetHeader("User-Agent", userAgent)
 
 	if usingProxy {
-		logging.Infof("JavLibrary: Using proxy %s", httpclient.SanitizeProxyURL(proxyConfig.URL))
+		logging.Infof("JavLibrary: Using proxy %s", httpclient.SanitizeProxyURL(resolvedProxy.URL))
 	}
 
 	return &Scraper{
 		client:        client,
 		flaresolverr:  flaresolverr,
-		cfg:           &scraperCfg,
-		enabled:       scraperCfg.Enabled,
+		enabled:       settings.Enabled,
 		baseURL:       baseURL,
 		language:      language,
-		proxyOverride: scraperCfg.Proxy,
-		downloadProxy: scraperCfg.DownloadProxy,
+		proxyOverride: settings.Proxy,
+		downloadProxy: settings.DownloadProxy,
+		settings:      settings,
 	}
 }
 
@@ -130,21 +119,8 @@ func (s *Scraper) IsEnabled() bool {
 }
 
 // Config returns the scraper's configuration
-func (s *Scraper) Config() *config.ScraperConfig {
-	return &config.ScraperConfig{
-		Enabled:          s.cfg.Enabled,
-		Language:         s.cfg.Language,
-		RateLimit:        s.cfg.RequestDelay,
-		Timeout:          30, // default, hardcoded in HTTP client creation
-		RetryCount:       3,  // default, hardcoded in HTTP client creation
-		UseFakeUserAgent: s.cfg.UseFakeUserAgent,
-		UserAgent:        s.cfg.FakeUserAgent,
-		Proxy:            s.cfg.Proxy,
-		DownloadProxy:    s.cfg.DownloadProxy,
-		FlareSolverr: config.FlareSolverrConfig{
-			Enabled: s.cfg.UseFlareSolverr,
-		},
-	}
+func (s *Scraper) Config() *config.ScraperSettings {
+	return s.settings.DeepCopy()
 }
 
 // Close cleans up resources held by the scraper (HTTP client, FlareSolverr).
@@ -160,10 +136,14 @@ func (s *Scraper) Close() error {
 // ResolveDownloadProxyForHost declares JavLibrary-owned media hosts for downloader proxy routing.
 func (s *Scraper) ResolveDownloadProxyForHost(host string) (*config.ProxyConfig, *config.ProxyConfig, bool) {
 	host = strings.ToLower(strings.TrimSpace(host))
-	if host == "" || !strings.Contains(host, "javlibrary") {
+	if host == "" {
 		return nil, nil, false
 	}
-	return s.downloadProxy, s.proxyOverride, true
+	// JavLibrary uses c.impact.jp for its image CDN alongside javlibrary.com
+	if strings.Contains(host, "javlibrary") || strings.Contains(host, "c.impact.jp") {
+		return s.downloadProxy, s.proxyOverride, true
+	}
+	return nil, nil, false
 }
 
 // GetURL returns the search URL for a given ID
@@ -229,8 +209,10 @@ func (s *Scraper) fetchPage(url string) (string, error) {
 		logging.Debugf("JavLibrary: Direct request returned status %d for %s", resp.StatusCode(), url)
 	}
 
-	// Fallback to FlareSolverr if enabled.
-	if s.flaresolverr != nil && s.cfg.UseFlareSolverr {
+	// Fallback to FlareSolverr if client was created.
+	// The flaresolverr client is only non-nil when it was successfully initialized,
+	// which happens when useFlareSolverr=true (based on scraper/global FlareSolverr config).
+	if s.flaresolverr != nil {
 		logging.Infof("JavLibrary: Using FlareSolverr for %s", url)
 		html, cookies, fsErr := s.flaresolverr.ResolveURL(url)
 		if fsErr == nil {
@@ -590,6 +572,11 @@ func (s *Scraper) extractScreenshotURLs(html string) []string {
 		if strings.Contains(url, "jp-") || strings.HasSuffix(url, "jp.jpg") {
 			return
 		}
+		// Filter out DMM cover URLs (pl.jpg = cover, ps.jpg = poster)
+		// These should not be included as screenshots
+		if strings.Contains(url, "pl.jpg") || strings.Contains(url, "ps.jpg") {
+			return
+		}
 		seen[url] = true
 		screenshotURLs = append(screenshotURLs, url)
 	}
@@ -651,8 +638,8 @@ func (s *Scraper) extractScreenshotURLs(html string) []string {
 	}
 
 	// Look for any src attribute containing .jpg that looks like a screenshot
-	// (broader pattern to catch new formats)
-	re = regexp.MustCompile(`src="([^"]*\.jpg[^"]*)"`)
+	// Require numeric pattern (e.g., /04.jpg, /001.jpg) typical of gallery screenshots
+	re = regexp.MustCompile(`src="([^"]*\/(\d+)\.jpg[^"]*)"`)
 	matches = re.FindAllStringSubmatch(html, -1)
 	for _, m := range matches {
 		if len(m) > 1 {
@@ -695,8 +682,8 @@ func (s *Scraper) extractScreenshotURLs(html string) []string {
 		}
 	}
 
-	// Broader fallback: any href to .jpg anywhere in page
-	re = regexp.MustCompile(`href="([^"]*\.jpg[^"]*)"`)
+	// Broader fallback: any href to .jpg with numeric pattern typical of gallery screenshots
+	re = regexp.MustCompile(`href="([^"]*\/(\d+)\.jpg[^"]*)"`)
 	matches = re.FindAllStringSubmatch(html, -1)
 	for _, m := range matches {
 		if len(m) > 1 {
@@ -770,7 +757,7 @@ func isValidLanguage(lang string) bool {
 
 // ValidateConfig validates the scraper configuration.
 // Returns error if config is invalid, nil if valid.
-func (s *Scraper) ValidateConfig(cfg *config.ScraperConfig) error {
+func (s *Scraper) ValidateConfig(cfg *config.ScraperSettings) error {
 	if cfg == nil {
 		return fmt.Errorf("javlibrary: config is nil")
 	}
@@ -793,7 +780,16 @@ func (s *Scraper) ValidateConfig(cfg *config.ScraperConfig) error {
 }
 
 func init() {
-	scraper.RegisterScraper("javlibrary", func(cfg *config.Config, db *database.DB) (models.Scraper, error) {
-		return New(cfg), nil
+	scraper.RegisterScraper("javlibrary", func(settings config.ScraperSettings, db *database.DB, globalProxy *config.ProxyConfig, globalFlareSolverr config.FlareSolverrConfig) (models.Scraper, error) {
+		return New(settings, globalProxy, globalFlareSolverr), nil
+	})
+	// Register default settings and priority
+	scraper.RegisterScraperDefaults("javlibrary", scraper.DefaultSettings{
+		Settings: config.ScraperSettings{
+			Enabled:   false,
+			Language:  "en",
+			RateLimit: 1000,
+		},
+		Priority: 80,
 	})
 }

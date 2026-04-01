@@ -22,65 +22,54 @@ func TestResolveScraperProxy(t *testing.T) {
 				Password: "backup-pass",
 			},
 		},
-		FlareSolverr: FlareSolverrConfig{
-			Enabled:    true,
-			URL:        "http://global-fs:8191/v1",
-			Timeout:    30,
-			MaxRetries: 3,
-			SessionTTL: 300,
-		},
 	}
 
-	t.Run("disables scraper proxy when override is nil", func(t *testing.T) {
+	t.Run("falls back to global proxy when override is nil", func(t *testing.T) {
 		resolved := ResolveScraperProxy(global, nil)
-		assert.False(t, resolved.Enabled)
-		assert.Equal(t, "", resolved.URL)
-		assert.Equal(t, "", resolved.Username)
-		assert.Equal(t, "", resolved.Password)
+		assert.Equal(t, "http://main-proxy.example.com:8080", resolved.URL)
+		assert.Equal(t, "main-user", resolved.Username)
+		assert.Equal(t, "main-pass", resolved.Password)
 	})
 
-	t.Run("disables scraper proxy when override is explicitly disabled", func(t *testing.T) {
+	t.Run("falls back to global proxy when override is explicitly disabled", func(t *testing.T) {
 		override := &ProxyConfig{
 			Enabled: false,
-			URL:     "http://scraper-proxy.example.com:8080",
 		}
 		resolved := ResolveScraperProxy(global, override)
-		assert.False(t, resolved.Enabled)
+		assert.Equal(t, "http://main-proxy.example.com:8080", resolved.URL)
+		assert.Equal(t, "main-user", resolved.Username)
+		assert.Equal(t, "main-pass", resolved.Password)
+	})
+
+	t.Run("nil override with disabled global returns empty config", func(t *testing.T) {
+		disabledGlobal := ProxyConfig{
+			Enabled: false,
+		}
+		resolved := ResolveScraperProxy(disabledGlobal, nil)
 		assert.Equal(t, "", resolved.URL)
 	})
 
-	t.Run("uses scraper override when provided", func(t *testing.T) {
-		override := &ProxyConfig{
-			Enabled: true,
-			URL:     "http://scraper-proxy.example.com:8080",
-			FlareSolverr: FlareSolverrConfig{
-				Enabled:    true,
-				URL:        "http://scraper-fs:8191/v1",
-				Timeout:    45,
-				MaxRetries: 2,
-				SessionTTL: 600,
-			},
+	t.Run("disabled override with disabled global returns empty config", func(t *testing.T) {
+		disabledGlobal := ProxyConfig{
+			Enabled: false,
 		}
-
-		resolved := ResolveScraperProxy(global, override)
-		assert.Equal(t, *override, *resolved)
+		override := &ProxyConfig{
+			Enabled: false,
+		}
+		resolved := ResolveScraperProxy(disabledGlobal, override)
+		assert.Equal(t, "", resolved.URL)
 	})
 
-	t.Run("inherits global flaresolverr when scraper override omits it", func(t *testing.T) {
+	t.Run("uses scraper override when profile specified", func(t *testing.T) {
 		override := &ProxyConfig{
-			Enabled:  true,
-			URL:      "http://scraper-proxy.example.com:8080",
-			Username: "scraper-user",
-			Password: "scraper-pass",
-			// FlareSolverr block intentionally omitted (zero-value)
+			Enabled: true,
+			Profile: "backup",
 		}
 
 		resolved := ResolveScraperProxy(global, override)
-		assert.Equal(t, override.Enabled, resolved.Enabled)
-		assert.Equal(t, override.URL, resolved.URL)
-		assert.Equal(t, override.Username, resolved.Username)
-		assert.Equal(t, override.Password, resolved.Password)
-		assert.Equal(t, global.FlareSolverr, resolved.FlareSolverr)
+		assert.Equal(t, "http://backup-proxy.example.com:8080", resolved.URL)
+		assert.Equal(t, "backup-user", resolved.Username)
+		assert.Equal(t, "backup-pass", resolved.Password)
 	})
 
 	t.Run("uses scraper profile when provided", func(t *testing.T) {
@@ -98,22 +87,19 @@ func TestResolveScraperProxy(t *testing.T) {
 	t.Run("inherits global proxy URL and credentials when enabled override omits URL", func(t *testing.T) {
 		override := &ProxyConfig{
 			Enabled: true,
-			// URL/credentials intentionally omitted
+			// URL/credentials intentionally omitted - will inherit from global
 		}
 
 		resolved := ResolveScraperProxy(global, override)
-		assert.Equal(t, true, resolved.Enabled)
 		assert.Equal(t, "http://main-proxy.example.com:8080", resolved.URL)
 		assert.Equal(t, "main-user", resolved.Username)
 		assert.Equal(t, "main-pass", resolved.Password)
-		assert.Equal(t, global.FlareSolverr, resolved.FlareSolverr)
 	})
 }
 
 func TestResolveGlobalProxy(t *testing.T) {
 	global := ProxyConfig{
 		Enabled:        true,
-		URL:            "http://global-proxy.example.com:8080",
 		DefaultProfile: "main",
 		Profiles: map[string]ProxyProfile{
 			"main": {
@@ -125,7 +111,6 @@ func TestResolveGlobalProxy(t *testing.T) {
 	}
 
 	resolved := ResolveGlobalProxy(global)
-	assert.True(t, resolved.Enabled)
 	assert.Equal(t, "http://main-proxy.example.com:8080", resolved.URL)
 	assert.Equal(t, "main-user", resolved.Username)
 	assert.Equal(t, "main-pass", resolved.Password)

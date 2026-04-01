@@ -162,30 +162,28 @@ func TestFetchWithBrowser_ProxyConfig(t *testing.T) {
 	// Note: These tests verify proxy configuration is properly applied.
 	// Using invalid URLs to test error paths without real network/proxy calls.
 	tests := []struct {
-		name        string
-		proxyConfig *config.ProxyConfig
-		description string
+		name         string
+		proxyProfile *config.ProxyProfile
+		description  string
 	}{
 		{
-			name:        "nil proxy config",
-			proxyConfig: nil,
-			description: "Should handle nil proxy config",
+			name:         "nil proxy profile",
+			proxyProfile: nil,
+			description:  "Should handle nil proxy profile",
 		},
 		{
-			name: "proxy disabled",
-			proxyConfig: &config.ProxyConfig{
-				Enabled: false,
-				URL:     "",
+			name: "empty proxy profile",
+			proxyProfile: &config.ProxyProfile{
+				URL: "",
 			},
-			description: "Should handle disabled proxy",
+			description: "Should handle empty proxy profile",
 		},
 		{
-			name: "proxy enabled without URL",
-			proxyConfig: &config.ProxyConfig{
-				Enabled: true,
-				URL:     "",
+			name: "proxy profile with URL",
+			proxyProfile: &config.ProxyProfile{
+				URL: "http://proxy.example.com:8080",
 			},
-			description: "Should handle enabled proxy without URL",
+			description: "Should handle proxy profile with URL",
 		},
 	}
 
@@ -193,7 +191,7 @@ func TestFetchWithBrowser_ProxyConfig(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// Use invalid URL to avoid real network calls
 			// This tests that proxy config doesn't cause panics in setup
-			_, err := FetchWithBrowser("http://localhost:99999/invalid", 2, tt.proxyConfig)
+			_, err := FetchWithBrowser("http://localhost:99999/invalid", 2, tt.proxyProfile)
 			// We expect errors due to invalid URL, but no panics
 			assert.Error(t, err, "Should error on invalid URL")
 			t.Logf("Proxy config test completed: %v", err)

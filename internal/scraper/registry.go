@@ -34,7 +34,13 @@ func NewDefaultScraperRegistry(cfg *config.Config, db *database.DB) (*models.Scr
 
 	// Initialize all scrapers via their registered constructors
 	for name, constructor := range constructors {
-		scraper, err := constructor(cfg, db)
+		// PLUGIN-01: Get scraper settings from Overrides map (populated by NormalizeScraperConfigs)
+		settings := cfg.Scrapers.Overrides[name]
+		if settings == nil {
+			logging.Warnf("No configuration found for %s scraper, skipping", name)
+			continue
+		}
+		scraper, err := constructor(*settings, db, &cfg.Scrapers.Proxy, cfg.Scrapers.FlareSolverr)
 		if err != nil {
 			logging.Warnf("Failed to initialize %s scraper: %v", name, err)
 			continue

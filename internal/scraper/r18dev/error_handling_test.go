@@ -86,12 +86,8 @@ func TestErrorMessages_ContainScraperName(t *testing.T) {
 		{
 			name: "empty search ID",
 			setupFunc: func() (*Scraper, error) {
-				cfg := &config.Config{
-					Scrapers: config.ScrapersConfig{
-						R18Dev: config.R18DevConfig{Enabled: true},
-					},
-				}
-				scraper := New(cfg)
+				settings := config.ScraperSettings{Enabled: true}
+				scraper := New(settings, nil, config.FlareSolverrConfig{})
 				_, err := scraper.Search("")
 				return scraper, err
 			},
@@ -116,12 +112,8 @@ func TestErrorMessages_ContainScraperName(t *testing.T) {
 
 // TestErrorMessages_NoSensitiveData ensures no API keys or internal paths in errors
 func TestErrorMessages_NoSensitiveData(t *testing.T) {
-	cfg := &config.Config{
-		Scrapers: config.ScrapersConfig{
-			R18Dev: config.R18DevConfig{Enabled: true},
-		},
-	}
-	scraper := New(cfg)
+	settings := config.ScraperSettings{Enabled: true}
+	scraper := New(settings, nil, config.FlareSolverrConfig{})
 
 	// Trigger various errors and check none leak sensitive data
 	sensitivePatterns := []string{
@@ -230,12 +222,8 @@ func TestMissingRequiredFields(t *testing.T) {
 
 // Benchmark_ErrorHandling measures performance of error path
 func Benchmark_ErrorHandling(b *testing.B) {
-	cfg := &config.Config{
-		Scrapers: config.ScrapersConfig{
-			R18Dev: config.R18DevConfig{Enabled: true},
-		},
-	}
-	scraper := New(cfg)
+	settings := config.ScraperSettings{Enabled: true}
+	scraper := New(settings, nil, config.FlareSolverrConfig{})
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {

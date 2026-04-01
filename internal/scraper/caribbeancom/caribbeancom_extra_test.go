@@ -9,8 +9,8 @@ import (
 
 // TestResolveDownloadProxyForHost tests proxy resolution for Caribbeancom hosts
 func TestResolveDownloadProxyForHost(t *testing.T) {
-	cfg := config.DefaultConfig()
-	scraper := New(cfg)
+	settings := config.ScraperSettings{Enabled: true}
+	scraper := New(settings, nil, config.FlareSolverrConfig{})
 
 	tests := []struct {
 		name   string

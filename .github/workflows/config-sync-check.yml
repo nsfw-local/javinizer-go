@@ -1,0 +1,58 @@
+name: Config Sync Check
+
+on:
+  push:
+    branches: [main, master]
+    paths:
+      - 'configs/config.yaml.example'
+      - 'internal/config/defaults.go'
+      - 'internal/config/embed.go'
+      - '.github/workflows/config-sync-check.yml'
+  pull_request:
+    branches: [main, master]
+    paths:
+      - 'configs/config.yaml.example'
+      - 'internal/config/defaults.go'
+      - 'internal/config/embed.go'
+      - '.github/workflows/config-sync-check.yml'
+
+jobs:
+  config-sync:
+    name: Validate Config Synchronization
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.25.0'
+
+      - name: Cache Go modules
+        uses: actions/cache@v4
+        with:
+          path: ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-
+
+      - name: Download dependencies
+        run: go mod download
+
+      - name: Run config sync validation
+        run: |
+          chmod +x scripts/validate-config-sync.sh
+          ./scripts/validate-config-sync.sh
+
+      - name: Run drift detection test (verbose on failure)
+        if: failure()
+        run: |
+          echo "=== Drift Detection Test Output ==="
+          go test -v -run TestDefaultConfigMatchesExample ./internal/config/... || true
+          echo ""
+          echo "=== If you see failures above, fix the drift by: ==="
+          echo "1. Update internal/config/defaults.go to match configs/config.yaml.example, OR"
+          echo "2. Update configs/config.yaml.example to match internal/config/defaults.go"
+          echo "3. Ensure both files represent the same default configuration state"

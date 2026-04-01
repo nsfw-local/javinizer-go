@@ -27,7 +27,7 @@ func (m *MockScraper) IsEnabled() bool                                 { return 
 func (m *MockScraper) GetURL(id string) (string, error)                { return "", nil }
 func (m *MockScraper) Search(id string) (*models.ScraperResult, error) { return m.results, m.err }
 func (m *MockScraper) Close() error                                    { return nil }
-func (m *MockScraper) Config() *config.ScraperConfig                   { return &config.ScraperConfig{Enabled: true} }
+func (m *MockScraper) Config() *config.ScraperSettings                 { return &config.ScraperSettings{Enabled: true} }
 
 // TestScrapeTask_ForceRefresh tests that forceRefresh deletes from cache before scraping
 func TestScrapeTask_ForceRefresh(t *testing.T) {
@@ -42,13 +42,7 @@ func TestScrapeTask_ForceRefresh(t *testing.T) {
 		},
 		Metadata: config.MetadataConfig{
 			Priority: config.PriorityConfig{
-				ID:          []string{"dmm"},
-				ContentID:   []string{"dmm"},
-				Title:       []string{"dmm"},
-				Maker:       []string{"dmm"},
-				Description: []string{"dmm"},
-				Actress:     []string{"dmm"},
-				Genre:       []string{"dmm"},
+				Priority: []string{"dmm"},
 			},
 		},
 	}
@@ -67,13 +61,7 @@ func TestScrapeTask_ForceRefresh(t *testing.T) {
 	cfg := &config.Config{
 		Metadata: config.MetadataConfig{
 			Priority: config.PriorityConfig{
-				ID:          []string{"dmm"},
-				ContentID:   []string{"dmm"},
-				Title:       []string{"dmm"},
-				Maker:       []string{"dmm"},
-				Description: []string{"dmm"},
-				Actress:     []string{"dmm"},
-				Genre:       []string{"dmm"},
+				Priority: []string{"dmm"},
 			},
 		},
 	}
@@ -241,13 +229,7 @@ func TestScrapeTask_ForceRefresh_NotInCache(t *testing.T) {
 		},
 		Metadata: config.MetadataConfig{
 			Priority: config.PriorityConfig{
-				ID:          []string{"dmm"},
-				ContentID:   []string{"dmm"},
-				Title:       []string{"dmm"},
-				Maker:       []string{"dmm"},
-				Description: []string{"dmm"},
-				Actress:     []string{"dmm"},
-				Genre:       []string{"dmm"},
+				Priority: []string{"dmm"},
 			},
 		},
 	}
@@ -265,13 +247,7 @@ func TestScrapeTask_ForceRefresh_NotInCache(t *testing.T) {
 	cfg := &config.Config{
 		Metadata: config.MetadataConfig{
 			Priority: config.PriorityConfig{
-				ID:          []string{"dmm"},
-				ContentID:   []string{"dmm"},
-				Title:       []string{"dmm"},
-				Maker:       []string{"dmm"},
-				Description: []string{"dmm"},
-				Actress:     []string{"dmm"},
-				Genre:       []string{"dmm"},
+				Priority: []string{"dmm"},
 			},
 		},
 	}

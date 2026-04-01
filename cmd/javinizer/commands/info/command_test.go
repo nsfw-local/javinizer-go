@@ -17,6 +17,10 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	// Register scraper defaults for info display
+	_ "github.com/javinizer/javinizer-go/internal/scraper/dmm"
+	_ "github.com/javinizer/javinizer-go/internal/scraper/r18dev"
 )
 
 type failAfterNWriter struct {

@@ -5,14 +5,15 @@ import (
 	"testing"
 
 	"github.com/PuerkitoBio/goquery"
+	"github.com/javinizer/javinizer-go/internal/config"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 // TestResolveSearchQuery tests the ID normalization and format resolution
 func TestResolveSearchQuery(t *testing.T) {
-	cfg := createTestConfig(true)
-	scraper := New(cfg)
+	settings := testSettings(true)
+	scraper := New(settings, nil, config.FlareSolverrConfig{})
 
 	tests := []struct {
 		name   string
@@ -1193,13 +1194,22 @@ func TestExtractDetailLinks(t *testing.T) {
 // TestApplyLanguage tests language application to URLs
 func TestApplyLanguage(t *testing.T) {
 	// Test language normalization
-	cfg := createTestConfig(true)
-	cfg.Scrapers.AVEntertainment.Language = "en"
-	enScraper := New(cfg)
+	enSettings := config.ScraperSettings{
+		Enabled:   true,
+		Language:  "en",
+		RateLimit: 0,
+		Extra:     map[string]any{},
+	}
+	enScraper := New(enSettings, nil, config.FlareSolverrConfig{})
 	assert.Equal(t, "en", enScraper.language)
 
-	cfg.Scrapers.AVEntertainment.Language = "ja"
-	jaScraper := New(cfg)
+	jaSettings := config.ScraperSettings{
+		Enabled:   true,
+		Language:  "ja",
+		RateLimit: 0,
+		Extra:     map[string]any{},
+	}
+	jaScraper := New(jaSettings, nil, config.FlareSolverrConfig{})
 	assert.Equal(t, "ja", jaScraper.language)
 
 	// Test normalizeLanguage helper

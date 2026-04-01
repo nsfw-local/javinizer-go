@@ -410,8 +410,7 @@ func TestDisplayNameFormatting(t *testing.T) {
 	cfg := &config.Config{
 		Metadata: config.MetadataConfig{
 			Priority: config.PriorityConfig{
-				ID:    []string{"r18dev"},
-				Title: []string{"r18dev"},
+				Priority: []string{"r18dev"},
 			},
 			NFO: config.NFOConfig{
 				DisplayName: "[<ID>] <TITLE>",
@@ -444,9 +443,7 @@ func TestDisplayNameFormattingWithTemplate(t *testing.T) {
 	cfg := &config.Config{
 		Metadata: config.MetadataConfig{
 			Priority: config.PriorityConfig{
-				ID:    []string{"r18dev"},
-				Title: []string{"r18dev"},
-				Maker: []string{"r18dev"},
+				Priority: []string{"r18dev"},
 			},
 			NFO: config.NFOConfig{
 				DisplayName: "<TITLE> by <STUDIO>",
@@ -480,7 +477,7 @@ func TestDisplayNameEmpty(t *testing.T) {
 	cfg := &config.Config{
 		Metadata: config.MetadataConfig{
 			Priority: config.PriorityConfig{
-				ID: []string{"r18dev"},
+				Priority: []string{"r18dev"},
 			},
 			NFO: config.NFOConfig{
 				DisplayName: "", // Empty - should not set DisplayName
@@ -683,15 +680,14 @@ func TestRequiredFieldsValidation(t *testing.T) {
 			expectedError: "missing required fields: Runtime",
 		},
 		{
-			name:           "Numeric field - RatingScore zero is treated as missing",
+			name:           "Numeric field - RatingScore zero is valid",
 			requiredFields: []string{"rating"},
 			movie: &models.ScraperResult{
 				Source: "r18dev",
 				ID:     "IPX-001",
 				Rating: &models.Rating{Score: 0, Votes: 0},
 			},
-			shouldPass:    false,
-			expectedError: "missing required fields: RatingScore",
+			shouldPass: true,
 		},
 	}
 
@@ -701,7 +697,7 @@ func TestRequiredFieldsValidation(t *testing.T) {
 				Metadata: config.MetadataConfig{
 					RequiredFields: tt.requiredFields,
 					Priority: config.PriorityConfig{
-						ID: []string{"r18dev"},
+						Priority: []string{"r18dev"},
 					},
 				},
 				Scrapers: config.ScrapersConfig{
@@ -729,6 +725,10 @@ func TestRequiredFieldsValidation(t *testing.T) {
 
 func TestRequiredFieldsValidationAliases(t *testing.T) {
 	// Test that all aliases for the same field work identically
+	// Note: RatingScore is intentionally excluded because it has special handling:
+	// RatingScore == 0 is treated as valid (not missing) because we cannot distinguish
+	// "not scraped" from "intentionally 0" at validation time.
+	// This behavior is tested separately in TestRequiredFieldsValidation.
 	aliasGroups := map[string][]string{
 		"ContentID":     {"contentid", "content_id", "CONTENTID"},
 		"CoverURL":      {"coverurl", "cover_url", "cover", "COVER"},
@@ -737,7 +737,6 @@ func TestRequiredFieldsValidationAliases(t *testing.T) {
 		"Screenshots":   {"screenshots", "screenshot_url", "screenshoturl", "SCREENSHOTURL"},
 		"OriginalTitle": {"originaltitle", "original_title"},
 		"ReleaseDate":   {"releasedate", "release_date"},
-		"RatingScore":   {"rating", "ratingscore", "rating_score"},
 	}
 
 	for fieldName, aliases := range aliasGroups {
@@ -753,7 +752,7 @@ func TestRequiredFieldsValidationAliases(t *testing.T) {
 					Metadata: config.MetadataConfig{
 						RequiredFields: []string{alias},
 						Priority: config.PriorityConfig{
-							ID: []string{"r18dev"},
+							Priority: []string{"r18dev"},
 						},
 					},
 					Scrapers: config.ScrapersConfig{
@@ -783,8 +782,7 @@ func TestAggregateErrorResilience(t *testing.T) {
 		},
 		Metadata: config.MetadataConfig{
 			Priority: config.PriorityConfig{
-				Title:       []string{"r18dev", "dmm", "javlibrary"},
-				Description: []string{"dmm", "r18dev"},
+				Priority: []string{"r18dev", "dmm", "javlibrary"},
 			},
 		},
 	}
@@ -902,8 +900,7 @@ func TestAggregateConcurrentCacheAccess(t *testing.T) {
 		},
 		Metadata: config.MetadataConfig{
 			Priority: config.PriorityConfig{
-				Genre:   []string{"r18dev"},
-				Actress: []string{"r18dev", "dmm"},
+				Priority: []string{"r18dev", "dmm"},
 			},
 			GenreReplacement: config.GenreReplacementConfig{
 				Enabled: true,
@@ -1078,7 +1075,7 @@ func TestAggregateNilAndInvalidData(t *testing.T) {
 		},
 		Metadata: config.MetadataConfig{
 			Priority: config.PriorityConfig{
-				Title: []string{"r18dev", "dmm"},
+				Priority: []string{"r18dev", "dmm"},
 			},
 		},
 	}
@@ -1207,8 +1204,7 @@ func TestAggregatePartialData(t *testing.T) {
 		},
 		Metadata: config.MetadataConfig{
 			Priority: config.PriorityConfig{
-				Title:       []string{"r18dev", "dmm"},
-				Description: []string{"dmm", "r18dev"},
+				Priority: []string{"r18dev", "dmm"},
 			},
 		},
 	}
@@ -1407,8 +1403,7 @@ func TestAggregateConcurrencySameID(t *testing.T) {
 		},
 		Metadata: config.MetadataConfig{
 			Priority: config.PriorityConfig{
-				Title:       []string{"r18dev"},
-				Description: []string{"dmm"},
+				Priority: []string{"r18dev", "dmm"},
 			},
 		},
 	}
@@ -1474,9 +1469,9 @@ func TestAggregateConcurrencySameID(t *testing.T) {
 			assert.Equal(t, firstMovie.Description, movie.Description, "Goroutine %d: Inconsistent Description", i)
 			assert.Equal(t, firstMovie.Runtime, movie.Runtime, "Goroutine %d: Inconsistent Runtime", i)
 
-			// Verify priority was respected: r18dev title, dmm description
+			// With simplified priorities, all fields use the same priority (r18dev first)
 			assert.Equal(t, "R18 Title", movie.Title, "Should use r18dev title (first priority)")
-			assert.Equal(t, "DMM Description", movie.Description, "Should use dmm description (first priority)")
+			assert.Equal(t, "R18 Description", movie.Description, "Should use r18dev description (first priority)")
 		}
 	})
 }
@@ -1490,7 +1485,7 @@ func TestAggregateConcurrencyDifferentMovies(t *testing.T) {
 		},
 		Metadata: config.MetadataConfig{
 			Priority: config.PriorityConfig{
-				Title: []string{"r18dev"},
+				Priority: []string{"r18dev"},
 			},
 		},
 	}
@@ -1555,8 +1550,7 @@ func BenchmarkAggregateSingleMovie(b *testing.B) {
 		},
 		Metadata: config.MetadataConfig{
 			Priority: config.PriorityConfig{
-				Title:       []string{"r18dev"},
-				Description: []string{"dmm"},
+				Priority: []string{"r18dev", "dmm"},
 			},
 		},
 	}
@@ -1601,7 +1595,7 @@ func BenchmarkAggregateBatch(b *testing.B) {
 		},
 		Metadata: config.MetadataConfig{
 			Priority: config.PriorityConfig{
-				Title: []string{"r18dev"},
+				Priority: []string{"r18dev"},
 			},
 		},
 	}
@@ -1655,7 +1649,7 @@ func TestAggregateAllScrapersEmptyResults(t *testing.T) {
 		},
 		Metadata: config.MetadataConfig{
 			Priority: config.PriorityConfig{
-				Title: []string{"r18dev", "dmm"},
+				Priority: []string{"r18dev", "dmm"},
 			},
 		},
 	}
@@ -1710,8 +1704,7 @@ func TestAggregateConcurrentCacheReload(t *testing.T) {
 		},
 		Metadata: config.MetadataConfig{
 			Priority: config.PriorityConfig{
-				Title:       []string{"r18dev"},
-				Description: []string{"dmm"},
+				Priority: []string{"r18dev", "dmm"},
 			},
 		},
 	}
@@ -1826,11 +1819,11 @@ func TestAggregateConcurrentCacheReload(t *testing.T) {
 			movies = append(movies, <-results)
 		}
 
-		// All movies should have consistent data (r18dev title, dmm description per priority)
+		// With simplified priorities, all fields use the same priority (r18dev first)
 		for i, movie := range movies {
 			assert.Equal(t, movieID, movie.ID, "Goroutine %d: Movie ID mismatch", i)
 			assert.Equal(t, "Consistent Title", movie.Title, "Goroutine %d: Should use r18dev title", i)
-			assert.Equal(t, "DMM Description", movie.Description, "Goroutine %d: Should use dmm description", i)
+			assert.Equal(t, "R18 Description", movie.Description, "Goroutine %d: Should use r18dev description", i)
 		}
 	})
 }

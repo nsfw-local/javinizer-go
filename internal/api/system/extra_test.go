@@ -30,8 +30,7 @@ func TestGetAvailableScrapers_AdditionalOptionSets(t *testing.T) {
 			wantLabel:   "MGStage",
 			wantKeys: []string{
 				"request_delay",
-				"use_fake_user_agent",
-				"fake_user_agent",
+				"user_agent",
 				"proxy.enabled",
 				"proxy.profile",
 				"download_proxy.enabled",
@@ -47,8 +46,7 @@ func TestGetAvailableScrapers_AdditionalOptionSets(t *testing.T) {
 				"request_delay",
 				"base_url",
 				"use_flaresolverr",
-				"use_fake_user_agent",
-				"fake_user_agent",
+				"user_agent",
 				"proxy.enabled",
 				"proxy.profile",
 				"download_proxy.enabled",
@@ -63,8 +61,7 @@ func TestGetAvailableScrapers_AdditionalOptionSets(t *testing.T) {
 				"language",
 				"request_delay",
 				"base_url",
-				"use_fake_user_agent",
-				"fake_user_agent",
+				"user_agent",
 				"proxy.enabled",
 				"proxy.profile",
 				"download_proxy.enabled",
@@ -78,8 +75,7 @@ func TestGetAvailableScrapers_AdditionalOptionSets(t *testing.T) {
 			wantKeys: []string{
 				"request_delay",
 				"base_url",
-				"use_fake_user_agent",
-				"fake_user_agent",
+				"user_agent",
 				"proxy.enabled",
 				"proxy.profile",
 				"download_proxy.enabled",
@@ -94,8 +90,7 @@ func TestGetAvailableScrapers_AdditionalOptionSets(t *testing.T) {
 				"language",
 				"request_delay",
 				"base_url",
-				"use_fake_user_agent",
-				"fake_user_agent",
+				"user_agent",
 				"proxy.enabled",
 				"proxy.profile",
 				"download_proxy.enabled",
@@ -111,8 +106,7 @@ func TestGetAvailableScrapers_AdditionalOptionSets(t *testing.T) {
 				"request_delay",
 				"base_url",
 				"scrape_bonus_screens",
-				"use_fake_user_agent",
-				"fake_user_agent",
+				"user_agent",
 				"proxy.enabled",
 				"proxy.profile",
 				"download_proxy.enabled",
@@ -126,8 +120,7 @@ func TestGetAvailableScrapers_AdditionalOptionSets(t *testing.T) {
 			wantKeys: []string{
 				"request_delay",
 				"base_url",
-				"use_fake_user_agent",
-				"fake_user_agent",
+				"user_agent",
 				"proxy.enabled",
 				"proxy.profile",
 				"download_proxy.enabled",
@@ -429,7 +422,7 @@ func TestTestProxy_AdditionalBranches(t *testing.T) {
 		router.ServeHTTP(w, req)
 
 		require.Equal(t, http.StatusBadRequest, w.Code)
-		assert.Contains(t, w.Body.String(), "proxy.enabled=true and proxy.url are required")
+		assert.Contains(t, w.Body.String(), "proxy.enabled=true and proxy profile with url are required for direct proxy test")
 	})
 
 	t.Run("direct proxy propagates non-success status", func(t *testing.T) {
@@ -441,8 +434,15 @@ func TestTestProxy_AdditionalBranches(t *testing.T) {
 		proxy := startTestForwardProxy(t)
 		defer proxy.Close()
 
+		cfg := config.DefaultConfig()
+		cfg.Scrapers.Proxy.Enabled = true
+		cfg.Scrapers.Proxy.DefaultProfile = "main"
+		cfg.Scrapers.Proxy.Profiles = map[string]config.ProxyProfile{
+			"main": {URL: proxy.URL},
+		}
+
 		deps := &ServerDependencies{}
-		deps.SetConfig(config.DefaultConfig())
+		deps.SetConfig(cfg)
 
 		router := gin.New()
 		router.POST("/proxy/test", testProxy(deps))
@@ -452,7 +452,6 @@ func TestTestProxy_AdditionalBranches(t *testing.T) {
 			TargetURL: target.URL,
 			Proxy: config.ProxyConfig{
 				Enabled: true,
-				URL:     proxy.URL,
 			},
 		})
 		require.NoError(t, err)
@@ -478,13 +477,13 @@ func TestTestProxy_AdditionalBranches(t *testing.T) {
 		router := gin.New()
 		router.POST("/proxy/test", testProxy(deps))
 
-		req := httptest.NewRequest(http.MethodPost, "/proxy/test", bytes.NewBufferString(`{"mode":"flaresolverr","target_url":"https://example.com","proxy":{"flaresolverr":{"enabled":false}}}`))
+		req := httptest.NewRequest(http.MethodPost, "/proxy/test", bytes.NewBufferString(`{"mode":"flaresolverr","target_url":"https://example.com","flaresolverr":{"enabled":false}}`))
 		req.Header.Set("Content-Type", "application/json")
 		w := httptest.NewRecorder()
 		router.ServeHTTP(w, req)
 
 		require.Equal(t, http.StatusBadRequest, w.Code)
-		assert.Contains(t, w.Body.String(), "proxy.flaresolverr.enabled=true and proxy.flaresolverr.url are required")
+		assert.Contains(t, w.Body.String(), "flaresolverr.enabled=true and flaresolverr.url are required")
 	})
 
 	t.Run("flaresolverr client creation failure", func(t *testing.T) {
@@ -494,25 +493,41 @@ func TestTestProxy_AdditionalBranches(t *testing.T) {
 		router := gin.New()
 		router.POST("/proxy/test", testProxy(deps))
 
-		reqBody := `{"mode":"flaresolverr","target_url":"https://example.com","proxy":{"flaresolverr":{"enabled":true,"url":"","timeout":30}}}`
+		reqBody := `{"mode":"flaresolverr","target_url":"https://example.com","flaresolverr":{"enabled":true,"url":"","timeout":30}}`
 		req := httptest.NewRequest(http.MethodPost, "/proxy/test", bytes.NewBufferString(reqBody))
 		req.Header.Set("Content-Type", "application/json")
 		w := httptest.NewRecorder()
 		router.ServeHTTP(w, req)
 
 		require.Equal(t, http.StatusBadRequest, w.Code)
-		assert.Contains(t, w.Body.String(), "proxy.flaresolverr.enabled=true and proxy.flaresolverr.url are required")
+		assert.Contains(t, w.Body.String(), "flaresolverr.enabled=true and flaresolverr.url are required")
 	})
 
 	t.Run("direct proxy client creation failure returns structured response", func(t *testing.T) {
+		cfg := config.DefaultConfig()
+		cfg.Scrapers.Proxy.Enabled = true
+		cfg.Scrapers.Proxy.DefaultProfile = "main"
+		cfg.Scrapers.Proxy.Profiles = map[string]config.ProxyProfile{
+			"main": {URL: "http://[::1"}, // Invalid URL to cause client creation failure
+		}
+
 		deps := &ServerDependencies{}
-		deps.SetConfig(config.DefaultConfig())
+		deps.SetConfig(cfg)
 
 		router := gin.New()
 		router.POST("/proxy/test", testProxy(deps))
 
-		reqBody := `{"mode":"direct","target_url":"https://example.com","proxy":{"enabled":true,"url":"http://[::1"}}`
-		req := httptest.NewRequest(http.MethodPost, "/proxy/test", bytes.NewBufferString(reqBody))
+		reqBody := ProxyTestRequest{
+			Mode:      "direct",
+			TargetURL: "https://example.com",
+			Proxy: config.ProxyConfig{
+				Enabled: true,
+			},
+		}
+		body, err := json.Marshal(reqBody)
+		require.NoError(t, err)
+
+		req := httptest.NewRequest(http.MethodPost, "/proxy/test", bytes.NewBuffer(body))
 		req.Header.Set("Content-Type", "application/json")
 		w := httptest.NewRecorder()
 		router.ServeHTTP(w, req)
@@ -527,14 +542,29 @@ func TestTestProxy_AdditionalBranches(t *testing.T) {
 	})
 
 	t.Run("direct proxy request failure returns structured response", func(t *testing.T) {
+		cfg := config.DefaultConfig()
+		cfg.Scrapers.Proxy.Enabled = true
+		cfg.Scrapers.Proxy.DefaultProfile = "main"
+		cfg.Scrapers.Proxy.Profiles = map[string]config.ProxyProfile{
+			"main": {URL: "http://127.0.0.1:1"}, // Invalid port to force connection error
+		}
+
 		deps := &ServerDependencies{}
-		deps.SetConfig(config.DefaultConfig())
+		deps.SetConfig(cfg)
 
 		router := gin.New()
 		router.POST("/proxy/test", testProxy(deps))
 
-		reqBody := `{"mode":"direct","target_url":"https://example.com","proxy":{"enabled":true,"url":"http://127.0.0.1:1"}}`
-		req := httptest.NewRequest(http.MethodPost, "/proxy/test", bytes.NewBufferString(reqBody))
+		reqBody := ProxyTestRequest{
+			Mode:      "direct",
+			TargetURL: "https://example.com",
+			Proxy: config.ProxyConfig{
+				Enabled: true,
+			},
+		}
+		body, err := json.Marshal(reqBody)
+		require.NoError(t, err)
+		req := httptest.NewRequest(http.MethodPost, "/proxy/test", bytes.NewBuffer(body))
 		req.Header.Set("Content-Type", "application/json")
 		w := httptest.NewRecorder()
 		router.ServeHTTP(w, req)
@@ -546,6 +576,48 @@ func TestTestProxy_AdditionalBranches(t *testing.T) {
 		assert.False(t, response.Success)
 		assert.Contains(t, response.Message, "direct proxy request failed")
 		assert.GreaterOrEqual(t, response.DurationMS, int64(0))
+	})
+
+	t.Run("direct proxy method not allowed adds endpoint guidance", func(t *testing.T) {
+		nonProxy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		}))
+		defer nonProxy.Close()
+
+		cfg := config.DefaultConfig()
+		cfg.Scrapers.Proxy.Enabled = true
+		cfg.Scrapers.Proxy.DefaultProfile = "main"
+		cfg.Scrapers.Proxy.Profiles = map[string]config.ProxyProfile{
+			"main": {URL: nonProxy.URL},
+		}
+
+		deps := &ServerDependencies{}
+		deps.SetConfig(cfg)
+
+		router := gin.New()
+		router.POST("/proxy/test", testProxy(deps))
+
+		reqBody := ProxyTestRequest{
+			Mode:      "direct",
+			TargetURL: "https://example.com",
+			Proxy: config.ProxyConfig{
+				Enabled: true,
+			},
+		}
+		body, err := json.Marshal(reqBody)
+		require.NoError(t, err)
+		req := httptest.NewRequest(http.MethodPost, "/proxy/test", bytes.NewBuffer(body))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, req)
+
+		require.Equal(t, http.StatusOK, w.Code)
+
+		var response ProxyTestResponse
+		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &response))
+		assert.False(t, response.Success)
+		assert.Contains(t, response.Message, "direct proxy request failed")
+		assert.Contains(t, response.Message, "not a forward proxy")
 	})
 
 	t.Run("flaresolverr request failure returns structured response", func(t *testing.T) {
@@ -561,7 +633,7 @@ func TestTestProxy_AdditionalBranches(t *testing.T) {
 		router := gin.New()
 		router.POST("/proxy/test", testProxy(deps))
 
-		reqBody := `{"mode":"flaresolverr","target_url":"https://example.com","proxy":{"flaresolverr":{"enabled":true,"url":"` + fs.URL + `","timeout":5}}}`
+		reqBody := `{"mode":"flaresolverr","target_url":"https://example.com","flaresolverr":{"enabled":true,"url":"` + fs.URL + `","timeout":5}}`
 		req := httptest.NewRequest(http.MethodPost, "/proxy/test", bytes.NewBufferString(reqBody))
 		req.Header.Set("Content-Type", "application/json")
 		w := httptest.NewRecorder()

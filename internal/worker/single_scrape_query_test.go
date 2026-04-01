@@ -30,8 +30,8 @@ func (s *resolverTestScraper) ResolveSearchQuery(input string) (string, bool) {
 
 func (s *resolverTestScraper) Close() error { return nil }
 
-func (s *resolverTestScraper) Config() *config.ScraperConfig {
-	return &config.ScraperConfig{Enabled: s.enabled}
+func (s *resolverTestScraper) Config() *config.ScraperSettings {
+	return &config.ScraperSettings{Enabled: s.enabled}
 }
 
 func TestResolveScraperQueryForInputs(t *testing.T) {
@@ -63,6 +63,22 @@ func TestResolveScraperQueryForInputsNoMatch(t *testing.T) {
 	if got, ok := resolveScraperQueryForInputs(scraper, "", "UNKNOWN", ""); ok || got != "" {
 		t.Fatalf("expected no match, got query=%q matched=%v", got, ok)
 	}
+}
+
+// appendUniqueInput is a test helper that appends an input to the list if it's not empty
+// and not a case-insensitive duplicate.
+func appendUniqueInput(inputs []string, input string) []string {
+	input = strings.TrimSpace(input)
+	if input == "" {
+		return inputs
+	}
+	lower := strings.ToLower(input)
+	for _, existing := range inputs {
+		if strings.ToLower(existing) == lower {
+			return inputs
+		}
+	}
+	return append(inputs, input)
 }
 
 func TestAppendUniqueInput(t *testing.T) {

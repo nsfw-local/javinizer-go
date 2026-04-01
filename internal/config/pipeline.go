@@ -2,7 +2,6 @@ package config
 
 import (
 	"fmt"
-	"reflect"
 	"strings"
 )
 
@@ -35,36 +34,27 @@ func appendMissingStrings(existing, defaults []string) ([]string, bool) {
 	return merged, changed
 }
 
+// legacyScraperPriorityBaseline returns the baseline list of all known scrapers.
+// This is used for backward compatibility when older configs don't specify all scrapers.
 func legacyScraperPriorityBaseline() []string {
-	t := reflect.TypeOf(ScrapersConfig{})
-	baseline := make([]string, 0, t.NumField())
-	proxyType := reflect.TypeOf(ProxyConfig{})
-
-	for i := 0; i < t.NumField(); i++ {
-		field := t.Field(i)
-		if field.Type.Kind() != reflect.Struct {
-			continue
-		}
-		if field.Type == proxyType {
-			continue
-		}
-		enabledField, ok := field.Type.FieldByName("Enabled")
-		if !ok || enabledField.Type.Kind() != reflect.Bool {
-			continue
-		}
-
-		yamlTag := field.Tag.Get("yaml")
-		if yamlTag == "" || yamlTag == "-" {
-			continue
-		}
-		name := strings.Split(yamlTag, ",")[0]
-		if name == "" || name == "-" {
-			continue
-		}
-		baseline = append(baseline, name)
+	// Hardcoded list of all 13 known scrapers in priority order.
+	// This replaces the old reflection-based approach which no longer works
+	// since scraper configs are now stored in a map rather than struct fields.
+	return []string{
+		"r18dev",
+		"dmm",
+		"libredmm",
+		"mgstage",
+		"javlibrary",
+		"javdb",
+		"javbus",
+		"jav321",
+		"tokyohot",
+		"aventertainment",
+		"dlgetchu",
+		"caribbeancom",
+		"fc2",
 	}
-
-	return baseline
 }
 
 // configCompatibilityRules are applied idempotently for legacy configs.
@@ -177,10 +167,19 @@ func Normalize(cfg *Config) bool {
 		return false
 	}
 
+	// Ensure Overrides is populated before accessing it.
+	// This handles the case where a config was loaded via JSON (which doesn't
+	// call NormalizeScraperConfigs like Load() does for YAML).
+	cfg.Scrapers.NormalizeScraperConfigs()
+
 	changed := false
 	changed = normalizeField(&cfg.Database.Type, "sqlite", true) || changed
-	changed = normalizeField(&cfg.Scrapers.R18Dev.Language, "en", true) || changed
-	changed = normalizeField(&cfg.Scrapers.JavLibrary.Language, "en", true) || changed
+	if r18dev := cfg.Scrapers.Overrides["r18dev"]; r18dev != nil {
+		changed = normalizeField(&r18dev.Language, "en", true) || changed
+	}
+	if javlib := cfg.Scrapers.Overrides["javlibrary"]; javlib != nil {
+		changed = normalizeField(&javlib.Language, "en", true) || changed
+	}
 
 	if strings.TrimSpace(cfg.Scrapers.Referer) == "" {
 		cfg.Scrapers.Referer = "https://www.dmm.co.jp/"

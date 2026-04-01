@@ -214,7 +214,13 @@ curl -b cookies.txt http://localhost:8080/api/v1/config
 ```bash
 curl -X POST http://localhost:8080/api/v1/proxy/test \
   -H "Content-Type: application/json" \
-  -d '{"url": "http://proxy.example.com:8080"}'
+  -d '{
+    "mode": "direct",
+    "proxy": {
+      "enabled": true,
+      "url": "http://proxy.example.com:8080"
+    }
+  }'
 ```
 
 ### History

@@ -173,7 +173,8 @@ func updateBatchMoviePosterCrop(deps *ServerDependencies) gin.HandlerFunc {
 			return
 		}
 
-		tempPosterDir := filepath.Join("data", "temp", "posters", jobID)
+		cfg := deps.GetConfig()
+		tempPosterDir := filepath.Join(cfg.System.TempDir, "posters", jobID)
 		sourcePath := filepath.Join(tempPosterDir, fmt.Sprintf("%s-full.jpg", posterID))
 		if _, err := os.Stat(sourcePath); err != nil {
 			// Fallback for older jobs where full image was already cleaned up.

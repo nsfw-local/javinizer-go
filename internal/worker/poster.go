@@ -34,6 +34,7 @@ type RefererResolver func(downloadURL, configuredReferer string) string
 //   - httpClient: Pre-configured HTTP client with proxy and timeout settings
 //   - userAgent: User-Agent header value from config
 //   - referer: Referer header value from config (for CDN compatibility)
+//   - tempDir: Base temp directory (e.g., "data/temp"); posters stored at {tempDir}/posters/{jobID}/
 //
 // Returns:
 //   - tempRelativeURL: API URL path like "/api/v1/temp/posters/{jobID}/{movieID}.jpg"
@@ -46,6 +47,7 @@ func GenerateTempPoster(
 	userAgent string,
 	referer string,
 	refererResolver RefererResolver,
+	tempDir string,
 ) (tempRelativeURL string, err error) {
 	// Determine poster URL to download
 	originalPosterURL := movie.PosterURL
@@ -56,16 +58,16 @@ func GenerateTempPoster(
 		return "", fmt.Errorf("no poster or cover URL available")
 	}
 
-	// Create temp directory: data/temp/posters/{job_id}/
+	// Create temp directory: {tempDir}/posters/{job_id}/
 	// Use DirPermTemp (0700) for owner-only access to sensitive temp files
-	tempDir := filepath.Join("data", "temp", "posters", jobID)
-	if err := os.MkdirAll(tempDir, config.DirPermTemp); err != nil {
+	posterTempDir := filepath.Join(tempDir, "posters", jobID)
+	if err := os.MkdirAll(posterTempDir, config.DirPermTemp); err != nil {
 		return "", fmt.Errorf("failed to create temp poster directory: %w", err)
 	}
 
 	// Define file paths
-	tempFullPath := filepath.Join(tempDir, fmt.Sprintf("%s-full.jpg", movie.ID))
-	tempCroppedPath := filepath.Join(tempDir, fmt.Sprintf("%s.jpg", movie.ID))
+	tempFullPath := filepath.Join(posterTempDir, fmt.Sprintf("%s-full.jpg", movie.ID))
+	tempCroppedPath := filepath.Join(posterTempDir, fmt.Sprintf("%s.jpg", movie.ID))
 
 	// Download the poster
 	req, err := http.NewRequestWithContext(ctx, "GET", originalPosterURL, nil)

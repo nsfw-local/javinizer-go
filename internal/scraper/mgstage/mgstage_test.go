@@ -18,6 +18,14 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func testSettings(baseURL string) config.ScraperSettings {
+	return config.ScraperSettings{
+		Enabled:   true,
+		RateLimit: 0,
+		BaseURL:   baseURL,
+	}
+}
+
 // TestNormalizeMGStageIDToken tests ID token normalization
 func TestNormalizeMGStageIDToken(t *testing.T) {
 	tests := []struct {
@@ -748,8 +756,8 @@ func TestParseHTML_MultipleActresses(t *testing.T) {
 	doc, err := goquery.NewDocumentFromReader(strings.NewReader(productHTML))
 	require.NoError(t, err)
 
-	cfg := testConfig()
-	scraper := New(cfg)
+	settings := testSettings("https://www.mgstage.com")
+	scraper := New(settings, nil, config.FlareSolverrConfig{})
 
 	result, err := scraper.parseHTML(doc, "https://www.mgstage.com/product/product_detail/mide-456/")
 	require.NoError(t, err)
@@ -776,8 +784,8 @@ func TestParseHTML_MultipleGenres(t *testing.T) {
 	doc, err := goquery.NewDocumentFromReader(strings.NewReader(productHTML))
 	require.NoError(t, err)
 
-	cfg := testConfig()
-	scraper := New(cfg)
+	settings := testSettings("https://www.mgstage.com")
+	scraper := New(settings, nil, config.FlareSolverrConfig{})
 
 	result, err := scraper.parseHTML(doc, "https://www.mgstage.com/product/product_detail/mide-789/")
 	require.NoError(t, err)
@@ -987,8 +995,8 @@ func TestParseHTML_Rating(t *testing.T) {
 	doc, err := goquery.NewDocumentFromReader(strings.NewReader(productHTML))
 	require.NoError(t, err)
 
-	cfg := testConfig()
-	scraper := New(cfg)
+	settings := testSettings("https://www.mgstage.com")
+	scraper := New(settings, nil, config.FlareSolverrConfig{})
 
 	result, err := scraper.parseHTML(doc, "https://www.mgstage.com/product/product_detail/mide-rating/")
 	require.NoError(t, err)
@@ -1015,8 +1023,8 @@ func TestParseHTML_NoRating(t *testing.T) {
 	doc, err := goquery.NewDocumentFromReader(strings.NewReader(productHTML))
 	require.NoError(t, err)
 
-	cfg := testConfig()
-	scraper := New(cfg)
+	settings := testSettings("https://www.mgstage.com")
+	scraper := New(settings, nil, config.FlareSolverrConfig{})
 
 	result, err := scraper.parseHTML(doc, "https://www.mgstage.com/product/product_detail/mide-norating/")
 	require.NoError(t, err)
@@ -1055,8 +1063,8 @@ func TestParseHTML_VolumeAsRuntime(t *testing.T) {
 	doc, err := goquery.NewDocumentFromReader(strings.NewReader(productHTML))
 	require.NoError(t, err)
 
-	cfg := testConfig()
-	scraper := New(cfg)
+	settings := testSettings("https://www.mgstage.com")
+	scraper := New(settings, nil, config.FlareSolverrConfig{})
 
 	result, err := scraper.parseHTML(doc, "https://www.mgstage.com/product/product_detail/mide-volume/")
 	require.NoError(t, err)
@@ -1176,7 +1184,7 @@ func TestResolveDownloadProxyForHost(t *testing.T) {
 		{
 			name:          "mgstage host with proxy",
 			host:          "www.mgstage.com",
-			downloadProxy: &config.ProxyConfig{Enabled: true, URL: "http://proxy.example.com"},
+			downloadProxy: &config.ProxyConfig{Enabled: true, Profile: "main", Profiles: map[string]config.ProxyProfile{"main": {URL: "http://proxy.example.com"}}},
 			proxyOverride: &config.ProxyConfig{Enabled: false},
 			wantMatch:     true,
 		},
@@ -1284,8 +1292,8 @@ func TestResolveSearchQuery(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			cfg := testConfig()
-			scraper := New(cfg)
+			settings := testSettings("https://www.mgstage.com")
+			scraper := New(settings, nil, config.FlareSolverrConfig{})
 
 			result, ok := scraper.ResolveSearchQuery(tt.input)
 			assert.Equal(t, tt.wantOk, ok)
@@ -1388,8 +1396,8 @@ func TestSearchIntegration(t *testing.T) {
 </body>
 </html>`
 
-	cfg := testConfig()
-	scraper := New(cfg)
+	settings := testSettings("https://www.mgstage.com")
+	scraper := New(settings, nil, config.FlareSolverrConfig{})
 
 	doc, err := goquery.NewDocumentFromReader(strings.NewReader(productHTML))
 	require.NoError(t, err)
@@ -1470,15 +1478,6 @@ func TestSearch_ErrorPaths(t *testing.T) {
 }
 
 // ========== Helper types and functions for testing ==========
-
-// testConfig creates a test configuration with MGStage enabled
-func testConfig() *config.Config {
-	cfg := config.DefaultConfig()
-	cfg.Scrapers.MGStage.Enabled = true
-	cfg.Scrapers.MGStage.RequestDelay = 0 // No delay for tests
-	cfg.Scrapers.Proxy.Enabled = false
-	return cfg
-}
 
 type mockHTTPResponse struct {
 	statusCode int

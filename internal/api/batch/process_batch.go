@@ -95,13 +95,14 @@ func processBatchJob(job *worker.BatchJob, registry *models.ScraperRegistry, agg
 		// Register with adapter for WebSocket mapping
 		adapter.RegisterTask(taskID, i, filePath)
 
-		// Determine scraper priority contract:
-		// - nil = use registry defaults (enables DB persistence, standard batch mode)
+		// Determine scraper mode contract:
+		// - nil = standard batch mode (DB persistence/cache enabled)
 		// - non-nil = custom scraper mode (temporary aggregation, no DB persistence)
-		// Pass nil when no custom scrapers specified to maintain proper persistence semantics
+		// In standard mode, RunBatchScrapeOnce resolves actual scraper order from cfg.Scrapers.Priority.
+		// Keep nil here so default mode preserves persistence semantics.
 		scrapersToUse := selectedScrapers
 		if len(selectedScrapers) == 0 {
-			scrapersToUse = nil // Use registry defaults, not config list
+			scrapersToUse = nil
 		}
 
 		// Create batch scrape task
@@ -117,7 +118,7 @@ func processBatchJob(job *worker.BatchJob, registry *models.ScraperRegistry, agg
 			progressTracker,
 			force,
 			updateMode,             // updateMode - if true, merge with existing NFO
-			scrapersToUse,          // nil = registry defaults (DB persist), non-nil = custom mode
+			scrapersToUse,          // nil = standard mode (uses cfg priority internally), non-nil = custom mode
 			httpClient,             // httpClient - configured with proxy support
 			cfg.Scrapers.UserAgent, // userAgent
 			cfg.Scrapers.Referer,   // referer

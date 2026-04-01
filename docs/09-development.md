@@ -94,7 +94,7 @@ import (
 )
 
 type Scraper struct {
-    config *config.ScraperConfig
+    config *config.ScraperSettings
     client *http.Client
 }
 

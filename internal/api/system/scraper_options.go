@@ -19,7 +19,7 @@ func scraperDisplayNameAndOptions(name string, profileChoices []ScraperChoice) (
 				},
 			},
 		}
-		options = append(options, scraperFakeUserAgentOptions()...)
+		options = append(options, scraperUserAgentOptions()...)
 		options = append(options, scraperProxyOptions(profileChoices)...)
 		options = append(options, scraperDownloadProxyOptions(profileChoices)...)
 	case "dmm":
@@ -50,7 +50,7 @@ func scraperDisplayNameAndOptions(name string, profileChoices []ScraperChoice) (
 				Unit:        "seconds",
 			},
 		}
-		options = append(options, scraperFakeUserAgentOptions()...)
+		options = append(options, scraperUserAgentOptions()...)
 		options = append(options, scraperProxyOptions(profileChoices)...)
 		options = append(options, scraperDownloadProxyOptions(profileChoices)...)
 	case "libredmm":
@@ -72,7 +72,7 @@ func scraperDisplayNameAndOptions(name string, profileChoices []ScraperChoice) (
 				Type:        "string",
 			},
 		}
-		options = append(options, scraperFakeUserAgentOptions()...)
+		options = append(options, scraperUserAgentOptions()...)
 		options = append(options, scraperProxyOptions(profileChoices)...)
 		options = append(options, scraperDownloadProxyOptions(profileChoices)...)
 	case "mgstage":
@@ -89,7 +89,7 @@ func scraperDisplayNameAndOptions(name string, profileChoices []ScraperChoice) (
 				Unit:        "ms",
 			},
 		}
-		options = append(options, scraperFakeUserAgentOptions()...)
+		options = append(options, scraperUserAgentOptions()...)
 		options = append(options, scraperProxyOptions(profileChoices)...)
 		options = append(options, scraperDownloadProxyOptions(profileChoices)...)
 	case "javlibrary":
@@ -129,7 +129,7 @@ func scraperDisplayNameAndOptions(name string, profileChoices []ScraperChoice) (
 				Type:        "boolean",
 			},
 		}
-		options = append(options, scraperFakeUserAgentOptions()...)
+		options = append(options, scraperUserAgentOptions()...)
 		options = append(options, scraperProxyOptions(profileChoices)...)
 		options = append(options, scraperDownloadProxyOptions(profileChoices)...)
 	case "javdb":
@@ -157,7 +157,7 @@ func scraperDisplayNameAndOptions(name string, profileChoices []ScraperChoice) (
 				Type:        "boolean",
 			},
 		}
-		options = append(options, scraperFakeUserAgentOptions()...)
+		options = append(options, scraperUserAgentOptions()...)
 		options = append(options, scraperProxyOptions(profileChoices)...)
 		options = append(options, scraperDownloadProxyOptions(profileChoices)...)
 	case "javbus":
@@ -189,8 +189,14 @@ func scraperDisplayNameAndOptions(name string, profileChoices []ScraperChoice) (
 				Description: "JavBus base URL (leave default unless you need a mirror/domain override)",
 				Type:        "string",
 			},
+			{
+				Key:         "use_flaresolverr",
+				Label:       "Use FlareSolverr",
+				Description: "Route requests through FlareSolverr to bypass Cloudflare protection (requires global FlareSolverr to be enabled in Proxy and Flaresolverr Settings)",
+				Type:        "boolean",
+			},
 		}
-		options = append(options, scraperFakeUserAgentOptions()...)
+		options = append(options, scraperUserAgentOptions()...)
 		options = append(options, scraperProxyOptions(profileChoices)...)
 		options = append(options, scraperDownloadProxyOptions(profileChoices)...)
 	case "jav321":
@@ -211,8 +217,14 @@ func scraperDisplayNameAndOptions(name string, profileChoices []ScraperChoice) (
 				Description: "Jav321 base URL",
 				Type:        "string",
 			},
+			{
+				Key:         "use_flaresolverr",
+				Label:       "Use FlareSolverr",
+				Description: "Route requests through FlareSolverr to bypass Cloudflare protection (requires global FlareSolverr to be enabled in Proxy and Flaresolverr Settings)",
+				Type:        "boolean",
+			},
 		}
-		options = append(options, scraperFakeUserAgentOptions()...)
+		options = append(options, scraperUserAgentOptions()...)
 		options = append(options, scraperProxyOptions(profileChoices)...)
 		options = append(options, scraperDownloadProxyOptions(profileChoices)...)
 	case "tokyohot":
@@ -245,7 +257,7 @@ func scraperDisplayNameAndOptions(name string, profileChoices []ScraperChoice) (
 				Type:        "string",
 			},
 		}
-		options = append(options, scraperFakeUserAgentOptions()...)
+		options = append(options, scraperUserAgentOptions()...)
 		options = append(options, scraperProxyOptions(profileChoices)...)
 		options = append(options, scraperDownloadProxyOptions(profileChoices)...)
 	case "aventertainment":
@@ -283,7 +295,7 @@ func scraperDisplayNameAndOptions(name string, profileChoices []ScraperChoice) (
 				Type:        "boolean",
 			},
 		}
-		options = append(options, scraperFakeUserAgentOptions()...)
+		options = append(options, scraperUserAgentOptions()...)
 		options = append(options, scraperProxyOptions(profileChoices)...)
 		options = append(options, scraperDownloadProxyOptions(profileChoices)...)
 	case "dlgetchu":
@@ -305,7 +317,7 @@ func scraperDisplayNameAndOptions(name string, profileChoices []ScraperChoice) (
 				Type:        "string",
 			},
 		}
-		options = append(options, scraperFakeUserAgentOptions()...)
+		options = append(options, scraperUserAgentOptions()...)
 		options = append(options, scraperProxyOptions(profileChoices)...)
 		options = append(options, scraperDownloadProxyOptions(profileChoices)...)
 	case "caribbeancom":
@@ -337,7 +349,7 @@ func scraperDisplayNameAndOptions(name string, profileChoices []ScraperChoice) (
 				Type:        "string",
 			},
 		}
-		options = append(options, scraperFakeUserAgentOptions()...)
+		options = append(options, scraperUserAgentOptions()...)
 		options = append(options, scraperProxyOptions(profileChoices)...)
 		options = append(options, scraperDownloadProxyOptions(profileChoices)...)
 	case "fc2":
@@ -359,7 +371,7 @@ func scraperDisplayNameAndOptions(name string, profileChoices []ScraperChoice) (
 				Type:        "string",
 			},
 		}
-		options = append(options, scraperFakeUserAgentOptions()...)
+		options = append(options, scraperUserAgentOptions()...)
 		options = append(options, scraperProxyOptions(profileChoices)...)
 		options = append(options, scraperDownloadProxyOptions(profileChoices)...)
 	}

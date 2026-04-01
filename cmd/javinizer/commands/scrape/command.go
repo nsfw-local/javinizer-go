@@ -10,7 +10,6 @@ import (
 	"github.com/javinizer/javinizer-go/internal/database"
 	"github.com/javinizer/javinizer-go/internal/logging"
 	"github.com/javinizer/javinizer-go/internal/models"
-	"github.com/javinizer/javinizer-go/internal/scraper/dmm"
 	"github.com/spf13/cobra"
 )
 
@@ -32,13 +31,6 @@ func NewCommand() *cobra.Command {
 	scrapeCmd.Flags().Bool("no-browser", false, "Disable browser mode for DMM video pages (overrides config)")
 	scrapeCmd.Flags().Int("browser-timeout", 0, "Browser timeout in seconds (overrides config, 0=use config)")
 
-	// Deprecated flags (backward compatibility)
-	scrapeCmd.Flags().Bool("headless", false, "DEPRECATED: Use --browser instead")
-	scrapeCmd.Flags().Bool("no-headless", false, "DEPRECATED: Use --no-browser instead")
-	scrapeCmd.Flags().Int("headless-timeout", 0, "DEPRECATED: Use --browser-timeout instead")
-	_ = scrapeCmd.Flags().MarkDeprecated("headless", "use --browser instead")
-	_ = scrapeCmd.Flags().MarkDeprecated("no-headless", "use --no-browser instead")
-	_ = scrapeCmd.Flags().MarkDeprecated("headless-timeout", "use --browser-timeout instead")
 	scrapeCmd.Flags().Bool("actress-db", false, "Enable actress database lookup (overrides config)")
 	scrapeCmd.Flags().Bool("no-actress-db", false, "Disable actress database lookup (overrides config)")
 	scrapeCmd.Flags().Bool("genre-replacement", false, "Enable genre replacement (overrides config)")
@@ -50,47 +42,43 @@ func NewCommand() *cobra.Command {
 // This is extracted for testability (Story 5.4 - Epic 5).
 // Exported to enable comprehensive testing of flag parsing logic.
 func ApplyFlagOverrides(cmd *cobra.Command, cfg *config.Config) {
+	// Ensure Overrides is populated
+	cfg.Scrapers.NormalizeScraperConfigs()
+	dmm, ok := cfg.Scrapers.Overrides["dmm"]
+	if !ok || dmm == nil {
+		return
+	}
+	// Initialize Extra map if nil
+	if dmm.Extra == nil {
+		dmm.Extra = make(map[string]any)
+	}
+
 	// Scrape actress flags
 	if cmd.Flags().Changed("scrape-actress") {
 		if val, _ := cmd.Flags().GetBool("scrape-actress"); val {
-			cfg.Scrapers.DMM.ScrapeActress = true
+			dmm.Extra["scrape_actress"] = true
 		}
 	}
 	if cmd.Flags().Changed("no-scrape-actress") {
 		if val, _ := cmd.Flags().GetBool("no-scrape-actress"); val {
-			cfg.Scrapers.DMM.ScrapeActress = false
+			dmm.Extra["scrape_actress"] = false
 		}
 	}
 
-	// Browser mode flags (new) - take precedence over deprecated flags
+	// Browser mode flags
 	if cmd.Flags().Changed("browser") {
 		if val, _ := cmd.Flags().GetBool("browser"); val {
-			cfg.Scrapers.DMM.EnableBrowser = true
-		}
-	} else if cmd.Flags().Changed("headless") {
-		// Backward compatibility
-		if val, _ := cmd.Flags().GetBool("headless"); val {
-			cfg.Scrapers.DMM.EnableBrowser = true
+			dmm.Extra["enable_browser"] = true
 		}
 	}
 	if cmd.Flags().Changed("no-browser") {
 		if val, _ := cmd.Flags().GetBool("no-browser"); val {
-			cfg.Scrapers.DMM.EnableBrowser = false
-		}
-	} else if cmd.Flags().Changed("no-headless") {
-		// Backward compatibility
-		if val, _ := cmd.Flags().GetBool("no-headless"); val {
-			cfg.Scrapers.DMM.EnableBrowser = false
+			dmm.Extra["enable_browser"] = false
 		}
 	}
 	if cmd.Flags().Changed("browser-timeout") {
 		if val, _ := cmd.Flags().GetInt("browser-timeout"); val > 0 {
-			cfg.Scrapers.DMM.BrowserTimeout = val
-		}
-	} else if cmd.Flags().Changed("headless-timeout") {
-		// Backward compatibility
-		if val, _ := cmd.Flags().GetInt("headless-timeout"); val > 0 {
-			cfg.Scrapers.DMM.BrowserTimeout = val
+			dmm.Extra["browser_timeout"] = val
 		}
 	}
 
@@ -209,8 +197,8 @@ func Run(cmd *cobra.Command, args []string, configFile string, deps *commandutil
 	var resolvedID string
 	dmmScraper, exists := registry.Get("dmm")
 	if exists {
-		if dmmScraperTyped, ok := dmmScraper.(*dmm.Scraper); ok {
-			contentID, err := dmmScraperTyped.ResolveContentID(id)
+		if resolver, ok := dmmScraper.(models.ContentIDResolver); ok {
+			contentID, err := resolver.ResolveContentID(id)
 			if err != nil {
 				logging.Debugf("DMM content-ID resolution failed: %v, will use original ID", err)
 				resolvedID = id // Fallback to original ID

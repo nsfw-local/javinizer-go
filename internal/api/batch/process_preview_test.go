@@ -82,7 +82,8 @@ func TestGeneratePreview_NoFileResultsFallback(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.Output.FolderFormat = "<ID>"
 	cfg.Output.FileFormat = "<ID>"
-	cfg.Output.DownloadExtrafanart = true // Enable for screenshot preview
+	cfg.Output.SubfolderFormat = []string{} // Disable subfolder for this test
+	cfg.Output.DownloadExtrafanart = true   // Enable for screenshot preview
 	cfg.Metadata.NFO.PerFile = false
 	cfg.Metadata.NFO.FilenameTemplate = "<ID>.nfo"
 

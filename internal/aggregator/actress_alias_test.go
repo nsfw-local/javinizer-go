@@ -19,7 +19,7 @@ func TestActressAliasConversion(t *testing.T) {
 		},
 		Metadata: config.MetadataConfig{
 			Priority: config.PriorityConfig{
-				Actress: []string{"r18dev", "dmm"},
+				Priority: []string{"r18dev", "dmm"},
 			},
 			ActressDatabase: config.ActressDatabaseConfig{
 				Enabled:      true,
@@ -131,7 +131,7 @@ func TestActressAliasConversion(t *testing.T) {
 		cfgNoConvert := &config.Config{
 			Metadata: config.MetadataConfig{
 				Priority: config.PriorityConfig{
-					Actress: []string{"r18dev"},
+					Priority: []string{"r18dev"},
 				},
 				ActressDatabase: config.ActressDatabaseConfig{
 					Enabled:      true,
@@ -167,7 +167,7 @@ func TestActressAliasConversion(t *testing.T) {
 		cfgNoActressDB := &config.Config{
 			Metadata: config.MetadataConfig{
 				Priority: config.PriorityConfig{
-					Actress: []string{"r18dev"},
+					Priority: []string{"r18dev"},
 				},
 				ActressDatabase: config.ActressDatabaseConfig{
 					Enabled:      false, // DISABLED
@@ -254,10 +254,7 @@ func TestActressAliasWithAggregate(t *testing.T) {
 		},
 		Metadata: config.MetadataConfig{
 			Priority: config.PriorityConfig{
-				ID:          []string{"r18dev"},
-				Title:       []string{"r18dev"},
-				Actress:     []string{"r18dev"},
-				ReleaseDate: []string{"r18dev"},
+				Priority: []string{"r18dev"},
 			},
 			ActressDatabase: config.ActressDatabaseConfig{
 				Enabled:      true,

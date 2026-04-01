@@ -1,0 +1,63 @@
+# Golden file for testing config round-trip with flaresolverr
+# Tests that global flaresolverr block is preserved in YAML round-trip
+
+scrapers:
+    user_agent: Javinizer-Test/1.0
+    referer: https://www.dmm.co.jp/
+    timeout_seconds: 30
+    request_timeout_seconds: 60
+    priority:
+        - r18dev
+        - dmm
+    flaresolverr:
+        enabled: true
+        url: "http://localhost:8191/v1"
+        timeout: 30
+        max_retries: 3
+        session_ttl: 300
+    proxy:
+        enabled: true
+        url: "http://proxy.example.com:8080"
+        username: ""
+        password: ""
+        use_main_proxy: false
+        default_profile: ""
+        profiles: {}
+    r18dev:
+        enabled: true
+        language: en
+        request_delay: 1500
+        max_retries: 3
+        respect_retry_after: true
+        timeout: 0
+        rate_limit: 1500
+        retry_count: 0
+        user_agent: ""
+        extra:
+            respect_retry_after: true
+        flaresolverr:
+            enabled: true
+            url: "http://localhost:8191/v1"
+            timeout: 60
+            max_retries: 5
+            session_ttl: 600
+    dmm:
+        enabled: true
+        scrape_actress: true
+        enable_browser: true
+        browser_timeout: 30
+        language: ja
+        timeout: 0
+        rate_limit: 0
+        retry_count: 0
+        user_agent: ""
+        extra:
+            browser_timeout: 30
+            enable_browser: true
+            scrape_actress: true
+        flaresolverr:
+            enabled: false
+            url: ""
+            timeout: 0
+            max_retries: 0
+            session_ttl: 0

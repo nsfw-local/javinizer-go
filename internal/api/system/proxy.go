@@ -46,13 +46,17 @@ func testProxy(deps *ServerDependencies) gin.HandlerFunc {
 
 		switch req.Mode {
 		case "direct":
-			if !req.Proxy.Enabled || strings.TrimSpace(req.Proxy.URL) == "" {
-				c.JSON(400, ErrorResponse{Error: "proxy.enabled=true and proxy.url are required for direct proxy test"})
+			// Resolve proxy profile from the global config
+			globalProxy := deps.GetConfig().Scrapers.Proxy
+			proxyProfile := config.ResolveScraperProxy(globalProxy, &req.Proxy)
+
+			if !req.Proxy.Enabled || strings.TrimSpace(proxyProfile.URL) == "" {
+				c.JSON(400, ErrorResponse{Error: "proxy.enabled=true and proxy profile with url are required for direct proxy test"})
 				return
 			}
-			resp.ProxyURL = httpclient.SanitizeProxyURL(req.Proxy.URL)
+			resp.ProxyURL = httpclient.SanitizeProxyURL(proxyProfile.URL)
 
-			client, err := httpclient.NewRestyClient(&req.Proxy, 30*time.Second, 0)
+			client, err := httpclient.NewRestyClient(proxyProfile, 30*time.Second, 0)
 			if err != nil {
 				resp.Success = false
 				resp.DurationMS = time.Since(start).Milliseconds()
@@ -74,7 +78,7 @@ func testProxy(deps *ServerDependencies) gin.HandlerFunc {
 			resp.DurationMS = time.Since(start).Milliseconds()
 			if err != nil {
 				resp.Success = false
-				resp.Message = fmt.Sprintf("direct proxy request failed: %v", err)
+				resp.Message = formatDirectProxyError(err)
 				c.JSON(200, resp)
 				return
 			}
@@ -88,15 +92,19 @@ func testProxy(deps *ServerDependencies) gin.HandlerFunc {
 			}
 			c.JSON(200, resp)
 		case "flaresolverr":
-			if !req.Proxy.FlareSolverr.Enabled || strings.TrimSpace(req.Proxy.FlareSolverr.URL) == "" {
-				c.JSON(400, ErrorResponse{Error: "proxy.flaresolverr.enabled=true and proxy.flaresolverr.url are required for flaresolverr test"})
+			if !req.FlareSolverr.Enabled || strings.TrimSpace(req.FlareSolverr.URL) == "" {
+				c.JSON(400, ErrorResponse{Error: "flaresolverr.enabled=true and flaresolverr.url are required for flaresolverr test"})
 				return
 			}
 
-			resp.ProxyURL = httpclient.SanitizeProxyURL(req.Proxy.URL)
-			resp.FlareSolverrURL = req.Proxy.FlareSolverr.URL
+			// Resolve proxy profile for FlareSolverr request proxy
+			globalProxy := deps.GetConfig().Scrapers.Proxy
+			proxyProfile := config.ResolveScraperProxy(globalProxy, &req.Proxy)
 
-			_, fs, err := httpclient.NewRestyClientWithFlareSolverr(&req.Proxy, 45*time.Second, 0)
+			resp.ProxyURL = httpclient.SanitizeProxyURL(proxyProfile.URL)
+			resp.FlareSolverrURL = req.FlareSolverr.URL
+
+			_, fs, err := httpclient.NewRestyClientWithFlareSolverr(proxyProfile, req.FlareSolverr, 45*time.Second, 0)
 			if err != nil {
 				resp.Success = false
 				resp.DurationMS = time.Since(start).Milliseconds()
@@ -136,4 +144,18 @@ func isValidHTTPURL(rawURL string) bool {
 		return false
 	}
 	return (parsed.Scheme == "http" || parsed.Scheme == "https") && parsed.Host != ""
+}
+
+func formatDirectProxyError(err error) string {
+	base := fmt.Sprintf("direct proxy request failed: %v", err)
+	if err == nil {
+		return base
+	}
+
+	msg := strings.ToLower(err.Error())
+	if strings.Contains(msg, "method not allowed") || strings.Contains(msg, "proxyconnect") {
+		return base + ". The proxy URL appears to be a regular HTTP endpoint, not a forward proxy. Use an HTTP/SOCKS5 proxy host:port; use FlareSolverr only in FlareSolverr test mode."
+	}
+
+	return base
 }

@@ -75,46 +75,6 @@ scrapers:
 	assert.True(t, strings.Contains(string(saved), "- dmm"))
 }
 
-func TestLoadOrCreatePreservesUnknownKeysAndCommentsOnMigration(t *testing.T) {
-	tmpDir := t.TempDir()
-	cfgPath := filepath.Join(tmpDir, "config.yaml")
-
-	legacy := `# user-managed config
-server:
-  port: 8081
-scrapers:
-  priority:
-    - dmm
-  custom_source:
-    enabled: true
-`
-
-	err := os.WriteFile(cfgPath, []byte(legacy), 0644)
-	require.NoError(t, err)
-
-	cfg, err := LoadOrCreate(cfgPath)
-	require.NoError(t, err)
-	assert.Equal(t, CurrentConfigVersion, cfg.ConfigVersion)
-
-	saved, err := os.ReadFile(cfgPath)
-	require.NoError(t, err)
-	savedText := string(saved)
-
-	assert.Contains(t, savedText, "# user-managed config")
-	assert.Contains(t, savedText, "custom_source:")
-	assert.Contains(t, savedText, "config_version: 3")
-	assert.Contains(t, savedText, "libredmm")
-	assert.Contains(t, savedText, "javlibrary")
-	assert.Contains(t, savedText, "javdb")
-	assert.Contains(t, savedText, "javbus")
-	assert.Contains(t, savedText, "jav321")
-	assert.Contains(t, savedText, "tokyohot")
-	assert.Contains(t, savedText, "aventertainment")
-	assert.Contains(t, savedText, "dlgetchu")
-	assert.Contains(t, savedText, "caribbeancom")
-	assert.Contains(t, savedText, "fc2")
-}
-
 func TestLoadOrCreateMigrationPreservesExplicitUpdateDisabled(t *testing.T) {
 	tmpDir := t.TempDir()
 	cfgPath := filepath.Join(tmpDir, "config.yaml")

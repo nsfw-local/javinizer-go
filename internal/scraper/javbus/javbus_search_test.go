@@ -12,12 +12,13 @@ import (
 )
 
 func newJavbusTestScraper(baseURL string) *Scraper {
-	cfg := config.DefaultConfig()
-	cfg.Scrapers.JavBus.Enabled = true
-	cfg.Scrapers.JavBus.BaseURL = baseURL
-	cfg.Scrapers.JavBus.Language = "ja"
-	cfg.Scrapers.JavBus.RequestDelay = 0
-	return New(cfg)
+	settings := config.ScraperSettings{
+		Enabled:   true,
+		Language:  "ja",
+		RateLimit: 0,
+		BaseURL:   baseURL,
+	}
+	return New(settings, nil, config.FlareSolverrConfig{})
 }
 
 func TestScraperGetURLAndSearch(t *testing.T) {
@@ -150,9 +151,8 @@ func TestScraperSearchReturnsNotFoundAndDisabledErrors(t *testing.T) {
 	})
 
 	t.Run("disabled", func(t *testing.T) {
-		cfg := config.DefaultConfig()
-		cfg.Scrapers.JavBus.Enabled = false
-		scraper := New(cfg)
+		settings := config.ScraperSettings{Enabled: false}
+		scraper := New(settings, nil, config.FlareSolverrConfig{})
 		_, err := scraper.Search("ABC-123")
 		if err == nil || !strings.Contains(err.Error(), "disabled") {
 			t.Fatalf("expected disabled error, got %v", err)

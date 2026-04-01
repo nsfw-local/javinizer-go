@@ -12,6 +12,7 @@ tmp_dir = "tmp/air"
     ".git",
     "bin",
     "data",
+    "internal/api/batch/data",
     "internal/api/data",
     "internal/worker/data",
     "docs",

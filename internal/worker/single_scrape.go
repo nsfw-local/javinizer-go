@@ -20,7 +20,6 @@ import (
 	"github.com/javinizer/javinizer-go/internal/models"
 	"github.com/javinizer/javinizer-go/internal/nfo"
 	"github.com/javinizer/javinizer-go/internal/scanner"
-	"github.com/javinizer/javinizer-go/internal/scraper/dmm"
 	"github.com/javinizer/javinizer-go/internal/template"
 	"github.com/spf13/afero"
 )
@@ -65,19 +64,6 @@ func scraperListContains(scrapers []string, target string) bool {
 		}
 	}
 	return false
-}
-
-func appendUniqueInput(inputs []string, input string) []string {
-	input = strings.TrimSpace(input)
-	if input == "" {
-		return inputs
-	}
-	for _, existing := range inputs {
-		if strings.EqualFold(existing, input) {
-			return inputs
-		}
-	}
-	return append(inputs, input)
 }
 
 func resolveScraperQueryForInputs(scraper models.Scraper, inputs ...string) (string, bool) {
@@ -233,7 +219,7 @@ func RunBatchScrapeOnce(
 				}
 
 				if shouldGenerate {
-					if tempPosterURL, err := GenerateTempPoster(ctx, job.ID, cached, httpClient, userAgent, referer, downloader.ResolveMediaReferer); err != nil {
+					if tempPosterURL, err := GenerateTempPoster(ctx, job.ID, cached, httpClient, userAgent, referer, downloader.ResolveMediaReferer, cfg.System.TempDir); err != nil {
 						logging.Warnf("[Batch %s] File %d: Failed to create temp poster for cached movie: %v", job.ID, fileIndex, err)
 						errMsg := err.Error()
 						posterErr = &errMsg
@@ -242,11 +228,11 @@ func RunBatchScrapeOnce(
 					}
 				} else {
 					// Check if temp poster file exists (may have been cleaned up after previous job)
-					tempPosterPath := filepath.Join("data", "temp", "posters", job.ID, cached.ID+".jpg")
+					tempPosterPath := filepath.Join(cfg.System.TempDir, "posters", job.ID, cached.ID+".jpg")
 					if _, err := os.Stat(tempPosterPath); err != nil {
 						// Temp poster doesn't exist - regenerate it
 						logging.Debugf("[Batch %s] File %d: Temp poster missing for %s, regenerating", job.ID, fileIndex, cached.ID)
-						if tempPosterURL, err := GenerateTempPoster(ctx, job.ID, cached, httpClient, userAgent, referer, downloader.ResolveMediaReferer); err != nil {
+						if tempPosterURL, err := GenerateTempPoster(ctx, job.ID, cached, httpClient, userAgent, referer, downloader.ResolveMediaReferer, cfg.System.TempDir); err != nil {
 							logging.Warnf("[Batch %s] File %d: Failed to regenerate temp poster: %v", job.ID, fileIndex, err)
 							errMsg := err.Error()
 							posterErr = &errMsg
@@ -422,8 +408,8 @@ func RunBatchScrapeOnce(
 			if !dmmScraper.IsEnabled() {
 				logging.Debugf("[Batch %s] File %d: DMM scraper disabled, skipping content-ID resolution", job.ID, fileIndex)
 				resolvedID = movieID
-			} else if dmmScraperTyped, ok := dmmScraper.(*dmm.Scraper); ok {
-				contentID, err := dmmScraperTyped.ResolveContentID(movieID)
+			} else if resolver, ok := dmmScraper.(models.ContentIDResolver); ok {
+				contentID, err := resolver.ResolveContentID(movieID)
 				if err != nil {
 					logging.Debugf("[Batch %s] File %d: DMM content-ID resolution failed for %s: %v, using original ID",
 						job.ID, fileIndex, movieID, err)
@@ -434,7 +420,7 @@ func RunBatchScrapeOnce(
 						job.ID, fileIndex, movieID, resolvedID)
 				}
 			} else {
-				logging.Debugf("[Batch %s] File %d: DMM scraper type assertion failed, using original ID", job.ID, fileIndex)
+				logging.Debugf("[Batch %s] File %d: DMM scraper does not implement ContentIDResolver, using original ID", job.ID, fileIndex)
 				resolvedID = movieID
 			}
 		} else {
@@ -453,17 +439,25 @@ func RunBatchScrapeOnce(
 	results := make([]*models.ScraperResult, 0)
 	scraperFailures := make([]scraperFailure, 0)
 
-	// Normalize empty slice to nil for explicit GetByPriority semantics
+	// Determine scraper order for this run.
+	// - Custom mode: use user-selected scrapers (selectedScrapers)
+	// - Default mode: use configured global priority (cfg.Scrapers.Priority)
+	// - Fallback: use registry enabled order if config priority is unavailable
 	var scraperNames []string
 	if len(selectedScrapers) > 0 {
 		scraperNames = selectedScrapers
 		logging.Debugf("[Batch %s] File %d: Using custom scraper priority: %v", job.ID, fileIndex, selectedScrapers)
 	} else {
-		scraperNames = nil // Explicitly pass nil to use registry defaults
-		logging.Debugf("[Batch %s] File %d: Using default scraper priority", job.ID, fileIndex)
+		if cfg != nil && len(cfg.Scrapers.Priority) > 0 {
+			scraperNames = cfg.Scrapers.Priority
+			logging.Debugf("[Batch %s] File %d: Using configured scraper priority: %v", job.ID, fileIndex, scraperNames)
+		} else {
+			scraperNames = nil // Explicitly pass nil to use registry defaults
+			logging.Debugf("[Batch %s] File %d: Using registry default scraper priority", job.ID, fileIndex)
+		}
 	}
 
-	// GetByPriority returns all enabled scrapers when passed nil
+	// GetByPriority returns all enabled scrapers when passed nil.
 	priorityInput := movieID
 	if rawFilenameQuery != "" {
 		priorityInput = rawFilenameQuery
@@ -781,7 +775,7 @@ func RunBatchScrapeOnce(
 		}
 
 		if shouldGeneratePoster {
-			if tempPosterURL, err := GenerateTempPoster(ctx, job.ID, movie, httpClient, userAgent, referer, downloader.ResolveMediaReferer); err != nil {
+			if tempPosterURL, err := GenerateTempPoster(ctx, job.ID, movie, httpClient, userAgent, referer, downloader.ResolveMediaReferer, cfg.System.TempDir); err != nil {
 				logging.Warnf("[Batch %s] File %d: Failed to create temp poster: %v (continuing anyway)", job.ID, fileIndex, err)
 				errMsg := err.Error()
 				posterErr = &errMsg

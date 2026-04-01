@@ -114,8 +114,8 @@ func (s *stubScraper) IsEnabled() bool {
 
 func (s *stubScraper) Close() error { return nil }
 
-func (s *stubScraper) Config() *config.ScraperConfig {
-	return &config.ScraperConfig{Enabled: s.enabled}
+func (s *stubScraper) Config() *config.ScraperSettings {
+	return &config.ScraperSettings{Enabled: s.enabled}
 }
 
 // createTestFiles creates temporary test video files with JAV ID patterns

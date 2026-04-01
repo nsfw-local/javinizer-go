@@ -1,22 +1,27 @@
 package dmm
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/go-resty/resty/v2"
 	"github.com/javinizer/javinizer-go/internal/config"
 	"github.com/javinizer/javinizer-go/internal/httpclient"
-	"github.com/javinizer/javinizer-go/internal/logging"
 )
 
 // NewHTTPClient creates an HTTP client for the DMM scraper.
 // HTTP-01: Per-scraper HTTP client ownership.
-// Returns client, effective proxyConfig (for browser use), and error.
-func NewHTTPClient(cfg *config.ScraperConfig, globalProxy *config.ProxyConfig) (*resty.Client, *config.ProxyConfig, error) {
+// Returns client, effective proxyProfile (for browser use), and error.
+func NewHTTPClient(cfg *config.ScraperSettings, globalProxy *config.ProxyConfig, globalFlareSolverr config.FlareSolverrConfig) (*resty.Client, *config.ProxyProfile, error) {
+	// Handle nil globalProxy to avoid dereference panic
+	globalProxyVal := config.ProxyConfig{}
+	if globalProxy != nil {
+		globalProxyVal = *globalProxy
+	}
 	// Resolve proxy per-scraper (HTTP-02)
-	proxyCfg := config.ResolveScraperProxy(*globalProxy, cfg.Proxy)
+	proxyCfg := config.ResolveScraperProxy(globalProxyVal, cfg.Proxy)
 
-	// Use timeout from ScraperConfig, default to 30s
+	// Use timeout from ScraperSettings, default to 30s
 	timeout := time.Duration(cfg.Timeout) * time.Second
 	if timeout == 0 {
 		timeout = 30 * time.Second
@@ -34,11 +39,7 @@ func NewHTTPClient(cfg *config.ScraperConfig, globalProxy *config.ProxyConfig) (
 	}
 
 	// Apply UserAgent from ScraperConfig
-	userAgent := config.ResolveScraperUserAgent(
-		cfg.UserAgent,
-		cfg.UseFakeUserAgent,
-		cfg.UserAgent,
-	)
+	userAgent := config.ResolveScraperUserAgent(cfg.UserAgent)
 	client.SetHeader("User-Agent", userAgent)
 	client.SetHeader("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
 	client.SetHeader("Accept-Language", "en-US,en;q=0.9,ja;q=0.8")
@@ -51,26 +52,10 @@ func NewHTTPClient(cfg *config.ScraperConfig, globalProxy *config.ProxyConfig) (
 }
 
 // NewHTTPClientWithDefaults creates an HTTP client using DMM-specific defaults.
-// This is a convenience wrapper for the common case where DMMConfig is available.
-func NewHTTPClientWithDefaults(cfg *config.Config) (*resty.Client, *config.ProxyConfig, error) {
-	scraperCfg := &config.ScraperConfig{
-		Enabled:          cfg.Scrapers.DMM.Enabled,
-		Timeout:          30, // default (seconds)
-		RateLimit:        0,  // DMM doesn't have per-request delay in its config
-		RetryCount:       3,  // default
-		UseFakeUserAgent: cfg.Scrapers.DMM.UseFakeUserAgent,
-		UserAgent:        cfg.Scrapers.DMM.FakeUserAgent,
-		Proxy:            cfg.Scrapers.DMM.Proxy,
-		DownloadProxy:    cfg.Scrapers.DMM.DownloadProxy,
-		FlareSolverr:     cfg.Scrapers.Proxy.FlareSolverr, // inherit global if not overridden
-	}
-
-	client, proxyConfig, err := NewHTTPClient(scraperCfg, &cfg.Scrapers.Proxy)
-	if err != nil {
-		logging.Errorf("DMM: Failed to create HTTP client: %v, using explicit no-proxy fallback", err)
-		client = httpclient.NewRestyClientNoProxy(30*time.Second, 3)
-		proxyConfig = nil
-	}
-
-	return client, proxyConfig, nil
+// Deprecated: This function is kept for backward compatibility but is no longer used.
+// Scraper.New() now constructs ScraperConfig from ScraperSettings directly.
+func NewHTTPClientWithDefaults(cfg *config.Config) (*resty.Client, *config.ProxyProfile, error) {
+	// This function is deprecated. Use NewHTTPClient with ScraperSettings instead.
+	// Keeping this stub to avoid breaking any external callers.
+	return nil, nil, fmt.Errorf("NewHTTPClientWithDefaults is deprecated")
 }

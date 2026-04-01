@@ -19,7 +19,6 @@ javinizer-go
 /web/frontend/.svelte-kit/
 /web/frontend/build/
 /web/dist/*
-!/web/dist/index.html
 !/web/dist/robots.txt
 
 # Go workspace file
@@ -67,3 +66,9 @@ COVERAGE_REPORT.md
 
 # Local GitHub Actions testing (act)
 .secrets
+
+# superturtle
+.superturtle/
+.planning/
+docs/superpowers/
+.worktrees/

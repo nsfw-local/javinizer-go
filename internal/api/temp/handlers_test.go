@@ -19,21 +19,21 @@ func TestServeTempPoster(t *testing.T) {
 
 	// Create temp directory structure
 	tempDir := t.TempDir()
-	originalWd, err := os.Getwd()
-	require.NoError(t, err)
-	require.NoError(t, os.Chdir(tempDir))
-	defer func() {
-		_ = os.Chdir(originalWd)
-	}()
 
-	// Create data/temp/posters/test-job-id directory
+	// Create temp/posters/test-job-id directory (relative to tempDir)
 	jobID := "test-job-id"
-	posterDir := filepath.Join("data", "temp", "posters", jobID)
+	posterDir := filepath.Join(tempDir, "posters", jobID)
 	require.NoError(t, os.MkdirAll(posterDir, 0755))
 
 	// Create a test poster file
 	posterPath := filepath.Join(posterDir, "test-poster.jpg")
 	require.NoError(t, os.WriteFile(posterPath, []byte("fake jpeg data"), 0644))
+
+	// Create deps with config that has TempDir set to tempDir
+	cfg := config.DefaultConfig()
+	cfg.System.TempDir = tempDir
+	deps := &ServerDependencies{}
+	deps.SetConfig(cfg)
 
 	tests := []struct {
 		name           string
@@ -88,7 +88,7 @@ func TestServeTempPoster(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			router := gin.New()
-			router.GET("/temp/posters/:jobId/:filename", serveTempPoster())
+			router.GET("/temp/posters/:jobId/:filename", serveTempPoster(deps))
 
 			req := httptest.NewRequest(http.MethodGet, "/temp/posters/"+tt.jobID+"/"+tt.filename, nil)
 			w := httptest.NewRecorder()
@@ -105,33 +105,32 @@ func TestServeTempPoster_PathTraversalDefenseInDepth(t *testing.T) {
 
 	// Create temp directory structure
 	tempDir := t.TempDir()
-	originalWd, err := os.Getwd()
-	require.NoError(t, err)
-	require.NoError(t, os.Chdir(tempDir))
-	defer func() {
-		_ = os.Chdir(originalWd)
-	}()
 
-	// Create the directory structure
+	// Create the poster directory: tempDir/posters/jobID
 	jobID := "test-job"
-	posterDir := filepath.Join("data", "temp", "posters", jobID)
+	posterDir := filepath.Join(tempDir, "posters", jobID)
 	require.NoError(t, os.MkdirAll(posterDir, 0755))
 
-	// Create a sensitive file outside the poster directory
-	sensitiveDir := filepath.Join("data", "temp")
-	sensitiveFile := filepath.Join(sensitiveDir, "sensitive.jpg")
+	// Create a sensitive file outside the poster directory (at same level as "posters")
+	sensitiveFile := filepath.Join(tempDir, "sensitive.jpg")
 	require.NoError(t, os.WriteFile(sensitiveFile, []byte("sensitive data"), 0644))
 
-	router := gin.New()
-	router.GET("/temp/posters/:jobId/:filename", serveTempPoster())
+	// Create deps with config that has TempDir set to tempDir
+	cfg := config.DefaultConfig()
+	cfg.System.TempDir = tempDir
+	deps := &ServerDependencies{}
+	deps.SetConfig(cfg)
 
-	// Try to access sensitive.jpg via path traversal
+	router := gin.New()
+	router.GET("/temp/posters/:jobId/:filename", serveTempPoster(deps))
+
+	// Try to access sensitive.jpg via path traversal (../sensitive.jpg from tempDir/posters/jobID/)
 	req := httptest.NewRequest(http.MethodGet, "/temp/posters/"+jobID+"/../sensitive.jpg", nil)
 	w := httptest.NewRecorder()
 
 	router.ServeHTTP(w, req)
 
-	// Should return 404 not found
+	// Should return 404 not found (defense-in-depth blocks the traversal)
 	assert.Equal(t, http.StatusNotFound, w.Code)
 }
 
@@ -247,13 +246,9 @@ func TestServeTempPoster_ValidJpgExtensions(t *testing.T) {
 
 	// Create temp directory structure
 	tempDir := t.TempDir()
-	originalWd, err := os.Getwd()
-	require.NoError(t, err)
-	require.NoError(t, os.Chdir(tempDir))
-	defer func() { _ = os.Chdir(originalWd) }()
 
 	jobID := "test-job"
-	posterDir := filepath.Join("data", "temp", "posters", jobID)
+	posterDir := filepath.Join(tempDir, "posters", jobID)
 	require.NoError(t, os.MkdirAll(posterDir, 0755))
 
 	// Create test files with different extensions
@@ -261,8 +256,14 @@ func TestServeTempPoster_ValidJpgExtensions(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(posterDir, "test.JPG"), []byte("jpeg"), 0644))
 	require.NoError(t, os.WriteFile(filepath.Join(posterDir, "test.Jpg"), []byte("jpeg"), 0644))
 
+	// Create deps with config that has TempDir set to tempDir
+	cfg := config.DefaultConfig()
+	cfg.System.TempDir = tempDir
+	deps := &ServerDependencies{}
+	deps.SetConfig(cfg)
+
 	router := gin.New()
-	router.GET("/temp/posters/:jobId/:filename", serveTempPoster())
+	router.GET("/temp/posters/:jobId/:filename", serveTempPoster(deps))
 
 	tests := []struct {
 		filename       string

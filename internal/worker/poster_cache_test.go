@@ -85,6 +85,9 @@ func TestPosterRegenerationOnCacheHit(t *testing.T) {
 			RegexPattern: `(?i)([a-z]{2,5})-?(\d{2,5})`,
 			RegexEnabled: true,
 		},
+		System: config.SystemConfig{
+			TempDir: filepath.Join("data", "temp"),
+		},
 	}
 
 	db, err := database.New(cfg)
@@ -300,6 +303,6 @@ func (m *mockScraperForPosterTest) Close() error {
 	return nil
 }
 
-func (m *mockScraperForPosterTest) Config() *config.ScraperConfig {
-	return &config.ScraperConfig{Enabled: true}
+func (m *mockScraperForPosterTest) Config() *config.ScraperSettings {
+	return &config.ScraperSettings{Enabled: true}
 }

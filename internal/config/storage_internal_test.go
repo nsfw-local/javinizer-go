@@ -298,6 +298,41 @@ func TestSaveAndLoadOrCreateBranches(t *testing.T) {
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "failed to save migrated config")
 	})
+
+	t.Run("LoadOrCreate applies init defaults env only on first create", func(t *testing.T) {
+		t.Setenv("JAVINIZER_INIT_SERVER_HOST", "0.0.0.0")
+		t.Setenv("JAVINIZER_INIT_ALLOWED_DIRECTORIES", "/media")
+		t.Setenv("JAVINIZER_INIT_ALLOWED_ORIGINS", "http://example.com,https://app.example.com")
+
+		path := filepath.Join(t.TempDir(), "config.yaml")
+		cfg, err := LoadOrCreate(path)
+		require.NoError(t, err)
+		assert.Equal(t, "0.0.0.0", cfg.Server.Host)
+		assert.Equal(t, []string{"/media"}, cfg.API.Security.AllowedDirectories)
+		assert.Equal(t, []string{"http://example.com", "https://app.example.com"}, cfg.API.Security.AllowedOrigins)
+
+		reloaded, err := Load(path)
+		require.NoError(t, err)
+		assert.Equal(t, "0.0.0.0", reloaded.Server.Host)
+		assert.Equal(t, []string{"/media"}, reloaded.API.Security.AllowedDirectories)
+		assert.Equal(t, []string{"http://example.com", "https://app.example.com"}, reloaded.API.Security.AllowedOrigins)
+	})
+
+	t.Run("LoadOrCreate does not override existing config with init defaults env", func(t *testing.T) {
+		t.Setenv("JAVINIZER_INIT_SERVER_HOST", "0.0.0.0")
+		t.Setenv("JAVINIZER_INIT_ALLOWED_DIRECTORIES", "/media")
+
+		path := filepath.Join(t.TempDir(), "config.yaml")
+		existing := DefaultConfig()
+		existing.Server.Host = "127.0.0.1"
+		existing.API.Security.AllowedDirectories = []string{"/existing"}
+		require.NoError(t, Save(existing, path))
+
+		cfg, err := LoadOrCreate(path)
+		require.NoError(t, err)
+		assert.Equal(t, "127.0.0.1", cfg.Server.Host)
+		assert.Equal(t, []string{"/existing"}, cfg.API.Security.AllowedDirectories)
+	})
 }
 
 func strconvI(v int) string {

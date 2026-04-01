@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"regexp"
-	"strings"
 	"sync"
 	"time"
 
@@ -12,6 +11,7 @@ import (
 	"github.com/javinizer/javinizer-go/internal/database"
 	"github.com/javinizer/javinizer-go/internal/logging"
 	"github.com/javinizer/javinizer-go/internal/models"
+	"github.com/javinizer/javinizer-go/internal/scraperutil"
 	"github.com/javinizer/javinizer-go/internal/template"
 	"github.com/javinizer/javinizer-go/internal/translation"
 )
@@ -55,6 +55,11 @@ type AggregatorOptions struct {
 	// If non-nil, this cache is used directly without loading from database.
 	// Takes precedence over ActressAliasRepo if both are provided.
 	ActressCache map[string]string
+
+	// Scrapers is an optional list of scrapers for dependency injection.
+	// If non-nil, the scrapers are used in order as their priority for aggregation.
+	// If nil, scraperutil.GetPriorities() is used for backward compatibility.
+	Scrapers []models.Scraper
 }
 
 // Compile-time verification that Aggregator implements AggregatorInterface
@@ -63,6 +68,7 @@ var _ AggregatorInterface = (*Aggregator)(nil)
 // Aggregator combines metadata from multiple scrapers based on priority
 type Aggregator struct {
 	config                *config.Config
+	scrapers              []models.Scraper // Injected scrapers for priority (nil = use scraperutil)
 	templateEngine        *template.Engine
 	genreReplacementRepo  *database.GenreReplacementRepository
 	genreReplacementCache map[string]string
@@ -101,8 +107,14 @@ func NewWithOptions(cfg *config.Config, opts *AggregatorOptions) *Aggregator {
 
 	agg := &Aggregator{
 		config:                cfg,
+		scrapers:              nil, // Default empty, populated below if provided
 		genreReplacementCache: make(map[string]string),
 		actressAliasCache:     make(map[string]string),
+	}
+
+	// Store injected scrapers if provided (for priority ordering)
+	if opts != nil && opts.Scrapers != nil {
+		agg.scrapers = opts.Scrapers
 	}
 
 	// Use injected template engine or create real one
@@ -319,14 +331,21 @@ func isRegexPattern(s string) bool {
 }
 
 // resolvePriorities resolves all field priorities at initialization time
-// If a field has an empty priority list or is missing, it falls back to global priority
+// With simplified priorities, all fields use the same global priority derived from scraper registrations
 func (a *Aggregator) resolvePriorities() {
 	a.resolvedPriorities = make(map[string][]string)
 
-	globalPriority := a.config.Scrapers.Priority
-	if len(globalPriority) == 0 {
-		// Fallback to a sensible default if global priority is empty
-		globalPriority = []string{"r18dev", "dmm"}
+	var globalPriority []string
+
+	// If scrapers are injected, use their names in order as priority
+	if len(a.scrapers) > 0 {
+		globalPriority = make([]string, 0, len(a.scrapers))
+		for _, s := range a.scrapers {
+			globalPriority = append(globalPriority, s.Name())
+		}
+	} else {
+		// Fall back to scraperutil for backward compatibility
+		globalPriority = getFieldPriorityFromConfig(a.config, "")
 	}
 
 	// List of all metadata fields that need priority resolution
@@ -338,14 +357,8 @@ func (a *Aggregator) resolvePriorities() {
 	}
 
 	for _, field := range fields {
-		fieldPriority := getFieldPriorityFromConfig(a.config, field)
-
-		// If field priority is empty or nil, use global priority
-		if len(fieldPriority) == 0 {
-			a.resolvedPriorities[field] = copySlice(globalPriority)
-		} else {
-			a.resolvedPriorities[field] = copySlice(fieldPriority)
-		}
+		// All fields now use the same global priority
+		a.resolvedPriorities[field] = copySlice(globalPriority)
 	}
 }
 
@@ -355,50 +368,25 @@ func (a *Aggregator) GetResolvedPriorities() map[string][]string {
 	return a.resolvedPriorities
 }
 
-// getFieldPriorityFromConfig extracts the priority list for a field from config
-// Returns nil if the field is not configured
+// getFieldPriorityFromConfig returns the scraper priority list.
+// With simplified priorities, this always returns one global priority.
+// User can override via cfg.Metadata.Priority.Priority; otherwise falls back to cfg.Scrapers.Priority.
 func getFieldPriorityFromConfig(cfg *config.Config, fieldKey string) []string {
-	// Use reflection-free approach by checking each field explicitly
-	switch fieldKey {
-	case "ID":
-		return cfg.Metadata.Priority.ID
-	case "ContentID":
-		return cfg.Metadata.Priority.ContentID
-	case "Title":
-		return cfg.Metadata.Priority.Title
-	case "OriginalTitle":
-		return cfg.Metadata.Priority.OriginalTitle
-	case "Description":
-		return cfg.Metadata.Priority.Description
-	case "Director":
-		return cfg.Metadata.Priority.Director
-	case "Maker":
-		return cfg.Metadata.Priority.Maker
-	case "Label":
-		return cfg.Metadata.Priority.Label
-	case "Series":
-		return cfg.Metadata.Priority.Series
-	case "PosterURL":
-		return cfg.Metadata.Priority.PosterURL
-	case "CoverURL":
-		return cfg.Metadata.Priority.CoverURL
-	case "TrailerURL":
-		return cfg.Metadata.Priority.TrailerURL
-	case "Runtime":
-		return cfg.Metadata.Priority.Runtime
-	case "ReleaseDate":
-		return cfg.Metadata.Priority.ReleaseDate
-	case "Rating":
-		return cfg.Metadata.Priority.Rating
-	case "Actress":
-		return cfg.Metadata.Priority.Actress
-	case "Genre":
-		return cfg.Metadata.Priority.Genre
-	case "ScreenshotURL":
-		return cfg.Metadata.Priority.ScreenshotURL
-	default:
+	if cfg == nil {
+		if priorities := scraperutil.GetPriorities(); len(priorities) > 0 {
+			return priorities
+		}
 		return nil
 	}
+
+	// If user explicitly set priority, use it
+	if len(cfg.Metadata.Priority.Priority) > 0 {
+		return cfg.Metadata.Priority.Priority
+	}
+
+	// Fall back to configured global scraper priority.
+	// This keeps default aggregation behavior aligned with scrape execution order.
+	return cfg.Scrapers.Priority
 }
 
 // copySlice creates a copy of a string slice
@@ -418,9 +406,6 @@ func (a *Aggregator) Aggregate(results []*models.ScraperResult) (*models.Movie, 
 	}
 
 	movie := &models.Movie{}
-
-	// Build translations from all scraper results
-	movie.Translations = a.buildTranslations(results)
 
 	// Create a map of results by source name for quick lookup
 	resultsBySource := make(map[string]*models.ScraperResult)
@@ -531,6 +516,9 @@ func (a *Aggregator) Aggregate(results []*models.ScraperResult) (*models.Movie, 
 		movie.SourceURL = results[0].SourceURL
 	}
 
+	// Build translations from scrapers that contributed to merged fields
+	movie.Translations = a.buildTranslations(results, movie)
+
 	a.applyConfiguredTranslation(movie)
 
 	// Generate display name from template if configured
@@ -545,7 +533,7 @@ func (a *Aggregator) Aggregate(results []*models.ScraperResult) (*models.Movie, 
 
 	// Validate required fields if configured
 	if len(a.config.Metadata.RequiredFields) > 0 {
-		if err := a.validateRequiredFields(movie); err != nil {
+		if err := validateRequiredFields(movie, a.config.Metadata.RequiredFields); err != nil {
 			return nil, fmt.Errorf("required field validation failed: %w", err)
 		}
 	}
@@ -566,9 +554,6 @@ func (a *Aggregator) AggregateWithPriority(results []*models.ScraperResult, cust
 	}
 
 	movie := &models.Movie{}
-
-	// Build translations from all scraper results
-	movie.Translations = a.buildTranslations(results)
 
 	// Create a map of results by source name for quick lookup
 	resultsBySource := make(map[string]*models.ScraperResult)
@@ -679,6 +664,9 @@ func (a *Aggregator) AggregateWithPriority(results []*models.ScraperResult, cust
 		movie.SourceURL = results[0].SourceURL
 	}
 
+	// Build translations from scrapers that contributed to merged fields
+	movie.Translations = a.buildTranslations(results, movie)
+
 	a.applyConfiguredTranslation(movie)
 
 	// Generate display name from template if configured
@@ -693,7 +681,7 @@ func (a *Aggregator) AggregateWithPriority(results []*models.ScraperResult, cust
 
 	// Validate required fields if configured
 	if len(a.config.Metadata.RequiredFields) > 0 {
-		if err := a.validateRequiredFields(movie); err != nil {
+		if err := validateRequiredFields(movie, a.config.Metadata.RequiredFields); err != nil {
 			return nil, fmt.Errorf("required field validation failed: %w", err)
 		}
 	}
@@ -959,13 +947,47 @@ func (a *Aggregator) isGenreIgnored(genre string) bool {
 }
 
 // buildTranslations creates MovieTranslation records from scraper results
-// Each result with a language code gets its own translation entry
-func (a *Aggregator) buildTranslations(results []*models.ScraperResult) []models.MovieTranslation {
+// Only includes a scraper's translation if that scraper contributed to at least
+// one of the aggregated movie's fields (Title, OriginalTitle, or Description).
+// This ensures buildTranslations only captures translations from scrapers that
+// actually won the priority merge, preventing duplicate language entries.
+func (a *Aggregator) buildTranslations(results []*models.ScraperResult, movie *models.Movie) []models.MovieTranslation {
 	translations := make([]models.MovieTranslation, 0, len(results))
 
 	for _, result := range results {
 		// Skip results without language metadata
 		if result.Language == "" {
+			continue
+		}
+
+		// Check if this scraper is a "winner" by comparing ALL its translation fields
+		// to the aggregated movie. A scraper is a winner if ANY of its non-empty
+		// translation fields match the corresponding aggregated movie field.
+		isWinner := false
+		if result.Title != "" && result.Title == movie.Title {
+			isWinner = true
+		}
+		if result.OriginalTitle != "" && result.OriginalTitle == movie.OriginalTitle {
+			isWinner = true
+		}
+		if result.Description != "" && result.Description == movie.Description {
+			isWinner = true
+		}
+		if result.Director != "" && result.Director == movie.Director {
+			isWinner = true
+		}
+		if result.Maker != "" && result.Maker == movie.Maker {
+			isWinner = true
+		}
+		if result.Label != "" && result.Label == movie.Label {
+			isWinner = true
+		}
+		if result.Series != "" && result.Series == movie.Series {
+			isWinner = true
+		}
+
+		// Only include translation if scraper contributed at least one field to merged result
+		if !isWinner {
 			continue
 		}
 
@@ -1026,62 +1048,6 @@ func (a *Aggregator) applyConfiguredTranslation(movie *models.Movie) {
 	)
 }
 
-func mergeOrAppendTranslation(
-	existing []models.MovieTranslation,
-	incoming models.MovieTranslation,
-	overwrite bool,
-) []models.MovieTranslation {
-	targetLanguage := strings.ToLower(strings.TrimSpace(incoming.Language))
-	if targetLanguage == "" {
-		return existing
-	}
-
-	for i := range existing {
-		if strings.ToLower(strings.TrimSpace(existing[i].Language)) != targetLanguage {
-			continue
-		}
-
-		if overwrite {
-			existing[i] = mergeTranslationFields(existing[i], incoming)
-		}
-		return existing
-	}
-
-	return append(existing, incoming)
-}
-
-func mergeTranslationFields(current, incoming models.MovieTranslation) models.MovieTranslation {
-	merged := current
-	merged.Language = incoming.Language
-
-	if incoming.Title != "" {
-		merged.Title = incoming.Title
-	}
-	if incoming.OriginalTitle != "" {
-		merged.OriginalTitle = incoming.OriginalTitle
-	}
-	if incoming.Description != "" {
-		merged.Description = incoming.Description
-	}
-	if incoming.Director != "" {
-		merged.Director = incoming.Director
-	}
-	if incoming.Maker != "" {
-		merged.Maker = incoming.Maker
-	}
-	if incoming.Label != "" {
-		merged.Label = incoming.Label
-	}
-	if incoming.Series != "" {
-		merged.Series = incoming.Series
-	}
-	if incoming.SourceName != "" {
-		merged.SourceName = incoming.SourceName
-	}
-
-	return merged
-}
-
 // applyGenreReplacement applies genre replacement if one exists
 func (a *Aggregator) applyGenreReplacement(original string) string {
 	// Feature toggle: bypass DB-backed genre replacement entirely when disabled.
@@ -1124,100 +1090,4 @@ func (a *Aggregator) applyGenreReplacement(original string) string {
 // ReloadGenreReplacements reloads the genre replacement cache from database
 func (a *Aggregator) ReloadGenreReplacements() {
 	a.loadGenreReplacementCache()
-}
-
-// validateRequiredFields checks if all required fields are present and non-empty
-func (a *Aggregator) validateRequiredFields(movie *models.Movie) error {
-	missingFields := []string{}
-
-	for _, fieldName := range a.config.Metadata.RequiredFields {
-		// Normalize field name to lowercase for case-insensitive comparison
-		fieldLower := strings.ToLower(fieldName)
-
-		// Check each field
-		switch fieldLower {
-		case "id":
-			if movie.ID == "" {
-				missingFields = append(missingFields, "ID")
-			}
-		case "contentid", "content_id":
-			if movie.ContentID == "" {
-				missingFields = append(missingFields, "ContentID")
-			}
-		case "title":
-			if movie.Title == "" {
-				missingFields = append(missingFields, "Title")
-			}
-		case "originaltitle", "original_title":
-			if movie.OriginalTitle == "" {
-				missingFields = append(missingFields, "OriginalTitle")
-			}
-		case "description", "plot":
-			if movie.Description == "" {
-				missingFields = append(missingFields, "Description")
-			}
-		case "director":
-			if movie.Director == "" {
-				missingFields = append(missingFields, "Director")
-			}
-		case "maker", "studio":
-			if movie.Maker == "" {
-				missingFields = append(missingFields, "Maker")
-			}
-		case "label":
-			if movie.Label == "" {
-				missingFields = append(missingFields, "Label")
-			}
-		case "series", "set":
-			if movie.Series == "" {
-				missingFields = append(missingFields, "Series")
-			}
-		case "releasedate", "release_date", "premiered":
-			if movie.ReleaseDate == nil {
-				missingFields = append(missingFields, "ReleaseDate")
-			}
-		case "runtime":
-			if movie.Runtime == 0 {
-				missingFields = append(missingFields, "Runtime")
-			}
-		case "coverurl", "cover_url", "cover":
-			if movie.CoverURL == "" {
-				missingFields = append(missingFields, "CoverURL")
-			}
-		case "posterurl", "poster_url", "poster":
-			if movie.PosterURL == "" {
-				missingFields = append(missingFields, "PosterURL")
-			}
-		case "trailerurl", "trailer_url", "trailer":
-			if movie.TrailerURL == "" {
-				missingFields = append(missingFields, "TrailerURL")
-			}
-		case "screenshots", "screenshot_url", "screenshoturl":
-			if len(movie.Screenshots) == 0 {
-				missingFields = append(missingFields, "Screenshots")
-			}
-		case "actresses", "actress":
-			if len(movie.Actresses) == 0 {
-				missingFields = append(missingFields, "Actresses")
-			}
-		case "genres", "genre":
-			if len(movie.Genres) == 0 {
-				missingFields = append(missingFields, "Genres")
-			}
-		case "rating", "ratingscore", "rating_score":
-			if movie.RatingScore == 0 {
-				missingFields = append(missingFields, "RatingScore")
-			}
-		default:
-			// Unknown field name - log warning but don't fail
-			// This allows for forward compatibility
-			continue
-		}
-	}
-
-	if len(missingFields) > 0 {
-		return fmt.Errorf("missing required fields: %s", strings.Join(missingFields, ", "))
-	}
-
-	return nil
 }

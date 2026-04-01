@@ -93,13 +93,6 @@ func TestScrapeCommand_FlagConflictResolution(t *testing.T) {
 			description: "When conflicting flags set, both parse but runScrape logic determines winner",
 		},
 		{
-			name:        "browser flag takes precedence over deprecated headless",
-			args:        []string{"--browser", "--headless", "TEST-001"},
-			checkFlag:   "browser",
-			expectedVal: "true",
-			description: "New --browser flag should be preferred over deprecated --headless",
-		},
-		{
 			name:        "no-browser overrides browser when both set",
 			args:        []string{"--browser", "--no-browser", "TEST-001"},
 			checkFlag:   "no-browser",
@@ -134,57 +127,6 @@ func TestScrapeCommand_FlagConflictResolution(t *testing.T) {
 			require.NotNil(t, flag, "Flag %s should exist", tt.checkFlag)
 			assert.Equal(t, tt.expectedVal, flag.Value.String(),
 				"Flag value mismatch for %s: %s", tt.checkFlag, tt.description)
-		})
-	}
-}
-
-// TestScrapeCommand_DeprecatedFlagBackwardCompatibility tests deprecated flag handling
-func TestScrapeCommand_DeprecatedFlagBackwardCompatibility(t *testing.T) {
-	tests := []struct {
-		name        string
-		args        []string
-		checkFlag   string
-		expectedVal string
-		deprecated  bool
-	}{
-		{
-			name:        "deprecated headless flag still works",
-			args:        []string{"--headless", "TEST-001"},
-			checkFlag:   "headless",
-			expectedVal: "true",
-			deprecated:  true,
-		},
-		{
-			name:        "deprecated no-headless flag still works",
-			args:        []string{"--no-headless", "TEST-001"},
-			checkFlag:   "no-headless",
-			expectedVal: "true",
-			deprecated:  true,
-		},
-		{
-			name:        "deprecated headless-timeout flag still works",
-			args:        []string{"--headless-timeout", "45", "TEST-001"},
-			checkFlag:   "headless-timeout",
-			expectedVal: "45",
-			deprecated:  true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			cmd := scrape.NewCommand()
-			cmd.SetArgs(tt.args)
-
-			err := cmd.ParseFlags(tt.args)
-			require.NoError(t, err, "Deprecated flag should still parse successfully")
-
-			flag := cmd.Flags().Lookup(tt.checkFlag)
-			require.NotNil(t, flag, "Deprecated flag %s should still exist", tt.checkFlag)
-			assert.Equal(t, tt.expectedVal, flag.Value.String(), "Deprecated flag value mismatch")
-
-			if tt.deprecated {
-				assert.NotEmpty(t, flag.Deprecated, "Flag should have deprecation message")
-			}
 		})
 	}
 }
@@ -480,10 +422,8 @@ func TestScrapeCommand_HelpOutput(t *testing.T) {
 	assert.Contains(t, output, "-f", "Help should show -f shorthand")
 	assert.Contains(t, output, "-s", "Help should show -s shorthand")
 
-	// Note: Deprecated flags (--headless, --no-headless, --headless-timeout) are hidden
-	// from default help output by Cobra's MarkDeprecated() mechanism. This is expected behavior.
-	// The deprecated flags are still functional for backward compatibility, they just don't
-	// clutter the help text.
+	// Note: Deprecated flags (--headless, --no-headless, --headless-timeout) have been removed.
+	// Users should use --browser, --no-browser, and --browser-timeout instead.
 }
 
 // TestScrapeCommand_CommandMetadata tests command structure metadata
@@ -528,9 +468,6 @@ func TestScrapeCommand_FlagTypes(t *testing.T) {
 		{"no-actress-db", "bool"},
 		{"genre-replacement", "bool"},
 		{"no-genre-replacement", "bool"},
-		{"headless", "bool"},
-		{"no-headless", "bool"},
-		{"headless-timeout", "int"},
 	}
 
 	for _, tt := range tests {

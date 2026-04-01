@@ -89,14 +89,13 @@ func TestParseHTMLWithGoldenFiles(t *testing.T) {
 			require.NoError(t, err, "Failed to parse HTML")
 
 			// Create scraper instance with proper initialization
-			scraper := New(&config.Config{
-				Scrapers: config.ScrapersConfig{
-					DMM: config.DMMConfig{
-						Enabled:       true,
-						ScrapeActress: true,
-					},
+			settings := config.ScraperSettings{
+				Enabled: true,
+				Extra: map[string]any{
+					"scrape_actress": true,
 				},
-			}, nil)
+			}
+			scraper := New(settings, nil, &config.ProxyConfig{}, config.FlareSolverrConfig{})
 
 			// Call parseHTML
 			result, err := scraper.parseHTML(doc, tt.sourceURL)
@@ -152,8 +151,13 @@ func TestParseHTMLFieldExtraction(t *testing.T) {
 	doc, err := goquery.NewDocumentFromReader(strings.NewReader(string(htmlContent)))
 	require.NoError(t, err)
 
-	scraper := New(&config.Config{Scrapers: config.ScrapersConfig{DMM: config.DMMConfig{Enabled: true,
-		ScrapeActress: true}}}, nil)
+	settings := config.ScraperSettings{
+		Enabled: true,
+		Extra: map[string]any{
+			"scrape_actress": true,
+		},
+	}
+	scraper := New(settings, nil, &config.ProxyConfig{}, config.FlareSolverrConfig{})
 
 	result, err := scraper.parseHTML(doc, "https://www.dmm.co.jp/digital/videoa/-/detail/=/cid=abc00123/")
 	require.NoError(t, err)
@@ -217,8 +221,13 @@ func TestParseHTMLActressDisabled(t *testing.T) {
 	require.NoError(t, err)
 
 	// Create scraper with actress scraping DISABLED
-	scraper := New(&config.Config{Scrapers: config.ScrapersConfig{DMM: config.DMMConfig{Enabled: true,
-		ScrapeActress: false}}}, nil)
+	settings := config.ScraperSettings{
+		Enabled: true,
+		Extra: map[string]any{
+			"scrape_actress": false,
+		},
+	}
+	scraper := New(settings, nil, &config.ProxyConfig{}, config.FlareSolverrConfig{})
 
 	result, err := scraper.parseHTML(doc, "https://www.dmm.co.jp/digital/videoa/-/detail/=/cid=abc00123/")
 	require.NoError(t, err)
@@ -238,8 +247,13 @@ func TestParseHTMLMultipleActresses(t *testing.T) {
 	doc, err := goquery.NewDocumentFromReader(strings.NewReader(string(htmlContent)))
 	require.NoError(t, err)
 
-	scraper := New(&config.Config{Scrapers: config.ScrapersConfig{DMM: config.DMMConfig{Enabled: true,
-		ScrapeActress: true}}}, nil)
+	settings := config.ScraperSettings{
+		Enabled: true,
+		Extra: map[string]any{
+			"scrape_actress": true,
+		},
+	}
+	scraper := New(settings, nil, &config.ProxyConfig{}, config.FlareSolverrConfig{})
 
 	result, err := scraper.parseHTML(doc, "https://www.dmm.co.jp/digital/videoa/-/detail/=/cid=ghi00789/")
 	require.NoError(t, err)
@@ -266,8 +280,13 @@ func TestParseHTMLEmptyActressList(t *testing.T) {
 	doc, err := goquery.NewDocumentFromReader(strings.NewReader(string(htmlContent)))
 	require.NoError(t, err)
 
-	scraper := New(&config.Config{Scrapers: config.ScrapersConfig{DMM: config.DMMConfig{Enabled: true,
-		ScrapeActress: true}}}, nil)
+	settings := config.ScraperSettings{
+		Enabled: true,
+		Extra: map[string]any{
+			"scrape_actress": true,
+		},
+	}
+	scraper := New(settings, nil, &config.ProxyConfig{}, config.FlareSolverrConfig{})
 
 	result, err := scraper.parseHTML(doc, "https://www.dmm.co.jp/digital/videoa/-/detail/=/cid=def00456/")
 	require.NoError(t, err)
@@ -287,8 +306,13 @@ func TestParseHTMLMalformedHTML(t *testing.T) {
 	doc, err := goquery.NewDocumentFromReader(strings.NewReader(string(htmlContent)))
 	require.NoError(t, err)
 
-	scraper := New(&config.Config{Scrapers: config.ScrapersConfig{DMM: config.DMMConfig{Enabled: true,
-		ScrapeActress: true}}}, nil)
+	settings := config.ScraperSettings{
+		Enabled: true,
+		Extra: map[string]any{
+			"scrape_actress": true,
+		},
+	}
+	scraper := New(settings, nil, &config.ProxyConfig{}, config.FlareSolverrConfig{})
 
 	// parseHTML should not panic or error on malformed HTML
 	result, err := scraper.parseHTML(doc, "https://www.dmm.co.jp/digital/videoa/-/detail/=/cid=jkl00999/")
@@ -310,8 +334,13 @@ func TestParseHTML404Page(t *testing.T) {
 	doc, err := goquery.NewDocumentFromReader(strings.NewReader(string(htmlContent)))
 	require.NoError(t, err)
 
-	scraper := New(&config.Config{Scrapers: config.ScrapersConfig{DMM: config.DMMConfig{Enabled: true,
-		ScrapeActress: true}}}, nil)
+	settings := config.ScraperSettings{
+		Enabled: true,
+		Extra: map[string]any{
+			"scrape_actress": true,
+		},
+	}
+	scraper := New(settings, nil, &config.ProxyConfig{}, config.FlareSolverrConfig{})
 
 	result, err := scraper.parseHTML(doc, "https://www.dmm.co.jp/digital/videoa/-/detail/=/cid=notfound/")
 

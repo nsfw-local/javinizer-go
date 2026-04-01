@@ -13,8 +13,8 @@ import (
 	"github.com/javinizer/javinizer-go/internal/downloader"
 )
 
-// serveTempPoster serves temporarily cropped posters from data/temp/posters/
-// These are created during batch scraping for preview in the review page
+// serveTempPoster serves temporarily cropped posters from the configured temp directory.
+// These are created during batch scraping for preview in the review page.
 // @Router /api/v1/temp/posters/{jobId}/{filename} [get]
 // @Summary Serve temporary poster image
 // @Description Serves temporarily cropped posters from batch jobs. These are ephemeral and preserved when organization fails for retry.
@@ -22,8 +22,14 @@ import (
 // @Param filename path string true "Filename"
 // @Success 200 {file} binary
 // @Failure 404 {object} ErrorResponse
-func serveTempPoster() gin.HandlerFunc {
+func serveTempPoster(deps *ServerDependencies) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		cfg := deps.GetConfig()
+		if cfg == nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "server configuration unavailable"})
+			return
+		}
+
 		jobID := c.Param("jobId")
 		filename := c.Param("filename")
 
@@ -41,7 +47,7 @@ func serveTempPoster() gin.HandlerFunc {
 		}
 
 		// Construct path and verify it's within tempPosterDir
-		tempPosterDir := filepath.Join("data", "temp", "posters", jobID)
+		tempPosterDir := filepath.Join(cfg.System.TempDir, "posters", jobID)
 		posterPath := filepath.Join(tempPosterDir, filename)
 
 		// Double-check the resolved path is still within tempPosterDir (defense in depth)
@@ -117,6 +123,12 @@ func serveCroppedPoster() gin.HandlerFunc {
 // @Failure 502 {object} ErrorResponse
 func serveTempImage(deps *ServerDependencies) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		cfg := deps.GetConfig()
+		if cfg == nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "server configuration unavailable"})
+			return
+		}
+
 		rawURL := strings.TrimSpace(c.Query("url"))
 		if rawURL == "" {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "url query parameter is required"})
@@ -129,7 +141,6 @@ func serveTempImage(deps *ServerDependencies) gin.HandlerFunc {
 			return
 		}
 
-		cfg := deps.GetConfig()
 		httpClient, err := downloader.NewHTTPClientForDownloaderWithRegistry(cfg, deps.GetRegistry())
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create http client"})

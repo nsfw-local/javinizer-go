@@ -56,7 +56,7 @@ func TestJobQueue_CreateGetDeleteList(t *testing.T) {
 		require.True(t, ok, "Job should exist before deletion")
 
 		// Delete job
-		jq.DeleteJob(jobID)
+		jq.DeleteJob(jobID, "data/temp")
 
 		// Verify job is deleted
 		_, ok = jq.GetJob(jobID)
@@ -89,7 +89,7 @@ func TestJobQueue_CreateGetDeleteList(t *testing.T) {
 		assert.True(t, jobIDs[job3.ID], "Job3 should be in list")
 
 		// Delete one job
-		jq.DeleteJob(job2.ID)
+		jq.DeleteJob(job2.ID, "data/temp")
 
 		// List should have 2 jobs
 		jobs = jq.ListJobs()

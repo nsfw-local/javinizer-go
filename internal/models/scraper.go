@@ -129,7 +129,7 @@ type Scraper interface {
 	IsEnabled() bool
 
 	// Config returns the scraper's configuration
-	Config() *config.ScraperConfig
+	Config() *config.ScraperSettings
 
 	// Close cleans up resources held by the scraper (e.g., HTTP clients, browsers)
 	// Returns nil if no cleanup is needed
@@ -161,7 +161,7 @@ func (c *Closer) GetURL(_ string) (string, error) {
 func (c *Closer) IsEnabled() bool { return false }
 
 // Config returns nil as this is a no-op implementation
-func (c *Closer) Config() *config.ScraperConfig { return nil }
+func (c *Closer) Config() *config.ScraperSettings { return nil }
 
 // Close is a no-op implementation for scrapers that don't require resource cleanup
 func (c *Closer) Close() error { return nil }
@@ -183,6 +183,18 @@ type ScraperQueryResolver interface {
 // scraper download_proxy/proxy/global settings.
 type ScraperDownloadProxyResolver interface {
 	ResolveDownloadProxyForHost(host string) (downloadOverride *config.ProxyConfig, scraperProxy *config.ProxyConfig, handled bool)
+}
+
+// ContentIDResolver is an optional interface for scrapers that can resolve
+// a JAV ID to its DMM content-ID format (e.g., "ipx-123" -> "118BDP-00118").
+//
+// This is primarily used by DMM to normalize IDs before querying other scrapers,
+// since many scrapers share the same DMM content-ID format.
+//
+// Implementations should return (resolvedID, nil) on success or ("", error) on failure.
+// If a scraper does not support content-ID resolution, it should return (input, false).
+type ContentIDResolver interface {
+	ResolveContentID(id string) (string, error)
 }
 
 // ScraperRegistry manages available scrapers

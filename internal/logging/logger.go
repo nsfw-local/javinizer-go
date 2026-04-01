@@ -171,12 +171,6 @@ func L() *logrus.Logger {
 	return state.logger
 }
 
-// GetLogger returns the current logger instance (deprecated: use L() instead)
-// This function is kept for backward compatibility but L() is preferred.
-func GetLogger() *logrus.Logger {
-	return L()
-}
-
 // CloseLogger closes current logger's file handles and clears the logger.
 // Call during shutdown to release file descriptors. Safe to call multiple times.
 func CloseLogger() {
@@ -202,64 +196,64 @@ func CloseLogger() {
 
 // Debug logs a debug message
 func Debug(args ...interface{}) {
-	GetLogger().Debug(args...)
+	L().Debug(args...)
 }
 
 // Debugf logs a formatted debug message
 func Debugf(format string, args ...interface{}) {
-	GetLogger().Debugf(format, args...)
+	L().Debugf(format, args...)
 }
 
 // Info logs an info message
 func Info(args ...interface{}) {
-	GetLogger().Info(args...)
+	L().Info(args...)
 }
 
 // Infof logs a formatted info message
 func Infof(format string, args ...interface{}) {
-	GetLogger().Infof(format, args...)
+	L().Infof(format, args...)
 }
 
 // Warn logs a warning message
 func Warn(args ...interface{}) {
-	GetLogger().Warn(args...)
+	L().Warn(args...)
 }
 
 // Warnf logs a formatted warning message
 func Warnf(format string, args ...interface{}) {
-	GetLogger().Warnf(format, args...)
+	L().Warnf(format, args...)
 }
 
 // Error logs an error message
 func Error(args ...interface{}) {
-	GetLogger().Error(args...)
+	L().Error(args...)
 }
 
 // Errorf logs a formatted error message
 func Errorf(format string, args ...interface{}) {
-	GetLogger().Errorf(format, args...)
+	L().Errorf(format, args...)
 }
 
 // Fatal logs a fatal message and exits with status code 1.
 // Note: This function calls os.Exit() and cannot be tested in unit tests.
 // Any test attempting to cover this function would terminate the test process.
 func Fatal(args ...interface{}) {
-	GetLogger().Fatal(args...)
+	L().Fatal(args...)
 }
 
 // Fatalf logs a formatted fatal message and exits with status code 1.
 // Note: This function calls os.Exit() and cannot be tested in unit tests.
 // Any test attempting to cover this function would terminate the test process.
 func Fatalf(format string, args ...interface{}) {
-	GetLogger().Fatalf(format, args...)
+	L().Fatalf(format, args...)
 }
 
 // WithField returns a logger with a single field
 func WithField(key string, value interface{}) *logrus.Entry {
-	return GetLogger().WithField(key, value)
+	return L().WithField(key, value)
 }
 
 // WithFields returns a logger with multiple fields
 func WithFields(fields logrus.Fields) *logrus.Entry {
-	return GetLogger().WithFields(fields)
+	return L().WithFields(fields)
 }

@@ -97,7 +97,7 @@ func Run(cmd *cobra.Command, configFile string, hostFlag string, portFlag int) (
 	// Cleanup temp posters from previous sessions
 	// Temp posters are ephemeral and tied to batch job lifecycle
 	// Since batch jobs don't persist across restarts, cleanup all temp posters on startup
-	tempPosterDir := filepath.Join("data", "temp", "posters")
+	tempPosterDir := filepath.Join(cfg.System.TempDir, "posters")
 	if err := os.RemoveAll(tempPosterDir); err != nil {
 		logging.Warnf("Failed to clean temp poster directory on startup: %v", err)
 	} else {

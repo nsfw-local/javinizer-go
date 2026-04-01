@@ -27,41 +27,47 @@ const (
 
 // Scraper implements the R18.dev scraper
 type Scraper struct {
-	client            *resty.Client
-	cfg               *config.R18DevConfig
-	enabled           bool
-	language          string
-	requestDelay      time.Duration
-	maxRetries        int
-	respectRetryAfter bool
-	proxyOverride     *config.ProxyConfig
-	downloadProxy     *config.ProxyConfig
-	lastRequestTime   atomic.Value // stores time.Time of last request for rate limiting
+	client                *resty.Client
+	enabled               bool
+	language              string
+	requestDelay          time.Duration
+	maxRetries            int
+	respectRetryAfter     bool
+	proxyOverride         *config.ProxyConfig
+	downloadProxy         *config.ProxyConfig
+	lastRequestTime       atomic.Value              // stores time.Time of last request for rate limiting
+	settings              config.ScraperSettings    // stores the full settings for Config() method
+	effectiveFlareSolverr config.FlareSolverrConfig // computed effective FlareSolverr config
 }
 
 // New creates a new R18.dev scraper
-func New(cfg *config.Config) *Scraper {
+func New(settings config.ScraperSettings, globalProxy *config.ProxyConfig, globalFlareSolverr config.FlareSolverrConfig) *Scraper {
+	// HTTP-03: FlareSolverr inherits global settings; per-scraper can only override if global is enabled
+	flareSolverrCfg := globalFlareSolverr
+	if globalFlareSolverr.Enabled && settings.FlareSolverr.Enabled {
+		flareSolverrCfg.Enabled = true
+	}
+
 	// Create scraper config for HTTP client ownership (HTTP-01)
-	scraperCfg := &config.ScraperConfig{
-		Enabled:          cfg.Scrapers.R18Dev.Enabled,
-		Timeout:          30, // default
-		RateLimit:        cfg.Scrapers.R18Dev.RequestDelay,
-		RetryCount:       cfg.Scrapers.R18Dev.MaxRetries,
-		UseFakeUserAgent: cfg.Scrapers.R18Dev.UseFakeUserAgent,
-		UserAgent:        cfg.Scrapers.R18Dev.FakeUserAgent,
-		Proxy:            cfg.Scrapers.R18Dev.Proxy,
-		DownloadProxy:    cfg.Scrapers.R18Dev.DownloadProxy,
-		FlareSolverr:     cfg.Scrapers.Proxy.FlareSolverr, // inherit global if not overridden
+	scraperCfg := &config.ScraperSettings{
+		Enabled:       settings.Enabled,
+		Timeout:       30, // default
+		RateLimit:     settings.RateLimit,
+		RetryCount:    settings.RetryCount,
+		UserAgent:     settings.UserAgent,
+		Proxy:         settings.Proxy,
+		DownloadProxy: settings.DownloadProxy,
+		FlareSolverr:  flareSolverrCfg,
 	}
 
 	// Create HTTP client via per-scraper NewHTTPClient (HTTP-01)
-	client, err := NewHTTPClient(scraperCfg, &cfg.Scrapers.Proxy)
+	client, err := NewHTTPClient(scraperCfg, globalProxy, globalFlareSolverr)
 	if err != nil {
 		logging.Errorf("R18Dev: Failed to create HTTP client: %v, using explicit no-proxy fallback", err)
 		client = httpclient.NewRestyClientNoProxy(30*time.Second, 3)
 	}
 
-	language := normalizeLanguage(cfg.Scrapers.R18Dev.Language)
+	language := normalizeLanguage(settings.Language)
 
 	// Add browser-like headers to help bypass protection
 	client.SetHeader("Accept", "application/json, text/html, */*")
@@ -73,30 +79,42 @@ func New(cfg *config.Config) *Scraper {
 	client.SetHeader("Accept-Encoding", "gzip, deflate, br")
 	client.SetHeader("Connection", "keep-alive")
 
-	proxyConfig := config.ResolveScraperProxy(cfg.Scrapers.Proxy, cfg.Scrapers.R18Dev.Proxy)
-	if proxyConfig.Enabled {
+	// Handle nil globalProxy to avoid dereference panic
+	globalProxyVal := config.ProxyConfig{}
+	if globalProxy != nil {
+		globalProxyVal = *globalProxy
+	}
+	proxyEnabled := globalProxyVal.Enabled
+	if settings.Proxy != nil && settings.Proxy.Enabled {
+		proxyEnabled = true
+	}
+	proxyConfig := config.ResolveScraperProxy(globalProxyVal, settings.Proxy)
+	if proxyEnabled && proxyConfig.URL != "" {
 		logging.Infof("R18Dev: Using proxy %s", httpclient.SanitizeProxyURL(proxyConfig.URL))
 	}
 
 	// Calculate request delay from config (milliseconds to duration)
-	requestDelay := time.Duration(cfg.Scrapers.R18Dev.RequestDelay) * time.Millisecond
+	requestDelay := time.Duration(settings.RateLimit) * time.Millisecond
 
 	// Set defaults for rate limiting if not configured
-	maxRetries := cfg.Scrapers.R18Dev.MaxRetries
+	maxRetries := settings.RetryCount
 	if maxRetries == 0 {
 		maxRetries = 3 // Default to 3 retries
 	}
 
+	respectRetryAfter := settings.GetBoolExtra("respect_retry_after", false)
+
 	scraper := &Scraper{
-		client:            client,
-		cfg:               &cfg.Scrapers.R18Dev,
-		enabled:           cfg.Scrapers.R18Dev.Enabled,
-		language:          language,
-		requestDelay:      requestDelay,
-		maxRetries:        maxRetries,
-		respectRetryAfter: cfg.Scrapers.R18Dev.RespectRetryAfter,
-		proxyOverride:     cfg.Scrapers.R18Dev.Proxy,
-		downloadProxy:     cfg.Scrapers.R18Dev.DownloadProxy,
+		client:                client,
+		enabled:               settings.Enabled,
+		language:              language,
+		requestDelay:          requestDelay,
+		maxRetries:            maxRetries,
+		respectRetryAfter:     respectRetryAfter,
+		proxyOverride:         settings.Proxy,
+		downloadProxy:         settings.DownloadProxy,
+		settings:              settings,
+		effectiveFlareSolverr: flareSolverrCfg,
 	}
 
 	// Initialize lastRequestTime with zero time
@@ -120,20 +138,10 @@ func (s *Scraper) IsEnabled() bool {
 }
 
 // Config returns the scraper's configuration
-func (s *Scraper) Config() *config.ScraperConfig {
-	return &config.ScraperConfig{
-		Enabled:          s.cfg.Enabled,
-		Language:         s.language,
-		Timeout:          30,
-		RateLimit:        int(s.requestDelay.Milliseconds()),
-		RetryCount:       s.maxRetries,
-		UseFakeUserAgent: s.cfg.UseFakeUserAgent,
-		UserAgent:        s.cfg.FakeUserAgent,
-		Proxy:            s.cfg.Proxy,
-		DownloadProxy:    s.cfg.DownloadProxy,
-		FlareSolverr:     s.cfg.Proxy.FlareSolverr, // FlareSolverr from R18Dev's proxy config
-		Extra:            make(map[string]any),
-	}
+func (s *Scraper) Config() *config.ScraperSettings {
+	cfg := s.settings.DeepCopy()
+	cfg.FlareSolverr = s.effectiveFlareSolverr
+	return cfg
 }
 
 // Close cleans up resources held by the scraper
@@ -144,7 +152,7 @@ func (s *Scraper) Close() error {
 // ValidateConfig validates the scraper configuration.
 // Returns error if config is invalid, nil if valid.
 // Called by callers before creating the scraper to validate configuration.
-func (s *Scraper) ValidateConfig(cfg *config.ScraperConfig) error {
+func (s *Scraper) ValidateConfig(cfg *config.ScraperSettings) error {
 	if cfg == nil {
 		return fmt.Errorf("r18dev: config is nil")
 	}
@@ -745,7 +753,15 @@ type R18Response struct {
 }
 
 func init() {
-	scraper.RegisterScraper("r18dev", func(cfg *config.Config, db *database.DB) (models.Scraper, error) {
-		return New(cfg), nil
+	scraper.RegisterScraper("r18dev", func(settings config.ScraperSettings, db *database.DB, globalProxy *config.ProxyConfig, globalFlareSolverr config.FlareSolverrConfig) (models.Scraper, error) {
+		return New(settings, globalProxy, globalFlareSolverr), nil
+	})
+	// Register default settings and priority
+	scraper.RegisterScraperDefaults("r18dev", scraper.DefaultSettings{
+		Settings: config.ScraperSettings{
+			Enabled:  true,
+			Language: "en",
+		},
+		Priority: 100,
 	})
 }

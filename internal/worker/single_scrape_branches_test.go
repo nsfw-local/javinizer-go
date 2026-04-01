@@ -129,6 +129,8 @@ func TestRunBatchScrapeOnce_ReturnsCachedMovieWithoutScraping(t *testing.T) {
 
 func TestRunBatchScrapeOnce_AllScrapersFail(t *testing.T) {
 	cfg, movieRepo, agg, fileMatcher := newRunBatchFallbackEnv(t)
+	cfg.Scrapers.Priority = []string{"resolver", "backup"}
+	cfg.Metadata.Priority.Priority = []string{"resolver", "backup"}
 
 	registry := models.NewScraperRegistry()
 	registry.Register(&runBatchTestScraper{

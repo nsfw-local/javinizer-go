@@ -75,16 +75,14 @@ func TestGetURLAndSearch_SuccessWithCachedContentID(t *testing.T) {
 		Source:    "dmm",
 	}))
 
-	cfg := &config.Config{
-		Scrapers: config.ScrapersConfig{
-			DMM: config.DMMConfig{
-				Enabled:       true,
-				ScrapeActress: true,
-			},
+	settings := config.ScraperSettings{
+		Enabled: true,
+		Extra: map[string]any{
+			"scrape_actress": true,
 		},
 	}
 
-	scraper := New(cfg, repo)
+	scraper := New(settings, repo, &config.ProxyConfig{}, config.FlareSolverrConfig{})
 
 	searchPage := `<html><body>
 		<a href="/digital/videoa/-/detail/=/cid=ipx00535/">IPX-535 result</a>
@@ -162,12 +160,11 @@ func TestSearch_ReturnsStatusErrorForDetailPage(t *testing.T) {
 		Source:    "dmm",
 	}))
 
-	cfg := &config.Config{
-		Scrapers: config.ScrapersConfig{
-			DMM: config.DMMConfig{Enabled: true},
-		},
+	settings := config.ScraperSettings{
+		Enabled: true,
 	}
-	scraper := New(cfg, repo)
+
+	scraper := New(settings, repo, &config.ProxyConfig{}, config.FlareSolverrConfig{})
 
 	transport := &dmmSearchSuccessRoundTripper{
 		responses: map[string]struct {
@@ -203,15 +200,13 @@ func TestGetURL_PrefersWorkingDirectURLOverLowPrioritySearchResult(t *testing.T)
 		Source:    "dmm",
 	}))
 
-	cfg := &config.Config{
-		Scrapers: config.ScrapersConfig{
-			DMM: config.DMMConfig{
-				Enabled:       true,
-				ScrapeActress: true,
-			},
+	settings := config.ScraperSettings{
+		Enabled: true,
+		Extra: map[string]any{
+			"scrape_actress": true,
 		},
 	}
-	scraper := New(cfg, repo)
+	scraper := New(settings, repo, &config.ProxyConfig{}, config.FlareSolverrConfig{})
 
 	searchPage := `<html><body>
 		<a href="/monthly/standard/-/detail/=/cid=61mdb087/">Low priority monthly result</a>

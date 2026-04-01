@@ -42,32 +42,32 @@ func normalizeProxyURL(raw string) string {
 }
 
 // NewTransport creates an http.Transport with optional proxy support
-func NewTransport(proxyConfig *config.ProxyConfig) (*http.Transport, error) {
+func NewTransport(proxyProfile *config.ProxyProfile) (*http.Transport, error) {
 	// Clone default transport to preserve Go's safety timeouts
 	// (DialContext timeout, TLSHandshakeTimeout, ExpectContinueTimeout, etc.)
 	transport := http.DefaultTransport.(*http.Transport).Clone()
 	// Enforce config-only proxy behavior: never inherit HTTP(S)_PROXY from environment.
 	transport.Proxy = nil
 
-	if proxyConfig != nil && proxyConfig.Enabled && proxyConfig.URL != "" {
-		parsedProxyURL, err := url.Parse(normalizeProxyURL(proxyConfig.URL))
+	if proxyProfile != nil && proxyProfile.URL != "" {
+		parsedProxyURL, err := url.Parse(normalizeProxyURL(proxyProfile.URL))
 		if err != nil {
 			return nil, fmt.Errorf("invalid proxy URL: %w", err)
 		}
 
 		// Handle authentication
-		if proxyConfig.Username != "" && proxyConfig.Password != "" {
-			parsedProxyURL.User = url.UserPassword(proxyConfig.Username, proxyConfig.Password)
+		if proxyProfile.Username != "" && proxyProfile.Password != "" {
+			parsedProxyURL.User = url.UserPassword(proxyProfile.Username, proxyProfile.Password)
 		}
 
 		// Check if SOCKS5
 		if parsedProxyURL.Scheme == "socks5" {
 			// Use golang.org/x/net/proxy for SOCKS5
 			var auth *proxy.Auth
-			if proxyConfig.Username != "" && proxyConfig.Password != "" {
+			if proxyProfile.Username != "" && proxyProfile.Password != "" {
 				auth = &proxy.Auth{
-					User:     proxyConfig.Username,
-					Password: proxyConfig.Password,
+					User:     proxyProfile.Username,
+					Password: proxyProfile.Password,
 				}
 			}
 			dialer, err := proxy.SOCKS5("tcp", parsedProxyURL.Host, auth, proxy.Direct)
@@ -96,8 +96,8 @@ func NewTransport(proxyConfig *config.ProxyConfig) (*http.Transport, error) {
 }
 
 // NewHTTPClient creates a standard http.Client with proxy support
-func NewHTTPClient(proxyConfig *config.ProxyConfig, timeout time.Duration) (*http.Client, error) {
-	transport, err := NewTransport(proxyConfig)
+func NewHTTPClient(proxyProfile *config.ProxyProfile, timeout time.Duration) (*http.Client, error) {
+	transport, err := NewTransport(proxyProfile)
 	if err != nil {
 		return nil, err
 	}
@@ -109,8 +109,8 @@ func NewHTTPClient(proxyConfig *config.ProxyConfig, timeout time.Duration) (*htt
 }
 
 // NewRestyClient creates a resty.Client with proxy support
-func NewRestyClient(proxyConfig *config.ProxyConfig, timeout time.Duration, retries int) (*resty.Client, error) {
-	transport, err := NewTransport(proxyConfig)
+func NewRestyClient(proxyProfile *config.ProxyProfile, timeout time.Duration, retries int) (*resty.Client, error) {
+	transport, err := NewTransport(proxyProfile)
 	if err != nil {
 		return nil, err
 	}
@@ -431,30 +431,29 @@ func (fs *FlareSolverr) Close() error {
 }
 
 // NewRestyClientWithFlareSolverr creates a resty.Client with optional FlareSolverr support
-func NewRestyClientWithFlareSolverr(proxyConfig *config.ProxyConfig, timeout time.Duration, retries int) (*resty.Client, *FlareSolverr, error) {
-	client, err := NewRestyClient(proxyConfig, timeout, retries)
+// Note: FlareSolverr config is passed separately since it's at ScrapersConfig.FlareSolverr (top-level),
+// not inside ProxyConfig (which only holds proxy settings).
+func NewRestyClientWithFlareSolverr(proxyProfile *config.ProxyProfile, flaresolverrCfg config.FlareSolverrConfig, timeout time.Duration, retries int) (*resty.Client, *FlareSolverr, error) {
+	client, err := NewRestyClient(proxyProfile, timeout, retries)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	// If no proxy config was provided, return plain client without FlareSolverr.
-	if proxyConfig == nil {
+	// If no flaresolverr config or disabled, return plain client
+	if !flaresolverrCfg.Enabled {
 		return client, nil, nil
 	}
 
 	// If FlareSolverr is enabled, create a client
-	var fs *FlareSolverr
-	if proxyConfig.FlareSolverr.Enabled {
-		fs, err = NewFlareSolverr(&proxyConfig.FlareSolverr)
-		if err != nil {
-			return nil, nil, fmt.Errorf("failed to create FlareSolverr client: %w", err)
-		}
-		fs.requestProxy = buildFlareSolverrRequestProxy(proxyConfig)
-		if fs.requestProxy != nil {
-			logging.Infof("FlareSolverr request proxy enabled: %s", SanitizeProxyURL(fs.requestProxy.URL))
-		}
-		logging.Infof("FlareSolverr enabled at %s", proxyConfig.FlareSolverr.URL)
+	fs, err := NewFlareSolverr(&flaresolverrCfg)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to create FlareSolverr client: %w", err)
 	}
+	fs.requestProxy = buildFlareSolverrRequestProxy(proxyProfile)
+	if fs.requestProxy != nil {
+		logging.Infof("FlareSolverr request proxy enabled: %s", SanitizeProxyURL(fs.requestProxy.URL))
+	}
+	logging.Infof("FlareSolverr enabled at %s", flaresolverrCfg.URL)
 
 	return client, fs, nil
 }
@@ -469,14 +468,14 @@ func GetFlareSolverrFromClient(client *resty.Client) (*FlareSolverr, bool) {
 	return nil, false
 }
 
-func buildFlareSolverrRequestProxy(proxyConfig *config.ProxyConfig) *FlareSolverrProxy {
-	if proxyConfig == nil || !proxyConfig.Enabled || proxyConfig.URL == "" {
+func buildFlareSolverrRequestProxy(proxyProfile *config.ProxyProfile) *FlareSolverrProxy {
+	if proxyProfile == nil || proxyProfile.URL == "" {
 		return nil
 	}
 
-	proxyURL := normalizeProxyURL(proxyConfig.URL)
-	username := proxyConfig.Username
-	password := proxyConfig.Password
+	proxyURL := normalizeProxyURL(proxyProfile.URL)
+	username := proxyProfile.Username
+	password := proxyProfile.Password
 
 	// If credentials are embedded in the URL and explicit credentials are absent,
 	// extract and move them to separate fields.

@@ -6,6 +6,7 @@ import (
 
 	"github.com/javinizer/javinizer-go/internal/config"
 	"github.com/javinizer/javinizer-go/internal/models"
+	"github.com/javinizer/javinizer-go/internal/scraperutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -16,13 +17,7 @@ func TestAggregatePriority_JapaneseFirst(t *testing.T) {
 	cfg := &config.Config{
 		Metadata: config.MetadataConfig{
 			Priority: config.PriorityConfig{
-				ID:          []string{"dmm", "r18dev"},
-				ContentID:   []string{"dmm", "r18dev"},
-				Title:       []string{"dmm", "r18dev"},
-				Maker:       []string{"dmm", "r18dev"},
-				Description: []string{"dmm", "r18dev"},
-				Actress:     []string{"dmm", "r18dev"},
-				Genre:       []string{"dmm", "r18dev"},
+				Priority: []string{"dmm", "r18dev"},
 			},
 		},
 	}
@@ -79,27 +74,12 @@ func TestAggregatePriority_JapaneseFirst(t *testing.T) {
 		assert.Equal(t, "Japanese description from DMM", movie.Description,
 			"Description should be from DMM")
 
-		// Check translations are preserved
-		require.Len(t, movie.Translations, 2, "Should have both translations")
+		// Since DMM wins all fields (Title and Description), only DMM's translation is included
+		// r18dev contributed nothing to the merged movie fields
+		require.Len(t, movie.Translations, 1, "Should have only DMM translation since it won all fields")
 
-		// Find each translation
-		var enTranslation, jaTranslation *models.MovieTranslation
-		for i := range movie.Translations {
-			if movie.Translations[i].Language == "en" {
-				enTranslation = &movie.Translations[i]
-			}
-			if movie.Translations[i].Language == "ja" {
-				jaTranslation = &movie.Translations[i]
-			}
-		}
-
-		require.NotNil(t, enTranslation, "Should have English translation")
-		require.NotNil(t, jaTranslation, "Should have Japanese translation")
-
-		assert.Equal(t, "Naked Housekeeper - A New Sensation Of Virtual Sex Sex Life For You Staff02 Suzu Matsuoka",
-			enTranslation.Title, "English translation should be preserved")
-		assert.Equal(t, "Prestige", enTranslation.Maker, "English maker should be preserved")
-
+		jaTranslation := movie.Translations[0]
+		assert.Equal(t, "ja", jaTranslation.Language, "Should have Japanese translation")
 		assert.Equal(t, "全裸家政婦 新感覚ヴァーチャルセックス性活をあなたに Staff02 松岡すず",
 			jaTranslation.Title, "Japanese translation should be preserved")
 		assert.Equal(t, "プレステージ", jaTranslation.Maker, "Japanese maker should be preserved")
@@ -111,13 +91,7 @@ func TestAggregatePriority_JapaneseFirst(t *testing.T) {
 		cfgR18First := &config.Config{
 			Metadata: config.MetadataConfig{
 				Priority: config.PriorityConfig{
-					ID:          []string{"r18dev", "dmm"},
-					ContentID:   []string{"r18dev", "dmm"},
-					Title:       []string{"r18dev", "dmm"},
-					Maker:       []string{"r18dev", "dmm"},
-					Description: []string{"r18dev", "dmm"},
-					Actress:     []string{"r18dev", "dmm"},
-					Genre:       []string{"r18dev", "dmm"},
+					Priority: []string{"r18dev", "dmm"},
 				},
 			},
 		}
@@ -143,9 +117,7 @@ func TestAggregatePriority_MissingData(t *testing.T) {
 	cfg := &config.Config{
 		Metadata: config.MetadataConfig{
 			Priority: config.PriorityConfig{
-				ID:    []string{"dmm", "r18dev"},
-				Title: []string{"dmm", "r18dev"},
-				Maker: []string{"dmm", "r18dev"},
+				Priority: []string{"dmm", "r18dev"},
 			},
 		},
 	}
@@ -185,6 +157,7 @@ func TestAggregatePriority_MissingData(t *testing.T) {
 }
 
 // TestAggregatePriority_EmptyPriorityFallsBackToGlobal tests that empty priority arrays fall back to global priority
+// With simplified priorities, all fields use the same priority
 func TestAggregatePriority_EmptyPriorityFallsBackToGlobal(t *testing.T) {
 	cfg := &config.Config{
 		Scrapers: config.ScrapersConfig{
@@ -192,22 +165,17 @@ func TestAggregatePriority_EmptyPriorityFallsBackToGlobal(t *testing.T) {
 		},
 		Metadata: config.MetadataConfig{
 			Priority: config.PriorityConfig{
-				Title:       []string{},      // Empty - should use global
-				Description: []string{"dmm"}, // Explicit priority
-				Maker:       []string{},      // Empty - should use global
+				Priority: []string{"r18dev", "dmm"},
 			},
 		},
 	}
 
 	agg := New(cfg)
 
-	// Verify resolved priorities
-	assert.Equal(t, []string{"r18dev", "dmm"}, agg.resolvedPriorities["Title"],
-		"Empty title priority should resolve to global priority")
-	assert.Equal(t, []string{"dmm"}, agg.resolvedPriorities["Description"],
-		"Explicit description priority should be preserved")
-	assert.Equal(t, []string{"r18dev", "dmm"}, agg.resolvedPriorities["Maker"],
-		"Empty maker priority should resolve to global priority")
+	// Verify resolved priorities - all fields use the same priority
+	assert.Equal(t, []string{"r18dev", "dmm"}, agg.resolvedPriorities["Title"])
+	assert.Equal(t, []string{"r18dev", "dmm"}, agg.resolvedPriorities["Description"])
+	assert.Equal(t, []string{"r18dev", "dmm"}, agg.resolvedPriorities["Maker"])
 
 	// Create mock scraper results
 	r18devResult := &models.ScraperResult{
@@ -233,20 +201,17 @@ func TestAggregatePriority_EmptyPriorityFallsBackToGlobal(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, movie)
 
-	// Title should use global priority (r18dev first) because title priority is empty
+	// With simplified priorities, all fields use r18dev first
 	assert.Equal(t, "English Title", movie.Title,
-		"Title with empty priority should use global priority (r18dev first)")
-
-	// Description should use explicit priority (dmm only)
-	assert.Equal(t, "Japanese Description", movie.Description,
-		"Description should use explicit priority (dmm)")
-
-	// Maker should use global priority (r18dev first) because maker priority is empty
+		"Title should use r18dev first (same priority for all fields)")
+	assert.Equal(t, "English Description", movie.Description,
+		"Description should use r18dev first (same priority for all fields)")
 	assert.Equal(t, "English Maker", movie.Maker,
-		"Maker with empty priority should use global priority (r18dev first)")
+		"Maker should use r18dev first (same priority for all fields)")
 }
 
 // TestAggregatePriority_MissingPriorityFallsBackToGlobal tests that missing priorities fall back to global
+// With simplified priorities, all fields use the same priority
 func TestAggregatePriority_MissingPriorityFallsBackToGlobal(t *testing.T) {
 	cfg := &config.Config{
 		Scrapers: config.ScrapersConfig{
@@ -254,22 +219,17 @@ func TestAggregatePriority_MissingPriorityFallsBackToGlobal(t *testing.T) {
 		},
 		Metadata: config.MetadataConfig{
 			Priority: config.PriorityConfig{
-				// Only define some fields, others are nil/missing
-				Title: []string{"r18dev", "dmm"}, // Explicit
-				// Description, Maker, etc. are missing
+				Priority: []string{"r18dev", "dmm"},
 			},
 		},
 	}
 
 	agg := New(cfg)
 
-	// Verify resolved priorities
-	assert.Equal(t, []string{"r18dev", "dmm"}, agg.resolvedPriorities["Title"],
-		"Explicit title priority should be preserved")
-	assert.Equal(t, []string{"dmm", "r18dev"}, agg.resolvedPriorities["Description"],
-		"Missing description priority should resolve to global priority")
-	assert.Equal(t, []string{"dmm", "r18dev"}, agg.resolvedPriorities["Maker"],
-		"Missing maker priority should resolve to global priority")
+	// Verify resolved priorities - all fields use the same priority
+	assert.Equal(t, []string{"r18dev", "dmm"}, agg.resolvedPriorities["Title"])
+	assert.Equal(t, []string{"r18dev", "dmm"}, agg.resolvedPriorities["Description"])
+	assert.Equal(t, []string{"r18dev", "dmm"}, agg.resolvedPriorities["Maker"])
 
 	// Create mock scraper results
 	r18devResult := &models.ScraperResult{
@@ -293,29 +253,25 @@ func TestAggregatePriority_MissingPriorityFallsBackToGlobal(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, movie)
 
-	// Title should use explicit priority (r18dev first)
+	// With simplified priorities, all fields use r18dev first
 	assert.Equal(t, "English Title", movie.Title,
-		"Title should use explicit priority (r18dev first)")
-
-	// Description should use global priority (dmm first) because it's missing
-	assert.Equal(t, "Japanese Description", movie.Description,
-		"Description with missing priority should use global priority (dmm first)")
-
-	// Maker should use global priority (dmm first) because it's missing
-	assert.Equal(t, "Japanese Maker", movie.Maker,
-		"Maker with missing priority should use global priority (dmm first)")
+		"Title should use r18dev first (same priority for all fields)")
+	assert.Equal(t, "English Description", movie.Description,
+		"Description should use r18dev first (same priority for all fields)")
+	assert.Equal(t, "English Maker", movie.Maker,
+		"Maker should use r18dev first (same priority for all fields)")
 }
 
 // TestAggregateWithPriority_CustomPriority tests custom priority override for manual scraping
 func TestAggregateWithPriority_CustomPriority(t *testing.T) {
-	// Setup config with one priority, but we'll override it
+	// Setup config with custom priority
 	cfg := &config.Config{
 		Scrapers: config.ScrapersConfig{
 			Priority: []string{"dmm", "r18dev"}, // Global default
 		},
 		Metadata: config.MetadataConfig{
 			Priority: config.PriorityConfig{
-				Title: []string{"dmm", "r18dev"}, // Config priority
+				Priority: []string{"dmm", "r18dev"},
 			},
 		},
 	}
@@ -520,6 +476,100 @@ func TestAggregateWithPriority_AllFields(t *testing.T) {
 	// Verify timestamps are set
 	assert.False(t, movie.CreatedAt.IsZero())
 	assert.False(t, movie.UpdatedAt.IsZero())
+}
+
+// mockScraper is a test implementation of models.Scraper
+type mockScraper struct {
+	name   string
+	result *models.ScraperResult
+}
+
+func (m *mockScraper) Name() string                                   { return m.name }
+func (m *mockScraper) Search(_ string) (*models.ScraperResult, error) { return m.result, nil }
+func (m *mockScraper) GetURL(_ string) (string, error)                { return "", nil }
+func (m *mockScraper) IsEnabled() bool                                { return true }
+func (m *mockScraper) Config() *config.ScraperSettings                { return nil }
+func (m *mockScraper) Close() error                                   { return nil }
+
+// TestResolvePriorities_ScrapersOverride tests that injected scrapers determine priority order
+func TestResolvePriorities_ScrapersOverride(t *testing.T) {
+	// Create mock scrapers with known names in specific order
+	scrapers := []models.Scraper{
+		&mockScraper{name: "r18dev"},
+		&mockScraper{name: "dmm"},
+		&mockScraper{name: "javlibrary"},
+	}
+
+	cfg := &config.Config{}
+	agg := NewWithOptions(cfg, &AggregatorOptions{Scrapers: scrapers})
+
+	// Verify priority order matches scraper order
+	priority := agg.GetResolvedPriorities()["Title"]
+	assert.Equal(t, []string{"r18dev", "dmm", "javlibrary"}, priority)
+
+	// Verify all fields use the same priority
+	assert.Equal(t, priority, agg.GetResolvedPriorities()["Description"])
+	assert.Equal(t, priority, agg.GetResolvedPriorities()["Maker"])
+}
+
+// TestResolvePriorities_ScrapersEmptyFallsBack tests that scraperutil fallback is used when no scrapers injected
+func TestResolvePriorities_ScrapersEmptyFallsBack(t *testing.T) {
+	// Create config with explicit priority (to verify it takes precedence)
+	cfg := &config.Config{
+		Metadata: config.MetadataConfig{
+			Priority: config.PriorityConfig{
+				Priority: []string{"custom1", "custom2"},
+			},
+		},
+	}
+
+	// When Scrapers is nil, should fall back to config priority
+	agg := NewWithOptions(cfg, &AggregatorOptions{Scrapers: nil})
+
+	priority := agg.GetResolvedPriorities()["Title"]
+	assert.Equal(t, []string{"custom1", "custom2"}, priority)
+}
+
+// TestResolvePriorities_ScrapersWithEmptyArrayFallsBack tests that empty scrapers array falls back to scraperutil
+func TestResolvePriorities_ScrapersWithEmptyArrayFallsBack(t *testing.T) {
+	cfg := &config.Config{
+		Metadata: config.MetadataConfig{
+			Priority: config.PriorityConfig{
+				Priority: []string{"fallback1", "fallback2"},
+			},
+		},
+	}
+
+	// When Scrapers is empty slice (not nil), should still fall back
+	agg := NewWithOptions(cfg, &AggregatorOptions{Scrapers: []models.Scraper{}})
+
+	priority := agg.GetResolvedPriorities()["Title"]
+	assert.Equal(t, []string{"fallback1", "fallback2"}, priority)
+}
+
+// TestResolvePriorities_PrefersConfiguredScraperPriorityOverRegistryDefaults verifies that
+// cfg.Scrapers.Priority is used when metadata priority is unset, even if scraperutil defaults exist.
+func TestResolvePriorities_PrefersConfiguredScraperPriorityOverRegistryDefaults(t *testing.T) {
+	scraperutil.ResetDefaults()
+	defer scraperutil.ResetDefaults()
+
+	scraperutil.RegisterDefaultScraperSettings("r18dev", config.ScraperSettings{}, 100)
+	scraperutil.RegisterDefaultScraperSettings("dmm", config.ScraperSettings{}, 50)
+
+	cfg := &config.Config{
+		Scrapers: config.ScrapersConfig{
+			Priority: []string{"dmm", "r18dev"},
+		},
+		Metadata: config.MetadataConfig{
+			Priority: config.PriorityConfig{
+				Priority: nil,
+			},
+		},
+	}
+
+	agg := New(cfg)
+	priority := agg.GetResolvedPriorities()["Title"]
+	assert.Equal(t, []string{"dmm", "r18dev"}, priority)
 }
 
 // TestAggregateWithPriority_ShouldCropPoster tests that ShouldCropPoster matches the PosterURL source

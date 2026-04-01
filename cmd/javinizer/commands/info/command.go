@@ -48,11 +48,17 @@ func run(cmd *cobra.Command, configFile string) error {
 	if _, err := fmt.Fprintf(cmd.OutOrStdout(), "  Priority: %v\n", cfg.Scrapers.Priority); err != nil {
 		return err
 	}
-	if _, err := fmt.Fprintf(cmd.OutOrStdout(), "  - R18.dev: %v\n", cfg.Scrapers.R18Dev.Enabled); err != nil {
-		return err
+	// Ensure Overrides is populated for display
+	cfg.Scrapers.NormalizeScraperConfigs()
+	if r18dev, ok := cfg.Scrapers.Overrides["r18dev"]; ok && r18dev != nil {
+		if _, err := fmt.Fprintf(cmd.OutOrStdout(), "  - R18.dev: %v\n", r18dev.Enabled); err != nil {
+			return err
+		}
 	}
-	if _, err := fmt.Fprintf(cmd.OutOrStdout(), "  - DMM: %v (scrape_actress: %v)\n\n", cfg.Scrapers.DMM.Enabled, cfg.Scrapers.DMM.ScrapeActress); err != nil {
-		return err
+	if dmm, ok := cfg.Scrapers.Overrides["dmm"]; ok && dmm != nil {
+		if _, err := fmt.Fprintf(cmd.OutOrStdout(), "  - DMM: %v (scrape_actress: %v)\n\n", dmm.Enabled, dmm.GetBoolExtra("scrape_actress", false)); err != nil {
+			return err
+		}
 	}
 
 	if _, err := fmt.Fprintln(cmd.OutOrStdout(), "Output:"); err != nil {

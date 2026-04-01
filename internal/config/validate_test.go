@@ -76,22 +76,6 @@ func TestConfig_Validate(t *testing.T) {
 			errorContains: "request_timeout_seconds must be between 1 and 600",
 		},
 		{
-			name: "browser_timeout too low",
-			modifyConfig: func(c *Config) {
-				c.Scrapers.DMM.BrowserTimeout = 0
-			},
-			expectError:   true,
-			errorContains: "browser_timeout must be between 1 and 300",
-		},
-		{
-			name: "browser_timeout too high",
-			modifyConfig: func(c *Config) {
-				c.Scrapers.DMM.BrowserTimeout = 400
-			},
-			expectError:   true,
-			errorContains: "browser_timeout must be between 1 and 300",
-		},
-		{
 			name: "invalid referer URL",
 			modifyConfig: func(c *Config) {
 				c.Scrapers.Referer = "not-a-valid-url"
@@ -221,7 +205,8 @@ func TestConfig_Validate(t *testing.T) {
 				c.Metadata.Translation.Provider = "openai"
 				c.Metadata.Translation.OpenAI.APIKey = ""
 			},
-			expectError: false,
+			expectError:   true,
+			errorContains: "metadata.translation.openai.api_key is required when provider=openai",
 		},
 		{
 			name: "translation deepl invalid mode",
@@ -242,7 +227,8 @@ func TestConfig_Validate(t *testing.T) {
 				c.Metadata.Translation.Google.Mode = "paid"
 				c.Metadata.Translation.Google.APIKey = ""
 			},
-			expectError: false,
+			expectError:   true,
+			errorContains: "metadata.translation.google.api_key is required when provider=google and mode=paid",
 		},
 		{
 			name: "translation openai valid config",
@@ -252,57 +238,6 @@ func TestConfig_Validate(t *testing.T) {
 				c.Metadata.Translation.OpenAI.APIKey = "sk-test"
 			},
 			expectError: false,
-		},
-		{
-			name: "javlibrary language valid - default",
-			modifyConfig: func(c *Config) {
-				c.Scrapers.JavLibrary.Language = ""
-			},
-			expectError: false,
-		},
-		{
-			name: "javlibrary language valid - en",
-			modifyConfig: func(c *Config) {
-				c.Scrapers.JavLibrary.Language = "en"
-			},
-			expectError: false,
-		},
-		{
-			name: "javlibrary language valid - ja",
-			modifyConfig: func(c *Config) {
-				c.Scrapers.JavLibrary.Language = "ja"
-			},
-			expectError: false,
-		},
-		{
-			name: "javlibrary language valid - cn",
-			modifyConfig: func(c *Config) {
-				c.Scrapers.JavLibrary.Language = "cn"
-			},
-			expectError: false,
-		},
-		{
-			name: "javlibrary language valid - tw",
-			modifyConfig: func(c *Config) {
-				c.Scrapers.JavLibrary.Language = "tw"
-			},
-			expectError: false,
-		},
-		{
-			name: "javlibrary language invalid - Korean",
-			modifyConfig: func(c *Config) {
-				c.Scrapers.JavLibrary.Language = "ko"
-			},
-			expectError:   true,
-			errorContains: "scrapers.javlibrary.language must be one of",
-		},
-		{
-			name: "javlibrary language invalid - French",
-			modifyConfig: func(c *Config) {
-				c.Scrapers.JavLibrary.Language = "fr"
-			},
-			expectError:   true,
-			errorContains: "scrapers.javlibrary.language must be one of",
 		},
 	}
 

@@ -355,94 +355,54 @@ func TestFullWorkflow(t *testing.T) {
 	t.Log("Integration test completed successfully!")
 }
 
-// createTestConfig creates a test configuration
+// createTestConfig creates a test configuration using DefaultConfig with accessor methods
 func createTestConfig(dataDir string) *config.Config {
-	return &config.Config{
-		Server: config.ServerConfig{
-			Host: "localhost",
-			Port: 8080,
-		},
-		Scrapers: config.ScrapersConfig{
-			UserAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
-				"(KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
-			Priority: []string{"r18dev", "dmm"},
-			R18Dev: config.R18DevConfig{
-				Enabled: true,
-			},
-			DMM: config.DMMConfig{
-				Enabled:       true,
-				ScrapeActress: true,
-			},
-		},
-		Metadata: config.MetadataConfig{
-			Priority: config.PriorityConfig{
-				ID:            []string{"r18dev", "dmm"},
-				ContentID:     []string{"dmm", "r18dev"},
-				Title:         []string{"r18dev", "dmm"},
-				OriginalTitle: []string{"dmm", "r18dev"},
-				Description:   []string{"dmm", "r18dev"},
-				Actress:       []string{"r18dev", "dmm"},
-				Genre:         []string{"r18dev", "dmm"},
-				Rating:        []string{"dmm", "r18dev"},
-				Runtime:       []string{"dmm", "r18dev"},
-				Director:      []string{"dmm", "r18dev"},
-				Maker:         []string{"r18dev", "dmm"},
-				Label:         []string{"r18dev", "dmm"},
-				Series:        []string{"r18dev", "dmm"},
-				ReleaseDate:   []string{"r18dev", "dmm"},
-				CoverURL:      []string{"r18dev", "dmm"},
-				ScreenshotURL: []string{"r18dev", "dmm"},
-				TrailerURL:    []string{"r18dev", "dmm"},
-			},
-			GenreReplacement: config.GenreReplacementConfig{
-				Enabled: true,
-				AutoAdd: true,
-			},
-			IgnoreGenres: []string{"Sample", "Trailer"},
-			NFO: config.NFOConfig{
-				Enabled:              true,
-				DisplayName:          "",
-				FilenameTemplate:     "<ID>.nfo",
-				FirstNameOrder:       true,
-				ActressLanguageJA:    false,
-				UnknownActressText:   "Unknown",
-				ActressAsTag:         false,
-				IncludeStreamDetails: false,
-				IncludeFanart:        true,
-				IncludeTrailer:       true,
-				RatingSource:         "themoviedb",
-				Tag:                  []string{},
-				Tagline:              "",
-				Credits:              []string{},
-			},
-		},
-		Matching: config.MatchingConfig{
-			Extensions:      []string{".mp4", ".mkv", ".avi", ".mov"},
-			MinSizeMB:       0,
-			ExcludePatterns: []string{"*-trailer.*", "*-sample.*"},
-			RegexEnabled:    false,
-			RegexPattern:    `(?i)([a-z]{2,10})-?(\d{2,5})`,
-		},
-		Output: config.OutputConfig{
-			FolderFormat:    "<ID> [<STUDIO>] - <TITLE> (<YEAR>)",
-			FileFormat:      "<ID>",
-			SubfolderFormat: []string{},
-			Delimiter:       ", ",
-			DownloadCover:   true,
-			DownloadPoster:  false,
-			DownloadTrailer: false,
-			DownloadActress: false,
-		},
-		Database: config.DatabaseConfig{
-			Type: "sqlite",
-			DSN:  filepath.Join(dataDir, "javinizer-test.db"),
-		},
-		Logging: config.LoggingConfig{
-			Level:  "info",
-			Format: "text",
-			Output: "stdout",
-		},
+	cfg := config.DefaultConfig()
+
+	// Server config (overriding port)
+	cfg.Server.Port = 8080
+
+	// Scrapers config using Overrides map (Phase 2 refactor)
+	cfg.Scrapers.UserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
+		"(KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+	cfg.Scrapers.Priority = []string{"r18dev", "dmm"}
+	// Initialize Overrides map if nil
+	if cfg.Scrapers.Overrides == nil {
+		cfg.Scrapers.Overrides = make(map[string]*config.ScraperSettings)
 	}
+	cfg.Scrapers.Overrides["r18dev"] = &config.ScraperSettings{Enabled: true}
+	cfg.Scrapers.Overrides["dmm"] = &config.ScraperSettings{Extra: map[string]any{"scrape_actress": true}}
+
+	// Metadata config with global priority (Phase 3: per-field removed)
+	cfg.Metadata.Priority.Priority = []string{"r18dev", "dmm"}
+	cfg.Metadata.GenreReplacement.Enabled = true
+	cfg.Metadata.GenreReplacement.AutoAdd = true
+	cfg.Metadata.IgnoreGenres = []string{"Sample", "Trailer"}
+
+	// NFO config
+	cfg.Metadata.NFO.FilenameTemplate = "<ID>.nfo"
+	cfg.Metadata.NFO.FirstNameOrder = true
+	cfg.Metadata.NFO.IncludeFanart = true
+	cfg.Metadata.NFO.IncludeTrailer = true
+
+	// Matching config
+	cfg.Matching.Extensions = []string{".mp4", ".mkv", ".avi", ".mov"}
+	cfg.Matching.ExcludePatterns = []string{"*-trailer.*", "*-sample.*"}
+	cfg.Matching.RegexPattern = `(?i)([a-z]{2,10})-?(\d{2,5})`
+
+	// Output config
+	cfg.Output.FolderFormat = "<ID> [<STUDIO>] - <TITLE> (<YEAR>)"
+	cfg.Output.FileFormat = "<ID>"
+	cfg.Output.Delimiter = ", "
+	cfg.Output.DownloadCover = true
+
+	// Database config
+	cfg.Database.DSN = filepath.Join(dataDir, "javinizer-test.db")
+
+	// Logging config
+	cfg.Logging.Level = "info"
+
+	return cfg
 }
 
 // createMockScraperResults creates mock scraper results for testing

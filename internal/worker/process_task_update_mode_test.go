@@ -32,13 +32,7 @@ func testProcessConfig(dbPath string) *config.Config {
 		},
 		Metadata: config.MetadataConfig{
 			Priority: config.PriorityConfig{
-				ID:          []string{"dmm"},
-				ContentID:   []string{"dmm"},
-				Title:       []string{"dmm"},
-				Maker:       []string{"dmm"},
-				Description: []string{"dmm"},
-				Actress:     []string{"dmm"},
-				Genre:       []string{"dmm"},
+				Priority: []string{"dmm"},
 			},
 			NFO: config.NFOConfig{
 				FilenameTemplate: "<ID>.nfo",

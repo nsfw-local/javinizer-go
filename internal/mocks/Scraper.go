@@ -82,19 +82,19 @@ func (_c *MockScraper_Close_Call) RunAndReturn(run func() error) *MockScraper_Cl
 }
 
 // Config provides a mock function for the type MockScraper
-func (_mock *MockScraper) Config() *config.ScraperConfig {
+func (_mock *MockScraper) Config() *config.ScraperSettings {
 	ret := _mock.Called()
 
 	if len(ret) == 0 {
 		panic("no return value specified for Config")
 	}
 
-	var r0 *config.ScraperConfig
-	if returnFunc, ok := ret.Get(0).(func() *config.ScraperConfig); ok {
+	var r0 *config.ScraperSettings
+	if returnFunc, ok := ret.Get(0).(func() *config.ScraperSettings); ok {
 		r0 = returnFunc()
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*config.ScraperConfig)
+			r0 = ret.Get(0).(*config.ScraperSettings)
 		}
 	}
 	return r0
@@ -117,12 +117,12 @@ func (_c *MockScraper_Config_Call) Run(run func()) *MockScraper_Config_Call {
 	return _c
 }
 
-func (_c *MockScraper_Config_Call) Return(scraperConfig *config.ScraperConfig) *MockScraper_Config_Call {
+func (_c *MockScraper_Config_Call) Return(scraperConfig *config.ScraperSettings) *MockScraper_Config_Call {
 	_c.Call.Return(scraperConfig)
 	return _c
 }
 
-func (_c *MockScraper_Config_Call) RunAndReturn(run func() *config.ScraperConfig) *MockScraper_Config_Call {
+func (_c *MockScraper_Config_Call) RunAndReturn(run func() *config.ScraperSettings) *MockScraper_Config_Call {
 	_c.Call.Return(run)
 	return _c
 }

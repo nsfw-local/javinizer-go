@@ -275,7 +275,7 @@ func TestGenerateCroppedPoster_ErrorHandling(t *testing.T) {
 }
 
 func TestGenerateTempPoster_SuccessAndFallbacks(t *testing.T) {
-	chdirToTempDir(t)
+	tempDir := chdirToTempDir(t)
 
 	jpegBody := validJPEGBytes(t)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -299,30 +299,31 @@ func TestGenerateTempPoster_SuccessAndFallbacks(t *testing.T) {
 		"test-agent",
 		"https://configured.example/",
 		downloader.ResolveMediaReferer,
+		tempDir,
 	)
 	require.NoError(t, err)
 	assert.Equal(t, "/api/v1/temp/posters/job-temp-1/TEMP-001.jpg", url)
 	assert.False(t, movie.ShouldCropPoster)
 
-	_, err = os.Stat(filepath.Join("data", "temp", "posters", "job-temp-1", "TEMP-001-full.jpg"))
+	_, err = os.Stat(filepath.Join(tempDir, "posters", "job-temp-1", "TEMP-001-full.jpg"))
 	require.NoError(t, err)
-	_, err = os.Stat(filepath.Join("data", "temp", "posters", "job-temp-1", "TEMP-001.jpg"))
+	_, err = os.Stat(filepath.Join(tempDir, "posters", "job-temp-1", "TEMP-001.jpg"))
 	require.NoError(t, err)
 }
 
 func TestGenerateTempPoster_ErrorBranches(t *testing.T) {
-	chdirToTempDir(t)
+	tempDir := chdirToTempDir(t)
 
 	t.Run("missing poster and cover url", func(t *testing.T) {
 		movie := &models.Movie{ID: "TEMP-ERR-1"}
-		_, err := GenerateTempPoster(context.Background(), "job-temp-err", movie, http.DefaultClient, "", "", downloader.ResolveMediaReferer)
+		_, err := GenerateTempPoster(context.Background(), "job-temp-err", movie, http.DefaultClient, "", "", downloader.ResolveMediaReferer, tempDir)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "no poster or cover URL")
 	})
 
 	t.Run("invalid url", func(t *testing.T) {
 		movie := &models.Movie{ID: "TEMP-ERR-2", PosterURL: "://bad-url"}
-		_, err := GenerateTempPoster(context.Background(), "job-temp-err", movie, http.DefaultClient, "", "", downloader.ResolveMediaReferer)
+		_, err := GenerateTempPoster(context.Background(), "job-temp-err", movie, http.DefaultClient, "", "", downloader.ResolveMediaReferer, tempDir)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "failed to create request")
 	})
@@ -334,7 +335,7 @@ func TestGenerateTempPoster_ErrorBranches(t *testing.T) {
 		defer server.Close()
 
 		movie := &models.Movie{ID: "TEMP-ERR-3", PosterURL: server.URL + "/forbidden.jpg"}
-		_, err := GenerateTempPoster(context.Background(), "job-temp-err", movie, server.Client(), "", "", downloader.ResolveMediaReferer)
+		_, err := GenerateTempPoster(context.Background(), "job-temp-err", movie, server.Client(), "", "", downloader.ResolveMediaReferer, tempDir)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "status 403")
 	})

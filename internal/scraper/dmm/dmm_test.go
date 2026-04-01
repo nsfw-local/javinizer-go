@@ -15,93 +15,94 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// createTestSettings creates ScraperSettings for testing
+func createTestSettings(enabled bool, extra map[string]any) config.ScraperSettings {
+	settings := config.ScraperSettings{
+		Enabled: enabled,
+		Extra:   extra,
+	}
+	return settings
+}
+
+// testGlobalProxy is a non-nil proxy config used to avoid nil pointer dereference in NewHTTPClient
+var testGlobalProxy = &config.ProxyConfig{}
+
+// testGlobalFlareSolverr is a zero-value FlareSolverr config for testing
+var testGlobalFlareSolverr = config.FlareSolverrConfig{}
+
 // TestNew verifies the scraper constructor
 func TestNew(t *testing.T) {
 	tests := []struct {
-		name        string
-		cfg         *config.Config
-		expectNil   bool
-		description string
+		name          string
+		settings      config.ScraperSettings
+		expectEnabled bool
+		expectActress bool
+		expectBrowser bool
+		description   string
 	}{
 		{
 			name: "basic config",
-			cfg: &config.Config{
-				Scrapers: config.ScrapersConfig{
-					UserAgent: "Test Agent",
-					DMM: config.DMMConfig{
-						Enabled:       true,
-						ScrapeActress: true,
-					},
-				},
-			},
-			expectNil:   false,
-			description: "should create scraper with basic config",
+			settings: func() config.ScraperSettings {
+				s := createTestSettings(true, map[string]any{"scrape_actress": true})
+				s.UserAgent = "Test Agent"
+				return s
+			}(),
+			expectEnabled: true,
+			expectActress: true,
+			expectBrowser: false,
+			description:   "should create scraper with basic config",
 		},
 		{
 			name: "with proxy",
-			cfg: &config.Config{
-				Scrapers: config.ScrapersConfig{
-					UserAgent: "Test Agent",
-					Proxy: config.ProxyConfig{
-						Enabled:  true,
-						URL:      "http://proxy.example.com:8080",
-						Username: "user",
-						Password: "pass",
-					},
-					DMM: config.DMMConfig{
-						Enabled:       true,
-						ScrapeActress: false,
-					},
-				},
-			},
-			expectNil:   false,
-			description: "should create scraper with proxy config",
+			settings: func() config.ScraperSettings {
+				s := createTestSettings(true, map[string]any{"scrape_actress": false})
+				s.UserAgent = "Test Agent"
+				s.Proxy = &config.ProxyConfig{
+					Enabled: true,
+					Profile: "main",
+				}
+				return s
+			}(),
+			expectEnabled: true,
+			expectActress: false,
+			expectBrowser: false,
+			description:   "should create scraper with proxy config",
 		},
 		{
 			name: "browser enabled",
-			cfg: &config.Config{
-				Scrapers: config.ScrapersConfig{
-					UserAgent: "Test Agent",
-					DMM: config.DMMConfig{
-						Enabled:        true,
-						ScrapeActress:  true,
-						EnableBrowser:  true,
-						BrowserTimeout: 60,
-					},
-				},
-			},
-			expectNil:   false,
-			description: "should create scraper with browser automation enabled",
+			settings: func() config.ScraperSettings {
+				s := createTestSettings(true, map[string]any{
+					"scrape_actress":  true,
+					"enable_browser":  true,
+					"browser_timeout": 60,
+				})
+				s.UserAgent = "Test Agent"
+				return s
+			}(),
+			expectEnabled: true,
+			expectActress: true,
+			expectBrowser: true,
+			description:   "should create scraper with browser automation enabled",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			scraper := New(tt.cfg, nil)
+			scraper := New(tt.settings, nil, testGlobalProxy, testGlobalFlareSolverr)
 
-			if tt.expectNil {
-				assert.Nil(t, scraper)
-			} else {
-				require.NotNil(t, scraper)
-				assert.NotNil(t, scraper.client)
-				assert.Equal(t, tt.cfg.Scrapers.DMM.Enabled, scraper.enabled)
-				assert.Equal(t, tt.cfg.Scrapers.DMM.ScrapeActress, scraper.scrapeActress)
-				assert.Equal(t, tt.cfg.Scrapers.DMM.EnableBrowser, scraper.enableBrowser)
-			}
+			require.NotNil(t, scraper)
+			assert.NotNil(t, scraper.client)
+			assert.Equal(t, tt.expectEnabled, scraper.enabled)
+			assert.Equal(t, tt.expectActress, scraper.scrapeActress)
+			assert.Equal(t, tt.expectBrowser, scraper.enableBrowser)
 		})
 	}
 }
 
 // TestName verifies the scraper name
 func TestName(t *testing.T) {
-	cfg := &config.Config{
-		Scrapers: config.ScrapersConfig{
-			DMM: config.DMMConfig{
-				Enabled: true,
-			},
-		},
-	}
-	scraper := New(cfg, nil)
+	settings := createTestSettings(true, nil)
+	scraper := New(settings, nil, testGlobalProxy, testGlobalFlareSolverr)
 	assert.Equal(t, "dmm", scraper.Name())
 }
 
@@ -117,14 +118,8 @@ func TestIsEnabled(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			cfg := &config.Config{
-				Scrapers: config.ScrapersConfig{
-					DMM: config.DMMConfig{
-						Enabled: tt.enabled,
-					},
-				},
-			}
-			scraper := New(cfg, nil)
+			settings := createTestSettings(tt.enabled, nil)
+			scraper := New(settings, nil, testGlobalProxy, testGlobalFlareSolverr)
 			assert.Equal(t, tt.enabled, scraper.IsEnabled())
 		})
 	}
@@ -319,14 +314,8 @@ func TestCleanString(t *testing.T) {
 // would require more complex setup.
 func TestSearch_NetworkErrors(t *testing.T) {
 	t.Run("no content ID repository", func(t *testing.T) {
-		cfg := &config.Config{
-			Scrapers: config.ScrapersConfig{
-				DMM: config.DMMConfig{
-					Enabled: true,
-				},
-			},
-		}
-		scraper := New(cfg, nil) // nil repository
+		settings := createTestSettings(true, nil)
+		scraper := New(settings, nil, testGlobalProxy, testGlobalFlareSolverr) // nil repository
 
 		_, err := scraper.Search("IPX-535")
 		require.Error(t, err)
@@ -399,15 +388,8 @@ func TestParseHTML_OldSite(t *testing.T) {
 </html>
 `
 
-	cfg := &config.Config{
-		Scrapers: config.ScrapersConfig{
-			DMM: config.DMMConfig{
-				Enabled:       true,
-				ScrapeActress: true,
-			},
-		},
-	}
-	scraper := New(cfg, nil)
+	settings := createTestSettings(true, map[string]any{"scrape_actress": true})
+	scraper := New(settings, nil, testGlobalProxy, testGlobalFlareSolverr)
 
 	// Parse HTML directly
 	doc, err := parseHTMLString(htmlContent)
@@ -487,15 +469,8 @@ func TestParseHTML_NewSite(t *testing.T) {
 </html>
 `
 
-	cfg := &config.Config{
-		Scrapers: config.ScrapersConfig{
-			DMM: config.DMMConfig{
-				Enabled:       true,
-				ScrapeActress: true,
-			},
-		},
-	}
-	scraper := New(cfg, nil)
+	settings := createTestSettings(true, map[string]any{"scrape_actress": true})
+	scraper := New(settings, nil, testGlobalProxy, testGlobalFlareSolverr)
 
 	doc, err := parseHTMLString(htmlContent)
 	require.NoError(t, err)
@@ -577,15 +552,8 @@ func TestExtractActresses(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			cfg := &config.Config{
-				Scrapers: config.ScrapersConfig{
-					DMM: config.DMMConfig{
-						Enabled:       true,
-						ScrapeActress: true,
-					},
-				},
-			}
-			scraper := New(cfg, nil)
+			settings := createTestSettings(true, map[string]any{"scrape_actress": true})
+			scraper := New(settings, nil, testGlobalProxy, testGlobalFlareSolverr)
 
 			doc, err := parseHTMLString(fmt.Sprintf("<html><body>%s</body></html>", tt.html))
 			require.NoError(t, err)
@@ -609,15 +577,8 @@ func TestExtractActresses(t *testing.T) {
 }
 
 func TestExtractActressesFromStreamingPage_CastSectionPriority(t *testing.T) {
-	cfg := &config.Config{
-		Scrapers: config.ScrapersConfig{
-			DMM: config.DMMConfig{
-				Enabled:       true,
-				ScrapeActress: true,
-			},
-		},
-	}
-	scraper := New(cfg, nil)
+	settings := createTestSettings(true, map[string]any{"scrape_actress": true})
+	scraper := New(settings, nil, testGlobalProxy, testGlobalFlareSolverr)
 
 	html := `<html><body>
 		<div class="recommend">
@@ -651,15 +612,8 @@ func TestExtractActressesFromStreamingPage_CastSectionPriority(t *testing.T) {
 }
 
 func TestExtractActressesFromStreamingPage_HeadingFallback(t *testing.T) {
-	cfg := &config.Config{
-		Scrapers: config.ScrapersConfig{
-			DMM: config.DMMConfig{
-				Enabled:       true,
-				ScrapeActress: true,
-			},
-		},
-	}
-	scraper := New(cfg, nil)
+	settings := createTestSettings(true, map[string]any{"scrape_actress": true})
+	scraper := New(settings, nil, testGlobalProxy, testGlobalFlareSolverr)
 
 	html := `<html><body>
 		<div class="recommend">
@@ -689,15 +643,8 @@ func TestExtractActressesFromStreamingPage_HeadingFallback(t *testing.T) {
 }
 
 func TestExtractActressesFromStreamingPage_SkipsRecommendationOnlyLinks(t *testing.T) {
-	cfg := &config.Config{
-		Scrapers: config.ScrapersConfig{
-			DMM: config.DMMConfig{
-				Enabled:       true,
-				ScrapeActress: true,
-			},
-		},
-	}
-	scraper := New(cfg, nil)
+	settings := createTestSettings(true, map[string]any{"scrape_actress": true})
+	scraper := New(settings, nil, testGlobalProxy, testGlobalFlareSolverr)
 
 	html := `<html><body>
 		<div class="recommend-list">
@@ -744,12 +691,8 @@ func TestExtractGenres(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			cfg := &config.Config{
-				Scrapers: config.ScrapersConfig{
-					DMM: config.DMMConfig{Enabled: true},
-				},
-			}
-			scraper := New(cfg, nil)
+			settings := createTestSettings(true, nil)
+			scraper := New(settings, nil, testGlobalProxy, testGlobalFlareSolverr)
 
 			doc, err := parseHTMLString(fmt.Sprintf("<html><body>%s</body></html>", tt.html))
 			require.NoError(t, err)
@@ -787,12 +730,8 @@ func TestExtractReleaseDate(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			cfg := &config.Config{
-				Scrapers: config.ScrapersConfig{
-					DMM: config.DMMConfig{Enabled: true},
-				},
-			}
-			scraper := New(cfg, nil)
+			settings := createTestSettings(true, nil)
+			scraper := New(settings, nil, testGlobalProxy, testGlobalFlareSolverr)
 
 			doc, err := parseHTMLString(tt.html)
 			require.NoError(t, err)
@@ -824,12 +763,8 @@ func TestExtractRuntime(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			cfg := &config.Config{
-				Scrapers: config.ScrapersConfig{
-					DMM: config.DMMConfig{Enabled: true},
-				},
-			}
-			scraper := New(cfg, nil)
+			settings := createTestSettings(true, nil)
+			scraper := New(settings, nil, testGlobalProxy, testGlobalFlareSolverr)
 
 			doc, err := parseHTMLString(tt.html)
 			require.NoError(t, err)
@@ -872,12 +807,8 @@ func TestExtractRating_OldSite(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			cfg := &config.Config{
-				Scrapers: config.ScrapersConfig{
-					DMM: config.DMMConfig{Enabled: true},
-				},
-			}
-			scraper := New(cfg, nil)
+			settings := createTestSettings(true, nil)
+			scraper := New(settings, nil, testGlobalProxy, testGlobalFlareSolverr)
 
 			doc, err := parseHTMLString(tt.html)
 			require.NoError(t, err)
@@ -958,12 +889,8 @@ func TestExtractDescription_EdgeCases(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			cfg := &config.Config{
-				Scrapers: config.ScrapersConfig{
-					DMM: config.DMMConfig{Enabled: true},
-				},
-			}
-			scraper := New(cfg, nil)
+			settings := createTestSettings(true, nil)
+			scraper := New(settings, nil, testGlobalProxy, testGlobalFlareSolverr)
 
 			doc, err := parseHTMLString(tt.html)
 			require.NoError(t, err)
@@ -1010,12 +937,8 @@ func TestExtractDirector_EdgeCases(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			cfg := &config.Config{
-				Scrapers: config.ScrapersConfig{
-					DMM: config.DMMConfig{Enabled: true},
-				},
-			}
-			scraper := New(cfg, nil)
+			settings := createTestSettings(true, nil)
+			scraper := New(settings, nil, testGlobalProxy, testGlobalFlareSolverr)
 
 			doc, err := parseHTMLString(fmt.Sprintf("<html><body>%s</body></html>", tt.html))
 			require.NoError(t, err)
@@ -1067,12 +990,8 @@ func TestExtractMaker_Formats(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			cfg := &config.Config{
-				Scrapers: config.ScrapersConfig{
-					DMM: config.DMMConfig{Enabled: true},
-				},
-			}
-			scraper := New(cfg, nil)
+			settings := createTestSettings(true, nil)
+			scraper := New(settings, nil, testGlobalProxy, testGlobalFlareSolverr)
 
 			doc, err := parseHTMLString(fmt.Sprintf("<html><body>%s</body></html>", tt.html))
 			require.NoError(t, err)
@@ -1119,12 +1038,8 @@ func TestExtractLabel_Formats(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			cfg := &config.Config{
-				Scrapers: config.ScrapersConfig{
-					DMM: config.DMMConfig{Enabled: true},
-				},
-			}
-			scraper := New(cfg, nil)
+			settings := createTestSettings(true, nil)
+			scraper := New(settings, nil, testGlobalProxy, testGlobalFlareSolverr)
 
 			doc, err := parseHTMLString(fmt.Sprintf("<html><body>%s</body></html>", tt.html))
 			require.NoError(t, err)
@@ -1162,12 +1077,8 @@ func TestExtractSeries_EdgeCases(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			cfg := &config.Config{
-				Scrapers: config.ScrapersConfig{
-					DMM: config.DMMConfig{Enabled: true},
-				},
-			}
-			scraper := New(cfg, nil)
+			settings := createTestSettings(true, nil)
+			scraper := New(settings, nil, testGlobalProxy, testGlobalFlareSolverr)
 
 			doc, err := parseHTMLString(tt.html)
 			require.NoError(t, err)
@@ -1219,12 +1130,8 @@ func TestExtractCoverURL_EdgeCases(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			cfg := &config.Config{
-				Scrapers: config.ScrapersConfig{
-					DMM: config.DMMConfig{Enabled: true},
-				},
-			}
-			scraper := New(cfg, nil)
+			settings := createTestSettings(true, nil)
+			scraper := New(settings, nil, testGlobalProxy, testGlobalFlareSolverr)
 
 			doc, err := parseHTMLString(fmt.Sprintf("<html><body>%s</body></html>", tt.html))
 			require.NoError(t, err)
@@ -1275,12 +1182,8 @@ func TestExtractScreenshots_EdgeCases(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			cfg := &config.Config{
-				Scrapers: config.ScrapersConfig{
-					DMM: config.DMMConfig{Enabled: true},
-				},
-			}
-			scraper := New(cfg, nil)
+			settings := createTestSettings(true, nil)
+			scraper := New(settings, nil, testGlobalProxy, testGlobalFlareSolverr)
 
 			doc, err := parseHTMLString(tt.html)
 			require.NoError(t, err)
@@ -1336,15 +1239,8 @@ func TestParseHTML_ScrapeActressFlag(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			cfg := &config.Config{
-				Scrapers: config.ScrapersConfig{
-					DMM: config.DMMConfig{
-						Enabled:       true,
-						ScrapeActress: tt.scrapeActress,
-					},
-				},
-			}
-			scraper := New(cfg, nil)
+			settings := createTestSettings(true, map[string]any{"scrape_actress": tt.scrapeActress})
+			scraper := New(settings, nil, testGlobalProxy, testGlobalFlareSolverr)
 
 			doc, err := parseHTMLString(htmlContent)
 			require.NoError(t, err)
@@ -1521,15 +1417,8 @@ func TestExtractCandidateURLs_Priorities(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			cfg := &config.Config{
-				Scrapers: config.ScrapersConfig{
-					DMM: config.DMMConfig{
-						Enabled:       true,
-						EnableBrowser: true, // Enable to include video.dmm.co.jp URLs
-					},
-				},
-			}
-			scraper := New(cfg, nil)
+			settings := createTestSettings(true, map[string]any{"enable_browser": true})
+			scraper := New(settings, nil, testGlobalProxy, testGlobalFlareSolverr)
 
 			doc, err := parseHTMLString(fmt.Sprintf("<html><body>%s</body></html>", tt.html))
 			require.NoError(t, err)
@@ -1600,14 +1489,8 @@ func TestExtractCandidateURLs_BaseIDMatching(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			cfg := &config.Config{
-				Scrapers: config.ScrapersConfig{
-					DMM: config.DMMConfig{
-						Enabled: true,
-					},
-				},
-			}
-			scraper := New(cfg, nil)
+			settings := createTestSettings(true, nil)
+			scraper := New(settings, nil, testGlobalProxy, testGlobalFlareSolverr)
 
 			doc, err := parseHTMLString(fmt.Sprintf("<html><body>%s</body></html>", tt.html))
 			require.NoError(t, err)
@@ -1677,15 +1560,8 @@ func TestExtractCandidateURLs_ExcludePatterns(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			cfg := &config.Config{
-				Scrapers: config.ScrapersConfig{
-					DMM: config.DMMConfig{
-						Enabled:       true,
-						EnableBrowser: tt.enableBrowser,
-					},
-				},
-			}
-			scraper := New(cfg, nil)
+			settings := createTestSettings(true, map[string]any{"enable_browser": tt.enableBrowser})
+			scraper := New(settings, nil, testGlobalProxy, testGlobalFlareSolverr)
 
 			doc, err := parseHTMLString(fmt.Sprintf("<html><body>%s</body></html>", tt.html))
 			require.NoError(t, err)
@@ -1711,15 +1587,8 @@ func TestExtractCandidateURLs_PriorityOrder(t *testing.T) {
 		<a href="https://www.dmm.co.jp/monthly/standard/-/detail/=/cid=61mdb087/">Monthly Standard (Priority 1 - limited metadata)</a>
 	`
 
-	cfg := &config.Config{
-		Scrapers: config.ScrapersConfig{
-			DMM: config.DMMConfig{
-				Enabled:       true,
-				EnableBrowser: true,
-			},
-		},
-	}
-	scraper := New(cfg, nil)
+	settings := createTestSettings(true, map[string]any{"enable_browser": true})
+	scraper := New(settings, nil, testGlobalProxy, testGlobalFlareSolverr)
 
 	doc, err := parseHTMLString(fmt.Sprintf("<html><body>%s</body></html>", html))
 	require.NoError(t, err)
@@ -1742,16 +1611,10 @@ func TestExtractCandidateURLs_PriorityOrder(t *testing.T) {
 
 // TestResolveContentID_NoRepository verifies error when repository is nil
 func TestResolveContentID_NoRepository(t *testing.T) {
-	cfg := &config.Config{
-		Scrapers: config.ScrapersConfig{
-			DMM: config.DMMConfig{
-				Enabled: true,
-			},
-		},
-	}
+	settings := createTestSettings(true, nil)
 
 	// Create scraper with nil repository
-	scraper := New(cfg, nil)
+	scraper := New(settings, nil, testGlobalProxy, testGlobalFlareSolverr)
 
 	_, err := scraper.ResolveContentID("ipx-535")
 	assert.Error(t, err)
@@ -1775,13 +1638,8 @@ func TestResolveContentID_UsesSearchQueryVariations(t *testing.T) {
 	require.NoError(t, db.AutoMigrate())
 
 	repo := database.NewContentIDMappingRepository(db)
-	scraper := New(&config.Config{
-		Scrapers: config.ScrapersConfig{
-			DMM: config.DMMConfig{
-				Enabled: true,
-			},
-		},
-	}, repo)
+	settings := createTestSettings(true, nil)
+	scraper := New(settings, repo, testGlobalProxy, testGlobalFlareSolverr)
 
 	transport := &searchVariationRoundTripper{
 		responseByQuery: map[string]string{
@@ -1805,16 +1663,10 @@ func TestResolveContentID_UsesSearchQueryVariations(t *testing.T) {
 
 // TestGetURL_NoRepository verifies error when repository is nil
 func TestGetURL_NoRepository(t *testing.T) {
-	cfg := &config.Config{
-		Scrapers: config.ScrapersConfig{
-			DMM: config.DMMConfig{
-				Enabled: true,
-			},
-		},
-	}
+	settings := createTestSettings(true, nil)
 
 	// Create scraper with nil repository
-	scraper := New(cfg, nil)
+	scraper := New(settings, nil, testGlobalProxy, testGlobalFlareSolverr)
 
 	_, err := scraper.GetURL("ipx-535")
 	assert.Error(t, err)

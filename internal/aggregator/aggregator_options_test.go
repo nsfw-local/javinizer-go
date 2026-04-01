@@ -317,28 +317,14 @@ func TestGetResolvedPriorities(t *testing.T) {
 
 // Helper function to create a minimal test config
 func createTestConfig() *config.Config {
-	return &config.Config{
-		Scrapers: config.ScrapersConfig{
-			Priority: []string{"r18dev", "dmm"},
-			R18Dev: config.R18DevConfig{
-				Enabled: true,
-			},
-			DMM: config.DMMConfig{
-				Enabled: true,
-			},
-		},
-		Metadata: config.MetadataConfig{
-			Priority: config.PriorityConfig{
-				Title:       []string{"r18dev", "dmm"},
-				Description: []string{"dmm", "r18dev"},
-				CoverURL:    []string{}, // Empty = use global priority
-			},
-			GenreReplacement: config.GenreReplacementConfig{
-				Enabled: true,
-			},
-			ActressDatabase: config.ActressDatabaseConfig{
-				Enabled: true,
-			},
-		},
+	cfg := config.DefaultConfig()
+	cfg.Scrapers.Priority = []string{"r18dev", "dmm"}
+	// Ensure Overrides map is initialized before accessing
+	if cfg.Scrapers.Overrides == nil {
+		cfg.Scrapers.Overrides = make(map[string]*config.ScraperSettings)
 	}
+	// Initialize scraper override entries directly since scrapers aren't registered in tests
+	cfg.Scrapers.Overrides["r18dev"] = &config.ScraperSettings{Enabled: true}
+	cfg.Scrapers.Overrides["dmm"] = &config.ScraperSettings{Enabled: true}
+	return cfg
 }

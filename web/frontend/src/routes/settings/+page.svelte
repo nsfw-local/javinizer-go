@@ -265,6 +265,22 @@
 		return Number.isNaN(parsed) ? undefined : parsed;
 	}
 
+	// Sanitize HTTP header values to prevent header injection
+	function sanitizeHeaderValue(value: string): string {
+		// Remove newlines, carriage returns, and control characters
+		return value.replace(/[\r\n\x00-\x1F\x7F]/g, '');
+	}
+
+	function handleScraperUserAgentInput(e: Event) {
+		const target = e.target as HTMLInputElement;
+		config.scrapers.user_agent = sanitizeHeaderValue(target.value);
+	}
+
+	function handleScraperRefererInput(e: Event) {
+		const target = e.target as HTMLInputElement;
+		config.scrapers.referer = sanitizeHeaderValue(target.value);
+	}
+
 	function ensureProxyProfilesInitialized(): void {
 		if (!config?.scrapers) config.scrapers = {};
 		if (!config.scrapers.proxy) config.scrapers.proxy = {};
@@ -494,20 +510,39 @@
 			if (profile.url) proxyConfig.url = profile.url;
 			if (profile.username !== undefined) proxyConfig.username = profile.username;
 			if (profile.password !== undefined) proxyConfig.password = profile.password;
-			if (!isZeroFlaresolverrConfig(profile.flaresolverr)) {
-				proxyConfig.flaresolverr = profile.flaresolverr;
-			}
+		}
+		// FlareSolverr is now at scrapers.flaresolverr (sibling of proxy, not inside it)
+		// If global flaresolverr is enabled, always create the config with defaults
+		// This ensures first-time enable works without requiring explicit URL save first
+		const globalFlareSolverr = config?.scrapers?.flaresolverr;
+		if (globalFlareSolverr?.enabled) {
+			proxyConfig.flaresolverr = {
+				enabled: true,
+				url: globalFlareSolverr?.url || 'http://localhost:8191/v1',
+				timeout: globalFlareSolverr?.timeout || 30,
+				max_retries: globalFlareSolverr?.max_retries || 3,
+				session_ttl: globalFlareSolverr?.session_ttl || 300
+			};
+		} else if (!isZeroFlaresolverrConfig(globalFlareSolverr)) {
+			// Only set flaresolverr config if it's not zero but somehow not enabled
+			proxyConfig.flaresolverr = {
+				enabled: globalFlareSolverr?.enabled ?? false,
+				url: globalFlareSolverr?.url || 'http://localhost:8191/v1',
+				timeout: globalFlareSolverr?.timeout ?? 30,
+				max_retries: globalFlareSolverr?.max_retries ?? 3,
+				session_ttl: globalFlareSolverr?.session_ttl ?? 300
+			};
 		}
 		return proxyConfig;
 	}
 
 	function isOptionDisabled(scraperName: string, optionKey: string): boolean {
 		const globalProxyEnabled = config?.scrapers?.proxy?.enabled ?? false;
-		const globalFlareSolverrEnabled = config?.scrapers?.proxy?.flaresolverr?.enabled ?? false;
+		const globalFlareSolverrEnabled = config?.scrapers?.flaresolverr?.enabled ?? false;
 		const scraperCfg = config?.scrapers?.[scraperName] ?? {};
 
 		if (optionKey === 'use_flaresolverr') {
-			return !globalProxyEnabled || !globalFlareSolverrEnabled;
+			return !globalFlareSolverrEnabled;
 		}
 
 		if (optionKey.startsWith('proxy.')) {
@@ -523,10 +558,6 @@
 			}
 
 			return false;
-		}
-
-		if (optionKey === 'fake_user_agent') {
-			return !(scraperCfg?.use_fake_user_agent ?? false);
 		}
 
 		return false;
@@ -588,6 +619,39 @@
 		}
 
 		scrapers[index].enabled = willBeEnabled;
+		updateConfigFromScrapers();
+	}
+
+	function selectAllScrapers() {
+		scrapers = scrapers.map((scraper) => ({ ...scraper, enabled: true }));
+		updateConfigFromScrapers();
+	}
+
+	function clearAllScrapers() {
+		// Check if any scraper is in use and ask for confirmation
+		let totalUsage = 0;
+		const usedScrapers: string[] = [];
+		for (const scraper of scrapers) {
+			if (scraper.enabled) {
+				const usage = getScraperUsage(scraper.name);
+				if (usage.count > 0) {
+					totalUsage += usage.count;
+					usedScrapers.push(scraper.displayName);
+				}
+			}
+		}
+		if (totalUsage > 0) {
+			const confirmed = confirm(
+				`The following scrapers are currently used in priority lists:\n\n${usedScrapers.join(', ')}\n\nDisabling all scrapers will remove them from all priority lists. Continue?`
+			);
+			if (!confirmed) return;
+
+			// Remove all scrapers from priority lists
+			for (const scraper of scrapers) {
+				removeScraperFromPriorities(scraper.name);
+			}
+		}
+		scrapers = scrapers.map((scraper) => ({ ...scraper, enabled: false }));
 		updateConfigFromScrapers();
 	}
 
@@ -759,9 +823,15 @@
 			toastStore.error('Enable scraper proxy and set proxy URL before testing', 5000);
 			return;
 		}
-		if (mode === 'flaresolverr' && (!proxyConfig.flaresolverr?.enabled || !proxyConfig.flaresolverr?.url)) {
-			toastStore.error('Enable FlareSolverr and set FlareSolverr URL before testing', 5000);
-			return;
+		if (mode === 'flaresolverr') {
+			if (!proxyConfig.flaresolverr?.enabled) {
+				toastStore.error('Enable FlareSolverr before testing', 5000);
+				return;
+			}
+			if (!proxyConfig.flaresolverr?.url) {
+				toastStore.error('Set FlareSolverr URL before testing', 5000);
+				return;
+			}
 		}
 
 		if (mode === 'direct') {
@@ -773,7 +843,13 @@
 		try {
 			const result = await apiClient.testProxy({
 				mode,
-				proxy: proxyConfig
+				proxy: {
+					enabled: proxyConfig.enabled,
+					url: proxyConfig.url,
+					username: proxyConfig.username,
+					password: proxyConfig.password
+				},
+				flaresolverr: proxyConfig.flaresolverr
 			});
 
 			if (result.success) {
@@ -848,6 +924,35 @@
 		{:else if config}
 			<ServerSettingsSection config={config} {inputClass} />
 
+			<SettingsSection title="Scraper Defaults" description="Default settings applied to all scrapers unless overridden per-scraper" defaultExpanded={false}>
+				<div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+					<div>
+						<label class="block text-sm font-medium mb-2" for="scrapers-user-agent">Default User-Agent</label>
+						<input
+							id="scrapers-user-agent"
+							type="text"
+							value={config.scrapers.user_agent}
+							oninput={handleScraperUserAgentInput}
+							class={inputClass}
+							placeholder="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+						/>
+						<p class="text-xs text-muted-foreground mt-1">Custom User-Agent for scraper requests (default browser UA if empty)</p>
+					</div>
+					<div>
+						<label class="block text-sm font-medium mb-2" for="scrapers-referer">Default Referer</label>
+						<input
+							id="scrapers-referer"
+							type="text"
+							value={config.scrapers.referer}
+							oninput={handleScraperRefererInput}
+							class={inputClass}
+							placeholder="https://www.dmm.co.jp/"
+						/>
+						<p class="text-xs text-muted-foreground mt-1">Referer header for CDN compatibility (default: https://www.dmm.co.jp/)</p>
+					</div>
+				</div>
+			</SettingsSection>
+
 			<ScraperSettingsSection
 				{config}
 				{scrapers}
@@ -857,6 +962,8 @@
 				{onScraperRowKeydown}
 				{toggleScraper}
 				{toggleExpanded}
+				{selectAllScrapers}
+				{clearAllScrapers}
 				{getScraperUsage}
 				{scraperSupportsProxyOptions}
 				{getScraperProxyMode}

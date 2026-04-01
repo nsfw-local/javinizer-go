@@ -17,9 +17,9 @@ import (
 
 // cleanupJobTempPosters removes temp posters for a completed or cancelled job
 // Best-effort, non-blocking cleanup. Called in a goroutine.
-func cleanupJobTempPosters(jobID string) {
-	tempDir := filepath.Join("data", "temp", "posters", jobID)
-	if err := os.RemoveAll(tempDir); err != nil {
+func cleanupJobTempPosters(jobID string, tempDir string) {
+	posterDir := filepath.Join(tempDir, "posters", jobID)
+	if err := os.RemoveAll(posterDir); err != nil {
 		logging.Debugf("[Job %s] Failed to clean temp poster dir: %v", jobID, err)
 	} else {
 		logging.Debugf("[Job %s] Cleaned temp poster directory", jobID)
@@ -35,7 +35,7 @@ func copyTempCroppedPoster(job *worker.BatchJob, movie *models.Movie, destDir st
 		return false
 	}
 
-	tempPosterPath := filepath.Join("data", "temp", "posters", job.ID, movie.ID+".jpg")
+	tempPosterPath := filepath.Join(cfg.System.TempDir, "posters", job.ID, movie.ID+".jpg")
 	if _, err := os.Stat(tempPosterPath); err != nil {
 		// Temp poster doesn't exist - not an error, just skip
 		return false

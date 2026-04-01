@@ -114,6 +114,7 @@ func TestProcessOrganizeJob_CopiesFileAndGeneratesNFO(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.Output.FolderFormat = "<ID>"
 	cfg.Output.FileFormat = "<ID>"
+	cfg.Output.SubfolderFormat = []string{} // Disable subfolder for this test
 	cfg.Output.DownloadCover = false
 	cfg.Output.DownloadPoster = false
 	cfg.Output.DownloadExtrafanart = false

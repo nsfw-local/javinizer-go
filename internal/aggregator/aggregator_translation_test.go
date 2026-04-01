@@ -30,8 +30,7 @@ func TestAggregate_AppliesConfiguredTranslation(t *testing.T) {
 
 	cfg := config.DefaultConfig()
 	cfg.Scrapers.Priority = []string{"r18dev"}
-	cfg.Metadata.Priority.Title = []string{"r18dev"}
-	cfg.Metadata.Priority.Description = []string{"r18dev"}
+	cfg.Metadata.Priority.Priority = []string{"r18dev"}
 	cfg.Metadata.Translation.Enabled = true
 	cfg.Metadata.Translation.Provider = "openai"
 	cfg.Metadata.Translation.SourceLanguage = "en"
@@ -84,7 +83,7 @@ func TestAggregate_TranslationFailureDoesNotFailAggregate(t *testing.T) {
 
 	cfg := config.DefaultConfig()
 	cfg.Scrapers.Priority = []string{"r18dev"}
-	cfg.Metadata.Priority.Title = []string{"r18dev"}
+	cfg.Metadata.Priority.Priority = []string{"r18dev"}
 	cfg.Metadata.Translation.Enabled = true
 	cfg.Metadata.Translation.Provider = "openai"
 	cfg.Metadata.Translation.SourceLanguage = "en"
@@ -109,6 +108,85 @@ func TestAggregate_TranslationFailureDoesNotFailAggregate(t *testing.T) {
 	require.NotNil(t, movie)
 	assert.Equal(t, "Original Title", movie.Title)
 	assert.Len(t, movie.Translations, 1)
+}
+
+func TestMergeOrAppendTranslation(t *testing.T) {
+	tests := []struct {
+		name      string
+		existing  []models.MovieTranslation
+		incoming  models.MovieTranslation
+		overwrite bool
+		wantLen   int
+		wantJA    *models.MovieTranslation
+	}{
+		{
+			name:      "empty language returns existing unchanged",
+			existing:  []models.MovieTranslation{{Language: "en", Title: "English Title"}},
+			incoming:  models.MovieTranslation{Language: "  ", Title: "Ignored"},
+			overwrite: false,
+			wantLen:   1,
+			wantJA:    nil,
+		},
+		{
+			name:      "new language appends to existing",
+			existing:  []models.MovieTranslation{{Language: "en", Title: "English Title"}},
+			incoming:  models.MovieTranslation{Language: "ja", Title: "Japanese Title"},
+			overwrite: false,
+			wantLen:   2,
+			wantJA:    &models.MovieTranslation{Language: "ja", Title: "Japanese Title"},
+		},
+		{
+			name:      "existing language with overwrite true merges fields",
+			existing:  []models.MovieTranslation{{Language: "en", Title: "Old English"}},
+			incoming:  models.MovieTranslation{Language: "en", Title: "New English", Description: "New Description"},
+			overwrite: true,
+			wantLen:   1,
+			wantJA:    nil,
+		},
+		{
+			name:      "existing language with overwrite false keeps existing",
+			existing:  []models.MovieTranslation{{Language: "en", Title: "Old English"}},
+			incoming:  models.MovieTranslation{Language: "en", Title: "New English"},
+			overwrite: false,
+			wantLen:   1,
+			wantJA:    nil,
+		},
+		{
+			name:      "language matching is case-insensitive",
+			existing:  []models.MovieTranslation{{Language: "en", Title: "English Title"}},
+			incoming:  models.MovieTranslation{Language: "EN", Title: "Uppercase EN"},
+			overwrite: false,
+			wantLen:   1, // "EN" matches "en", overwrite=false keeps existing
+			wantJA:    nil,
+		},
+		{
+			name:      "trim whitespace before comparison",
+			existing:  []models.MovieTranslation{{Language: "en", Title: "English Title"}},
+			incoming:  models.MovieTranslation{Language: " ja ", Title: "Japanese"},
+			overwrite: false,
+			wantLen:   2,
+			wantJA:    &models.MovieTranslation{Language: " ja ", Title: "Japanese"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := mergeOrAppendTranslation(tt.existing, tt.incoming, tt.overwrite)
+
+			assert.Len(t, got, tt.wantLen, "unexpected number of translations")
+
+			if tt.wantJA != nil {
+				found := false
+				for _, tr := range got {
+					if tr.Language == tt.wantJA.Language && tr.Title == tt.wantJA.Title {
+						found = true
+						break
+					}
+				}
+				assert.True(t, found, "expected to find incoming translation")
+			}
+		})
+	}
 }
 
 func TestMergeTranslationFields(t *testing.T) {

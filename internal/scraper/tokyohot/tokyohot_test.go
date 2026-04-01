@@ -14,14 +14,13 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func testConfig(baseURL string) *config.Config {
-	cfg := config.DefaultConfig()
-	cfg.Scrapers.TokyoHot.Enabled = true
-	cfg.Scrapers.TokyoHot.BaseURL = baseURL
-	cfg.Scrapers.TokyoHot.Language = "en"
-	cfg.Scrapers.TokyoHot.RequestDelay = 0
-	cfg.Scrapers.Proxy.Enabled = false
-	return cfg
+func testSettings(baseURL string) config.ScraperSettings {
+	return config.ScraperSettings{
+		Enabled:   true,
+		Language:  "en",
+		RateLimit: 0,
+		BaseURL:   baseURL,
+	}
 }
 
 func TestSearch(t *testing.T) {
@@ -54,7 +53,7 @@ func TestSearch(t *testing.T) {
 	}))
 	defer server.Close()
 
-	s := New(testConfig(server.URL))
+	s := New(testSettings(server.URL), nil, config.FlareSolverrConfig{})
 	result, err := s.Search("N1234")
 	if err != nil {
 		t.Fatalf("Search returned error: %v", err)
@@ -169,9 +168,9 @@ func TestScraper_IsEnabled(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			cfg := testConfig("https://www.tokyo-hot.com")
-			cfg.Scrapers.TokyoHot.Enabled = tt.enabled
-			scraper := New(cfg)
+			settings := testSettings("https://www.tokyo-hot.com")
+			settings.Enabled = tt.enabled
+			scraper := New(settings, nil, config.FlareSolverrConfig{})
 			assert.Equal(t, tt.enabled, scraper.IsEnabled(), "IsEnabled should match config")
 		})
 	}
@@ -179,8 +178,8 @@ func TestScraper_IsEnabled(t *testing.T) {
 
 // TestScraper_Name tests the Name method
 func TestScraper_Name(t *testing.T) {
-	cfg := testConfig("https://www.tokyo-hot.com")
-	scraper := New(cfg)
+	settings := testSettings("https://www.tokyo-hot.com")
+	scraper := New(settings, nil, config.FlareSolverrConfig{})
 	assert.Equal(t, "tokyohot", scraper.Name())
 }
 
@@ -207,8 +206,8 @@ func TestScraper_GetURL(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			cfg := testConfig("https://www.tokyo-hot.com")
-			scraper := New(cfg)
+			settings := testSettings("https://www.tokyo-hot.com")
+			scraper := New(settings, nil, config.FlareSolverrConfig{})
 			url, err := scraper.GetURL(tt.id)
 			if tt.expectedErr {
 				assert.Error(t, err, "GetURL should fail for empty ID")
@@ -226,8 +225,8 @@ func TestScraper_GetURL(t *testing.T) {
 
 // TestScraper_GetURL_ResolveURL tests URL resolution with mock URL
 func TestScraper_GetURL_ResolveURL(t *testing.T) {
-	cfg := testConfig("https://www.tokyo-hot.com")
-	scraper := New(cfg)
+	settings := testSettings("https://www.tokyo-hot.com")
+	scraper := New(settings, nil, config.FlareSolverrConfig{})
 
 	// Test that we can resolve a URL when input is already a full URL
 	url, err := scraper.GetURL("https://www.tokyo-hot.com/product/N1234/")
@@ -237,8 +236,8 @@ func TestScraper_GetURL_ResolveURL(t *testing.T) {
 
 // TestScraper_GetURL_EmptyID tests GetURL with empty ID
 func TestScraper_GetURL_EmptyID(t *testing.T) {
-	cfg := testConfig("https://www.tokyo-hot.com")
-	scraper := New(cfg)
+	settings := testSettings("https://www.tokyo-hot.com")
+	scraper := New(settings, nil, config.FlareSolverrConfig{})
 
 	_, err := scraper.GetURL("")
 	assert.Error(t, err, "GetURL should fail for empty ID")
@@ -247,13 +246,13 @@ func TestScraper_GetURL_EmptyID(t *testing.T) {
 
 // TestApplyLanguage tests language application to URLs
 func TestApplyLanguage(t *testing.T) {
-	cfgJa := testConfig("https://www.tokyo-hot.com")
-	cfgJa.Scrapers.TokyoHot.Language = "ja"
-	scraperJa := New(cfgJa)
+	jaSettings := testSettings("https://www.tokyo-hot.com")
+	jaSettings.Language = "ja"
+	scraperJa := New(jaSettings, nil, config.FlareSolverrConfig{})
 
-	cfgEn := testConfig("https://www.tokyo-hot.com")
-	cfgEn.Scrapers.TokyoHot.Language = "en"
-	scraperEn := New(cfgEn)
+	enSettings := testSettings("https://www.tokyo-hot.com")
+	enSettings.Language = "en"
+	scraperEn := New(enSettings, nil, config.FlareSolverrConfig{})
 
 	tests := []struct {
 		name        string
@@ -322,8 +321,8 @@ func TestNormalizeLanguage(t *testing.T) {
 
 // TestResolveDownloadProxyForHost tests proxy resolution
 func TestResolveDownloadProxyForHost(t *testing.T) {
-	cfg := testConfig("https://www.tokyo-hot.com")
-	scraper := New(cfg)
+	settings := testSettings("https://www.tokyo-hot.com")
+	scraper := New(settings, nil, config.FlareSolverrConfig{})
 
 	tests := []struct {
 		name     string
@@ -541,9 +540,9 @@ func TestNormalizeIDEdgeCases(t *testing.T) {
 
 // TestSearchDisabled tests Search behavior when scraper is disabled
 func TestSearchDisabled(t *testing.T) {
-	cfg := testConfig("https://www.tokyo-hot.com")
-	cfg.Scrapers.TokyoHot.Enabled = false
-	s := New(cfg)
+	settings := testSettings("https://www.tokyo-hot.com")
+	settings.Enabled = false
+	s := New(settings, nil, config.FlareSolverrConfig{})
 
 	result, err := s.Search("N1234")
 
@@ -561,8 +560,8 @@ func TestSearchWithHTTPError(t *testing.T) {
 	}))
 	defer server.Close()
 
-	cfg := testConfig(server.URL)
-	s := New(cfg)
+	settings := testSettings(server.URL)
+	s := New(settings, nil, config.FlareSolverrConfig{})
 
 	result, err := s.Search("N1234")
 
@@ -691,9 +690,9 @@ func TestExtractScreenshotURLEdgeCases(t *testing.T) {
 
 // TestWaitForRateLimit tests rate limit waiting
 func TestWaitForRateLimit(t *testing.T) {
-	cfg := testConfig("https://www.tokyo-hot.com")
-	cfg.Scrapers.TokyoHot.RequestDelay = 50
-	s := New(cfg)
+	settings := testSettings("https://www.tokyo-hot.com")
+	settings.RateLimit = 50
+	s := New(settings, nil, config.FlareSolverrConfig{})
 
 	// Set last request time to just now
 	s.lastRequestTime.Store(time.Now().Add(-10 * time.Millisecond))
@@ -708,8 +707,8 @@ func TestWaitForRateLimit(t *testing.T) {
 
 // TestUpdateLastRequestTime tests updating the last request time
 func TestUpdateLastRequestTime(t *testing.T) {
-	cfg := testConfig("https://www.tokyo-hot.com")
-	s := New(cfg)
+	settings := testSettings("https://www.tokyo-hot.com")
+	s := New(settings, nil, config.FlareSolverrConfig{})
 
 	s.updateLastRequestTime()
 	loadedTime, ok := s.lastRequestTime.Load().(time.Time)

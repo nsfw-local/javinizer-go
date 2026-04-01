@@ -12,13 +12,12 @@ import (
 	"github.com/javinizer/javinizer-go/internal/config"
 )
 
-func testConfig(baseURL string) *config.Config {
-	cfg := config.DefaultConfig()
-	cfg.Scrapers.Jav321.Enabled = true
-	cfg.Scrapers.Jav321.BaseURL = baseURL
-	cfg.Scrapers.Jav321.RequestDelay = 0
-	cfg.Scrapers.Proxy.Enabled = false
-	return cfg
+func testSettings(baseURL string) config.ScraperSettings {
+	return config.ScraperSettings{
+		Enabled:   true,
+		RateLimit: 0,
+		BaseURL:   baseURL,
+	}
 }
 
 func TestSearch(t *testing.T) {
@@ -57,7 +56,7 @@ func TestSearch(t *testing.T) {
 	}))
 	defer server.Close()
 
-	s := New(testConfig(server.URL))
+	s := New(testSettings(server.URL), nil, config.FlareSolverrConfig{})
 	result, err := s.Search("ABC-123")
 	if err != nil {
 		t.Fatalf("Search returned error: %v", err)
