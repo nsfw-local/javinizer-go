@@ -119,6 +119,106 @@ func TestMultipartPreviewEndToEnd(t *testing.T) {
 	assert.Contains(t, response.FanartPath, "-pt1-fanart", "fanart should have pt1 suffix")
 }
 
+func TestMultipartPreviewLetterPatternFiles(t *testing.T) {
+	// Test case: Letter-pattern multipart files (cemd-349-a.mp4, cemd-349-b.mp4)
+	// These should NOT cause conflicts because each part gets a unique filename
+
+	initTestWebSocket(t)
+
+	cfg := &config.Config{
+		Output: config.OutputConfig{
+			FolderFormat:     "<ID>",
+			FileFormat:       "<ID><IF:MULTIPART>-pt<PART></IF>", // Uses IsMultiPart conditional
+			PosterFormat:     "<ID><IF:MULTIPART>-pt<PART></IF>-poster.jpg",
+			FanartFormat:     "<ID><IF:MULTIPART>-pt<PART></IF>-fanart.jpg",
+			ScreenshotFolder: "extrafanart",
+			DownloadCover:    true,
+			DownloadPoster:   true,
+		},
+		API: config.APIConfig{
+			Security: config.SecurityConfig{
+				AllowedDirectories: []string{"/path", "/output"},
+			},
+		},
+	}
+
+	deps := createTestDeps(t, cfg, "")
+
+	// Create job with letter-pattern multipart files
+	job := deps.JobQueue.CreateJob([]string{
+		"/path/to/cemd-349-a.mp4",
+		"/path/to/cemd-349-b.mp4",
+	})
+
+	movie := &models.Movie{
+		ID:    "CEMD-349",
+		Title: "Test Movie",
+	}
+
+	// Simulate discovery phase results with IsMultiPart=true for letter patterns
+	result1 := &worker.FileResult{
+		FilePath:    "/path/to/cemd-349-a.mp4",
+		MovieID:     "CEMD-349",
+		Status:      worker.JobStatusCompleted,
+		Data:        movie,
+		IsMultiPart: true, // Set by ValidateMultipartInDirectory during discovery
+		PartNumber:  1,    // A = 1
+		PartSuffix:  "-A", // Letter suffix
+		StartedAt:   time.Now(),
+	}
+	job.UpdateFileResult("/path/to/cemd-349-a.mp4", result1)
+
+	result2 := &worker.FileResult{
+		FilePath:    "/path/to/cemd-349-b.mp4",
+		MovieID:     "CEMD-349",
+		Status:      worker.JobStatusCompleted,
+		Data:        movie,
+		IsMultiPart: true, // Set by ValidateMultipartInDirectory during discovery
+		PartNumber:  2,    // B = 2
+		PartSuffix:  "-B", // Letter suffix
+		StartedAt:   time.Now(),
+	}
+	job.UpdateFileResult("/path/to/cemd-349-b.mp4", result2)
+
+	// Verify job has the correct multipart metadata
+	status := job.GetStatus()
+	for path, res := range status.Results {
+		t.Logf("  %s: IsMultiPart=%v, PartNumber=%d, PartSuffix=%q",
+			path, res.IsMultiPart, res.PartNumber, res.PartSuffix)
+		assert.True(t, res.IsMultiPart, "file should be marked as multipart")
+	}
+
+	// Test preview for first file
+	router := gin.New()
+	router.POST("/batch/:id/movies/:movieId/preview", previewOrganize(deps))
+
+	reqBody := OrganizePreviewRequest{Destination: "/output"}
+	body, _ := json.Marshal(reqBody)
+
+	req := httptest.NewRequest("POST", "/batch/"+job.ID+"/movies/CEMD-349/preview", bytes.NewBuffer(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	router.ServeHTTP(w, req)
+
+	t.Logf("Response status: %d", w.Code)
+	t.Logf("Response body: %s", w.Body.String())
+
+	assert.Equal(t, 200, w.Code)
+
+	var response OrganizePreviewResponse
+	err := json.Unmarshal(w.Body.Bytes(), &response)
+	require.NoError(t, err)
+
+	t.Logf("PosterPath: %s", response.PosterPath)
+
+	// Poster should have -pt1 suffix (part number from discovery phase)
+	assert.Contains(t, response.PosterPath, "-pt1-poster", "poster should have pt1 suffix from PartNumber")
+
+	// Verify the file paths in response have unique part suffixes (no conflicts)
+	assert.Contains(t, response.FullPath, "CEMD-349-pt1.mp4", "full path should have pt1 suffix")
+}
+
 func TestMultipartPreviewSingleFile(t *testing.T) {
 	// Test case: User submits only ONE multipart file (e.g., just pt1)
 	// The poster should still use the multipart template

@@ -82,21 +82,22 @@ func processOrganizeJob(job *worker.BatchJob, mat *matcher.Matcher, destination 
 			continue
 		}
 
-		// Create match result for organizer
-		fileInfo := scanner.FileInfo{
-			Path:      filePath,
-			Name:      filepath.Base(filePath),
-			Extension: filepath.Ext(filePath),
-			Dir:       filepath.Dir(filePath),
+		// Create match result for organizer using multipart metadata from job results
+		// This preserves IsMultiPart status for letter patterns (-A, -B) that would
+		// be lost if we re-matched files individually
+		ext := filepath.Ext(filePath)
+		match := matcher.MatchResult{
+			File: scanner.FileInfo{
+				Path:      filePath,
+				Name:      filepath.Base(filePath),
+				Extension: ext,
+				Dir:       filepath.Dir(filePath),
+			},
+			ID:          movie.ID,
+			IsMultiPart: fileResult.IsMultiPart,
+			PartNumber:  fileResult.PartNumber,
+			PartSuffix:  fileResult.PartSuffix,
 		}
-		matchResults := mat.Match([]scanner.FileInfo{fileInfo})
-		if len(matchResults) == 0 {
-			logging.Errorf("Could not match file: %s", filePath)
-			failed++
-			continue
-		}
-
-		match := matchResults[0]
 
 		// Organize file
 		result, err := org.OrganizeWithLinkMode(match, movie, destination, false, false, copyOnly, linkMode)
