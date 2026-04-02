@@ -152,6 +152,17 @@ func (t *BatchScrapeTask) Execute(ctx context.Context) error {
 
 	// Update job with result
 	if fileResult != nil {
+		// Preserve multipart metadata from discovery phase (for letter patterns like -A, -B)
+		// This is needed because individual file matching loses multipart context for letter patterns
+		t.job.mu.RLock()
+		if info, ok := t.job.FileMatchInfo[t.filePath]; ok {
+			fileResult.IsMultiPart = info.IsMultiPart
+			fileResult.PartNumber = info.PartNumber
+			fileResult.PartSuffix = info.PartSuffix
+			logging.Debugf("[Batch %s] File %d: Applied discovery multipart metadata: IsMultiPart=%v, PartNumber=%d, PartSuffix=%s",
+				t.job.ID, t.fileIndex, info.IsMultiPart, info.PartNumber, info.PartSuffix)
+		}
+		t.job.mu.RUnlock()
 		t.job.UpdateFileResult(t.filePath, fileResult)
 	}
 

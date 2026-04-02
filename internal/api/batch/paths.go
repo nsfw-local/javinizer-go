@@ -12,6 +12,7 @@ import (
 	"github.com/javinizer/javinizer-go/internal/logging"
 	"github.com/javinizer/javinizer-go/internal/matcher"
 	"github.com/javinizer/javinizer-go/internal/scanner"
+	"github.com/javinizer/javinizer-go/internal/worker"
 	"github.com/spf13/afero"
 )
 
@@ -141,13 +142,12 @@ func isPathWithin(path, base string) bool {
 	return strings.HasPrefix(path, base+string(os.PathSeparator)) || path == base
 }
 
-// discoverSiblingParts finds all multi-part files with the same base movie ID in the parent directories.
-// It handles two scenarios:
-// 1. User submits all parts → Groups them by movie ID and ensures completeness
-// 2. User submits some parts → Auto-discovers missing siblings from disk
-func discoverSiblingParts(files []string, fileMatcher *matcher.Matcher, cfg *config.Config) []string {
+// discoverSiblingPartsWithMetadata finds all multi-part files and returns match metadata.
+// This preserves multipart info (IsMultiPart, PartNumber, PartSuffix) from the discovery phase
+// so it's available when creating FileResults during scraping.
+func discoverSiblingPartsWithMetadata(files []string, fileMatcher *matcher.Matcher, cfg *config.Config) ([]string, map[string]worker.FileMatchInfo) {
 	if len(files) == 0 {
-		return files
+		return files, nil
 	}
 
 	// First, match all submitted files to understand what we have
@@ -169,15 +169,24 @@ func discoverSiblingParts(files []string, fileMatcher *matcher.Matcher, cfg *con
 	submittedMatches := fileMatcher.Match(fileInfos)
 
 	// Validate letter-based multipart patterns using directory context
-	// This enables correct multipart detection when user submits multiple files like ABW-121-A.mp4 + ABW-121-B.mp4
 	submittedMatches = matcher.ValidateMultipartInDirectory(submittedMatches)
 
+	// Build metadata map from submitted files
+	fileMatchInfo := make(map[string]worker.FileMatchInfo)
+	for _, match := range submittedMatches {
+		fileMatchInfo[match.File.Path] = worker.FileMatchInfo{
+			MovieID:     match.ID,
+			IsMultiPart: match.IsMultiPart,
+			PartNumber:  match.PartNumber,
+			PartSuffix:  match.PartSuffix,
+		}
+	}
+
 	// Group submitted files by movie ID and check if any are multi-part
-	movieIDsToProcess := make(map[string]bool) // movie IDs that need sibling discovery
+	movieIDsToProcess := make(map[string]bool)
 	directoriesScanned := make(map[string]bool)
 
 	for _, match := range submittedMatches {
-		// If ANY file for this movie ID is multi-part, we need to discover all siblings
 		if match.IsMultiPart {
 			movieIDsToProcess[match.ID] = true
 			logging.Debugf("Detected multi-part file: %s (movie ID: %s, part: %d)",
@@ -185,24 +194,24 @@ func discoverSiblingParts(files []string, fileMatcher *matcher.Matcher, cfg *con
 		}
 	}
 
-	// If no multi-part files detected, return original list
+	// If no multi-part files detected, return original list with metadata
 	if len(movieIDsToProcess) == 0 {
-		logging.Debugf("No multi-part files detected in submission, skipping auto-discovery")
-		return files
+		return files, fileMatchInfo
 	}
 
-	// Scan parent directories to find all siblings for multi-part movies
+	// Start with original files
 	allFiles := make([]string, 0, len(files))
-	allFiles = append(allFiles, files...) // Start with original files
+	allFiles = append(allFiles, files...)
 
+	// Scan parent directories to find all siblings for multi-part movies
 	for _, match := range submittedMatches {
 		if !movieIDsToProcess[match.ID] {
-			continue // Not a multi-part movie
+			continue
 		}
 
 		dir := match.File.Dir
 		if directoriesScanned[dir] {
-			continue // Already scanned this directory
+			continue
 		}
 		directoriesScanned[dir] = true
 
@@ -218,43 +227,26 @@ func discoverSiblingParts(files []string, fileMatcher *matcher.Matcher, cfg *con
 			continue
 		}
 
-		// Create context with timeout to prevent resource exhaustion on large directories
-		// Use minimum timeout if config is 0 or negative
+		// Create context with timeout
 		timeout := time.Duration(cfg.API.Security.ScanTimeoutSeconds) * time.Second
 		if timeout <= 0 {
 			timeout = minScanTimeout
 		}
 		scanCtx, cancelScan := context.WithTimeout(context.Background(), timeout)
 
-		// Scan the directory with resource limits (non-recursive)
+		// Scan the directory
 		result, err := scan.ScanWithLimits(scanCtx, dir, cfg.API.Security.MaxFilesPerScan)
-		cancelScan() // Immediate cleanup, not deferred
+		cancelScan()
 		if err != nil {
 			logging.Debugf("Failed to scan directory %s: %v", dir, err)
 			continue
 		}
-		if result.TimedOut {
-			effectiveSeconds := int(timeout / time.Second)
-			logging.Warnf("Directory scan timed out for %s (limit: %d seconds)",
-				dir, effectiveSeconds)
-			// Continue with partial results
-		}
-		if result.LimitReached {
-			logging.Warnf("Directory scan reached file limit for %s (limit: %d files)",
-				dir, cfg.API.Security.MaxFilesPerScan)
-			// Continue with partial results
-		}
 
 		// Match all files in the directory
 		matchResults := fileMatcher.Match(result.Files)
-
-		// Validate letter-based multipart patterns using directory context
-		// This enables detection of letter-suffix siblings (e.g., ABW-121-A.mp4, ABW-121-B.mp4)
 		matchResults = matcher.ValidateMultipartInDirectory(matchResults)
 
 		// Find siblings for the multi-part movies we're processing
-		// Note: All files in result.Files come from 'dir', which was already validated above.
-		// No need to re-validate each file's parent directory (avoids symlink race condition).
 		for _, dirMatch := range matchResults {
 			if movieIDsToProcess[dirMatch.ID] && dirMatch.IsMultiPart {
 				if !seenPaths[dirMatch.File.Path] {
@@ -270,9 +262,16 @@ func discoverSiblingParts(files []string, fileMatcher *matcher.Matcher, cfg *con
 					logging.Infof("Auto-discovered multi-part sibling: %s (movie ID: %s, part: %d)",
 						dirMatch.File.Name, dirMatch.ID, dirMatch.PartNumber)
 				}
+				// Add metadata for discovered files too
+				fileMatchInfo[dirMatch.File.Path] = worker.FileMatchInfo{
+					MovieID:     dirMatch.ID,
+					IsMultiPart: dirMatch.IsMultiPart,
+					PartNumber:  dirMatch.PartNumber,
+					PartSuffix:  dirMatch.PartSuffix,
+				}
 			}
 		}
 	}
 
-	return allFiles
+	return allFiles, fileMatchInfo
 }

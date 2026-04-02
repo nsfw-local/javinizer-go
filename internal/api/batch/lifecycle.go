@@ -49,7 +49,7 @@ func batchScrape(deps *ServerDependencies) gin.HandlerFunc {
 		}
 
 		// Auto-discover sibling multi-part files
-		allFiles := discoverSiblingParts(req.Files, deps.GetMatcher(), cfg)
+		allFiles, fileMatchInfo := discoverSiblingPartsWithMetadata(req.Files, deps.GetMatcher(), cfg)
 
 		if len(allFiles) > len(req.Files) {
 			logging.Infof("Auto-discovered %d sibling files for batch job (original: %d, total: %d)",
@@ -58,6 +58,11 @@ func batchScrape(deps *ServerDependencies) gin.HandlerFunc {
 
 		// Create job with all files (original + discovered siblings)
 		job := deps.JobQueue.CreateJob(allFiles)
+
+		// Populate file match metadata (multipart info from discovery)
+		for path, info := range fileMatchInfo {
+			job.FileMatchInfo[path] = info
+		}
 
 		// Start processing in background - use getters for thread-safe access
 		go processBatchJob(job, deps.GetRegistry(), deps.GetAggregator(), deps.MovieRepo, deps.GetMatcher(), req.Strict, req.Force, req.Update, req.Destination, deps.GetConfig(), req.SelectedScrapers, req.ScalarStrategy, req.ArrayStrategy, deps.DB)

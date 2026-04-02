@@ -43,20 +43,29 @@ type FileResult struct {
 
 // BatchJob represents a batch processing job
 type BatchJob struct {
-	ID          string                 `json:"id"`
-	Status      JobStatus              `json:"status"`
-	TotalFiles  int                    `json:"total_files"`
-	Completed   int                    `json:"completed"`
-	Failed      int                    `json:"failed"`
-	Excluded    map[string]bool        `json:"excluded"` // Files excluded from organization (keyed by file path)
-	Files       []string               `json:"files"`
-	Results     map[string]*FileResult `json:"results"` // keyed by file path
-	Progress    float64                `json:"progress"`
-	StartedAt   time.Time              `json:"started_at"`
-	CompletedAt *time.Time             `json:"completed_at,omitempty"`
-	CancelFunc  context.CancelFunc     `json:"-"`
-	Done        chan struct{}          `json:"-"` // closed when job fully finishes
-	mu          sync.RWMutex           `json:"-"`
+	ID            string                   `json:"id"`
+	Status        JobStatus                `json:"status"`
+	TotalFiles    int                      `json:"total_files"`
+	Completed     int                      `json:"completed"`
+	Failed        int                      `json:"failed"`
+	Excluded      map[string]bool          `json:"excluded"` // Files excluded from organization (keyed by file path)
+	Files         []string                 `json:"files"`
+	Results       map[string]*FileResult   `json:"results"`                   // keyed by file path
+	FileMatchInfo map[string]FileMatchInfo `json:"file_match_info,omitempty"` // Multipart metadata from discovery phase
+	Progress      float64                  `json:"progress"`
+	StartedAt     time.Time                `json:"started_at"`
+	CompletedAt   *time.Time               `json:"completed_at,omitempty"`
+	CancelFunc    context.CancelFunc       `json:"-"`
+	Done          chan struct{}            `json:"-"` // closed when job fully finishes
+	mu            sync.RWMutex             `json:"-"`
+}
+
+// FileMatchInfo stores match metadata for a file (populated during discovery)
+type FileMatchInfo struct {
+	MovieID     string `json:"movie_id"`
+	IsMultiPart bool   `json:"is_multi_part"`
+	PartNumber  int    `json:"part_number"`
+	PartSuffix  string `json:"part_suffix"`
 }
 
 // JobQueue manages batch jobs
@@ -75,14 +84,15 @@ func NewJobQueue() *JobQueue {
 // CreateJob creates a new batch job
 func (jq *JobQueue) CreateJob(files []string) *BatchJob {
 	job := &BatchJob{
-		ID:         uuid.New().String(),
-		Status:     JobStatusPending,
-		TotalFiles: len(files),
-		Files:      files,
-		Results:    make(map[string]*FileResult),
-		Excluded:   make(map[string]bool),
-		Done:       make(chan struct{}),
-		StartedAt:  time.Now(),
+		ID:            uuid.New().String(),
+		Status:        JobStatusPending,
+		TotalFiles:    len(files),
+		Files:         files,
+		Results:       make(map[string]*FileResult),
+		FileMatchInfo: make(map[string]FileMatchInfo),
+		Excluded:      make(map[string]bool),
+		Done:          make(chan struct{}),
+		StartedAt:     time.Now(),
 	}
 
 	jq.mu.Lock()
