@@ -160,6 +160,17 @@ func rescrapeBatchMovie(deps *ServerDependencies) gin.HandlerFunc {
 		// Update the job state with the rescrape result (persist the change)
 		// Note: RunBatchScrapeOnce doesn't call UpdateFileResult, so we must do it here
 		// Using GetJobPointer() above ensures we modify the real job, not a snapshot
+
+		// Preserve multipart metadata from discovery phase (for letter patterns like -A, -B)
+		// This prevents losing multipart status when rescraping letter-pattern files
+		if info, ok := job.GetFileMatchInfo(foundFilePath); ok {
+			result.IsMultiPart = info.IsMultiPart
+			result.PartNumber = info.PartNumber
+			result.PartSuffix = info.PartSuffix
+			logging.Debugf("[Rescrape] Applied discovery multipart metadata for %s: IsMultiPart=%v, PartNumber=%d",
+				foundFilePath, info.IsMultiPart, info.PartNumber)
+		}
+
 		job.UpdateFileResult(foundFilePath, result)
 
 		// Verify the update was persisted

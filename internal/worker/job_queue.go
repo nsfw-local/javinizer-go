@@ -279,6 +279,15 @@ func (job *BatchJob) AtomicUpdateFileResult(filePath string, updateFn func(*File
 	return nil
 }
 
+// GetFileMatchInfo retrieves the FileMatchInfo for a file path (thread-safe)
+// Returns the info and true if found, zero value and false if not found
+func (job *BatchJob) GetFileMatchInfo(filePath string) (FileMatchInfo, bool) {
+	job.mu.RLock()
+	defer job.mu.RUnlock()
+	info, ok := job.FileMatchInfo[filePath]
+	return info, ok
+}
+
 // MarkStarted marks the job as started
 func (job *BatchJob) MarkStarted() {
 	job.mu.Lock()
