@@ -201,6 +201,11 @@
 												</label>
 												<p class="text-xs text-muted-foreground ml-6">
 													{option.description}
+													{#if optionDisabled && option.key === 'use_browser'}
+														<span class="text-amber-600 block mt-1">⚠ Enable 'Use Browser' in global settings to use this option.</span>
+													{:else if optionDisabled && option.key === 'scrape_actress'}
+														<span class="text-amber-600 block mt-1">⚠ Enable 'Scrape Actress Information' in global settings to use this option.</span>
+													{/if}
 												</p>
 											{:else if option.type === 'select'}
 												<div class={optionDisabled ? 'opacity-60' : ''}>

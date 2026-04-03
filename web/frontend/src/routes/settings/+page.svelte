@@ -711,10 +711,20 @@
 	function isOptionDisabled(scraperName: string, optionKey: string): boolean {
 		const globalProxyEnabled = config?.scrapers?.proxy?.enabled ?? false;
 		const globalFlareSolverrEnabled = config?.scrapers?.flaresolverr?.enabled ?? false;
+		const globalBrowserEnabled = config?.scrapers?.browser?.enabled ?? false;
+		const globalScrapeActress = config?.scrapers?.scrape_actress ?? false;
 		const scraperCfg = config?.scrapers?.[scraperName] ?? {};
 
 		if (optionKey === 'use_flaresolverr') {
 			return !globalFlareSolverrEnabled;
+		}
+
+		if (optionKey === 'use_browser') {
+			return !globalBrowserEnabled;
+		}
+
+		if (optionKey === 'scrape_actress') {
+			return !globalScrapeActress;
 		}
 
 		if (optionKey.startsWith('proxy.')) {

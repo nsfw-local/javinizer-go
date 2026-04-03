@@ -13,13 +13,13 @@ func init() {
 			contracts.ScraperOption{
 				Key:         "use_browser",
 				Label:       "Use Browser",
-				Description: "Enable browser automation for this scraper. Requires global browser settings.",
+				Description: "Enable browser automation for this scraper. Requires global 'Use Browser' to be enabled.",
 				Type:        "boolean",
 			},
 			contracts.ScraperOption{
 				Key:         "scrape_actress",
 				Label:       "Scrape Actress Information",
-				Description: "Override global setting: Extract actress names and IDs",
+				Description: "Override global setting: Extract actress names and IDs. Requires global 'Scrape Actress Information' to be enabled.",
 				Type:        "boolean",
 			},
 		},
