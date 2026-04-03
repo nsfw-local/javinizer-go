@@ -36,10 +36,10 @@ func TestAuthManager_SetupLoginAndSession(t *testing.T) {
 		assert.Equal(t, os.FileMode(0o600), info.Mode().Perm())
 	}
 
-	_, err = manager.Login("admin", "wrong-password")
+	_, err = manager.Login("admin", "wrong-password", false)
 	assert.ErrorIs(t, err, ErrInvalidCredentials)
 
-	sessionID, err := manager.Login("admin", "password123")
+	sessionID, err := manager.Login("admin", "password123", false)
 	require.NoError(t, err)
 	require.NotEmpty(t, sessionID)
 
@@ -92,7 +92,7 @@ func TestAuthManager_SessionExpiry(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, manager.Setup("admin", "password123"))
 
-	sessionID, err := manager.Login("admin", "password123")
+	sessionID, err := manager.Login("admin", "password123", false)
 	require.NoError(t, err)
 
 	time.Sleep(40 * time.Millisecond)
@@ -112,9 +112,46 @@ func TestAuthManager_LoadExistingCredentialFile(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, reloaded.IsInitialized())
 
-	sessionID, err := reloaded.Login("admin", "password123")
+	sessionID, err := reloaded.Login("admin", "password123", false)
 	require.NoError(t, err)
 	require.NotEmpty(t, sessionID)
+}
+
+func TestAuthManager_RememberedSessionPersistsAcrossReload(t *testing.T) {
+	t.Parallel()
+
+	configFile := filepath.Join(t.TempDir(), "config.yaml")
+	manager, err := NewAuthManager(configFile, time.Hour)
+	require.NoError(t, err)
+	require.NoError(t, manager.Setup("admin", "password123"))
+
+	sessionID, err := manager.Login("admin", "password123", true)
+	require.NoError(t, err)
+
+	reloaded, err := NewAuthManager(configFile, time.Hour)
+	require.NoError(t, err)
+
+	username, err := reloaded.AuthenticateSession(sessionID)
+	require.NoError(t, err)
+	assert.Equal(t, "admin", username)
+}
+
+func TestAuthManager_NonRememberedSessionDoesNotPersistAcrossReload(t *testing.T) {
+	t.Parallel()
+
+	configFile := filepath.Join(t.TempDir(), "config.yaml")
+	manager, err := NewAuthManager(configFile, time.Hour)
+	require.NoError(t, err)
+	require.NoError(t, manager.Setup("admin", "password123"))
+
+	sessionID, err := manager.Login("admin", "password123", false)
+	require.NoError(t, err)
+
+	reloaded, err := NewAuthManager(configFile, time.Hour)
+	require.NoError(t, err)
+
+	_, err = reloaded.AuthenticateSession(sessionID)
+	assert.ErrorIs(t, err, ErrInvalidSession)
 }
 
 func TestAuthManager_LoadMalformedCredentialFields(t *testing.T) {
@@ -217,11 +254,11 @@ func TestAuthManager_SessionCountIsBounded(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, manager.Setup("admin", "password123"))
 
-	firstSession, err := manager.Login("admin", "password123")
+	firstSession, err := manager.Login("admin", "password123", false)
 	require.NoError(t, err)
 
 	for i := 0; i < maxActiveSessions+32; i++ {
-		_, err := manager.Login("admin", "password123")
+		_, err := manager.Login("admin", "password123", false)
 		require.NoError(t, err)
 	}
 
@@ -246,16 +283,16 @@ func TestAuthManager_LoginRateLimitAndRecovery(t *testing.T) {
 	manager.nowFn = func() time.Time { return now }
 
 	for i := 0; i < maxFailedLoginAttempts; i++ {
-		_, err := manager.Login("admin", "wrong-password")
+		_, err := manager.Login("admin", "wrong-password", false)
 		assert.ErrorIs(t, err, ErrInvalidCredentials)
 	}
 
-	_, err = manager.Login("admin", "password123")
+	_, err = manager.Login("admin", "password123", false)
 	assert.ErrorIs(t, err, ErrLoginRateLimited)
 
 	now = now.Add(loginLockoutDuration + time.Second)
 
-	sessionID, err := manager.Login("admin", "password123")
+	sessionID, err := manager.Login("admin", "password123", false)
 	require.NoError(t, err)
 	assert.NotEmpty(t, sessionID)
 }

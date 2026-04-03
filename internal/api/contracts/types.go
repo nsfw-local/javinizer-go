@@ -23,8 +23,9 @@ type AuthStatusResponse struct {
 
 // AuthCredentialsRequest represents username/password login/setup payload.
 type AuthCredentialsRequest struct {
-	Username string `json:"username" binding:"required" example:"admin"`
-	Password string `json:"password" binding:"required" example:"your-password"`
+	Username   string `json:"username" binding:"required" example:"admin"`
+	Password   string `json:"password" binding:"required" example:"your-password"`
+	RememberMe bool   `json:"remember_me,omitempty" example:"true"`
 }
 
 // ScrapeRequest represents the scrape request payload

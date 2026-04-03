@@ -11,6 +11,7 @@ import (
 
 const (
 	credentialFilename = "auth.credentials.json"
+	sessionFilename    = "auth.sessions.json"
 	minPasswordLength  = 8
 	sessionIDBytes     = 32
 	saltLength         = 16
@@ -56,8 +57,9 @@ type storedCredentials struct {
 }
 
 type sessionRecord struct {
-	Username  string
-	ExpiresAt time.Time
+	Username   string
+	ExpiresAt  time.Time
+	Persistent bool
 }
 
 type credentialFile struct {
@@ -72,10 +74,22 @@ type credentialFile struct {
 	CreatedAt string `json:"created_at,omitempty"`
 }
 
+type sessionFile struct {
+	Version  int               `json:"version"`
+	Sessions []sessionFileItem `json:"sessions"`
+}
+
+type sessionFileItem struct {
+	ID        string `json:"id"`
+	Username  string `json:"username"`
+	ExpiresAt string `json:"expires_at"`
+}
+
 // AuthManager manages single-user credentials and in-memory sessions.
 type AuthManager struct {
 	mu             sync.RWMutex
 	credentialPath string
+	sessionPath    string
 	credentials    *storedCredentials
 	sessions       map[string]sessionRecord
 	sessionTTL     time.Duration
@@ -92,6 +106,10 @@ func CredentialPathForConfig(configFile string) string {
 	return filepath.Join(filepath.Dir(configFile), credentialFilename)
 }
 
+func SessionPathForConfig(configFile string) string {
+	return filepath.Join(filepath.Dir(configFile), sessionFilename)
+}
+
 // NewAuthManager creates an auth manager and loads credentials from disk if present.
 func NewAuthManager(configFile string, sessionTTL time.Duration) (*AuthManager, error) {
 	if sessionTTL <= 0 {
@@ -100,6 +118,7 @@ func NewAuthManager(configFile string, sessionTTL time.Duration) (*AuthManager, 
 
 	manager := &AuthManager{
 		credentialPath: CredentialPathForConfig(configFile),
+		sessionPath:    SessionPathForConfig(configFile),
 		sessions:       make(map[string]sessionRecord),
 		sessionTTL:     sessionTTL,
 		nowFn:          time.Now,
@@ -109,6 +128,8 @@ func NewAuthManager(configFile string, sessionTTL time.Duration) (*AuthManager, 
 	if err := manager.loadCredentialsFromDisk(); err != nil {
 		return nil, err
 	}
+
+	manager.loadSessionsFromDisk()
 
 	return manager, nil
 }

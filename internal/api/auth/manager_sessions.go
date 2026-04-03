@@ -54,13 +54,16 @@ func (m *AuthManager) Setup(username, password string) error {
 
 	m.credentials = credentials
 	m.sessions = make(map[string]sessionRecord)
+	if err := m.writePersistentSessionsLocked(); err != nil {
+		return err
+	}
 	m.resetFailedLoginStateLocked()
 
 	return nil
 }
 
 // Login validates credentials and returns a new session ID.
-func (m *AuthManager) Login(username, password string) (string, error) {
+func (m *AuthManager) Login(username, password string, rememberMe bool) (string, error) {
 	normalizedUsername := strings.TrimSpace(username)
 
 	m.mu.Lock()
@@ -90,8 +93,16 @@ func (m *AuthManager) Login(username, password string) (string, error) {
 	m.enforceSessionLimitLocked()
 
 	m.sessions[sessionID] = sessionRecord{
-		Username:  m.credentials.Username,
-		ExpiresAt: now.Add(m.sessionTTL),
+		Username:   m.credentials.Username,
+		ExpiresAt:  now.Add(m.sessionTTL),
+		Persistent: rememberMe,
+	}
+
+	if rememberMe {
+		if err := m.writePersistentSessionsLocked(); err != nil {
+			delete(m.sessions, sessionID)
+			return "", err
+		}
 	}
 
 	return sessionID, nil
@@ -118,11 +129,17 @@ func (m *AuthManager) AuthenticateSession(sessionID string) (string, error) {
 	now := m.nowFn()
 	if now.After(session.ExpiresAt) {
 		delete(m.sessions, sessionID)
+		if session.Persistent {
+			_ = m.writePersistentSessionsLocked()
+		}
 		return "", ErrInvalidSession
 	}
 
 	if session.Username != m.credentials.Username {
 		delete(m.sessions, sessionID)
+		if session.Persistent {
+			_ = m.writePersistentSessionsLocked()
+		}
 		return "", ErrInvalidSession
 	}
 
@@ -136,7 +153,11 @@ func (m *AuthManager) Logout(sessionID string) {
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	session, ok := m.sessions[sessionID]
 	delete(m.sessions, sessionID)
+	if ok && session.Persistent {
+		_ = m.writePersistentSessionsLocked()
+	}
 }
 
 func (m *AuthManager) recordFailedLoginLocked(now time.Time) {

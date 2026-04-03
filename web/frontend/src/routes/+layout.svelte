@@ -24,6 +24,7 @@
 	let setupPasswordConfirm = $state('');
 	let loginUsername = $state('');
 	let loginPassword = $state('');
+	let loginRememberMe = $state(true);
 
 	function syncWebSocketAuthState() {
 		if (authAuthenticated) {
@@ -89,7 +90,8 @@
 		try {
 			await apiClient.loginAuth({
 				username: loginUsername,
-				password: loginPassword
+				password: loginPassword,
+				remember_me: loginRememberMe
 			});
 			loginPassword = '';
 			await refreshAuthStatus();
@@ -209,6 +211,19 @@
 							bind:value={loginPassword}
 						/>
 					</div>
+					<label class="flex items-start gap-3 rounded-md border border-border/60 bg-muted/20 px-3 py-2 text-sm">
+						<input
+							type="checkbox"
+							class="mt-0.5 rounded"
+							bind:checked={loginRememberMe}
+						/>
+						<span class="space-y-0.5">
+							<span class="block font-medium text-foreground">Remember me</span>
+							<span class="block text-xs text-muted-foreground">
+								Keep this browser signed in across browser and server restarts for the normal session lifetime.
+							</span>
+						</span>
+					</label>
 					<button
 						type="submit"
 						disabled={authSubmitting}

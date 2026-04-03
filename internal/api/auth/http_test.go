@@ -213,6 +213,77 @@ func TestAuth_LoginLogoutFlow(t *testing.T) {
 	assert.Equal(t, http.StatusOK, protectedWithNewSessionW.Code)
 }
 
+func TestAuth_LoginRememberMePersistsAcrossRestart(t *testing.T) {
+	router, deps := setupAuthenticatedTestServer(t)
+
+	setupReq := newJSONRequest(t, http.MethodPost, "/api/v1/auth/setup", map[string]string{
+		"username": "admin",
+		"password": "password123",
+	}, nil)
+	setupW := httptest.NewRecorder()
+	router.ServeHTTP(setupW, setupReq)
+	require.Equal(t, http.StatusOK, setupW.Code)
+
+	logoutReq := newJSONRequest(t, http.MethodPost, "/api/v1/auth/logout", nil, extractSessionCookie(t, setupW))
+	logoutW := httptest.NewRecorder()
+	router.ServeHTTP(logoutW, logoutReq)
+	require.Equal(t, http.StatusOK, logoutW.Code)
+
+	loginReq := newJSONRequest(t, http.MethodPost, "/api/v1/auth/login", map[string]any{
+		"username":    "admin",
+		"password":    "password123",
+		"remember_me": true,
+	}, nil)
+	loginW := httptest.NewRecorder()
+	router.ServeHTTP(loginW, loginReq)
+	require.Equal(t, http.StatusOK, loginW.Code)
+
+	sessionCookie := extractSessionCookie(t, loginW)
+	assert.Greater(t, sessionCookie.MaxAge, 0)
+
+	reloaded, err := NewAuthManager(deps.ConfigFile, time.Hour)
+	require.NoError(t, err)
+
+	username, err := reloaded.AuthenticateSession(sessionCookie.Value)
+	require.NoError(t, err)
+	assert.Equal(t, "admin", username)
+}
+
+func TestAuth_LoginWithoutRememberMeUsesEphemeralSession(t *testing.T) {
+	router, deps := setupAuthenticatedTestServer(t)
+
+	setupReq := newJSONRequest(t, http.MethodPost, "/api/v1/auth/setup", map[string]string{
+		"username": "admin",
+		"password": "password123",
+	}, nil)
+	setupW := httptest.NewRecorder()
+	router.ServeHTTP(setupW, setupReq)
+	require.Equal(t, http.StatusOK, setupW.Code)
+
+	logoutReq := newJSONRequest(t, http.MethodPost, "/api/v1/auth/logout", nil, extractSessionCookie(t, setupW))
+	logoutW := httptest.NewRecorder()
+	router.ServeHTTP(logoutW, logoutReq)
+	require.Equal(t, http.StatusOK, logoutW.Code)
+
+	loginReq := newJSONRequest(t, http.MethodPost, "/api/v1/auth/login", map[string]any{
+		"username":    "admin",
+		"password":    "password123",
+		"remember_me": false,
+	}, nil)
+	loginW := httptest.NewRecorder()
+	router.ServeHTTP(loginW, loginReq)
+	require.Equal(t, http.StatusOK, loginW.Code)
+
+	sessionCookie := extractSessionCookie(t, loginW)
+	assert.Equal(t, 0, sessionCookie.MaxAge)
+
+	reloaded, err := NewAuthManager(deps.ConfigFile, time.Hour)
+	require.NoError(t, err)
+
+	_, err = reloaded.AuthenticateSession(sessionCookie.Value)
+	assert.ErrorIs(t, err, ErrInvalidSession)
+}
+
 func TestAuth_WebSocketRequiresAuthentication(t *testing.T) {
 	router, _ := setupAuthenticatedTestServer(t)
 

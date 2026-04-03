@@ -303,6 +303,7 @@ export interface AuthStatusResponse {
 export interface AuthCredentialsRequest {
 	username: string;
 	password: string;
+	remember_me?: boolean;
 }
 
 export interface HealthResponse {

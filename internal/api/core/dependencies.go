@@ -20,7 +20,7 @@ type AuthProvider interface {
 	IsInitialized() bool
 	AuthenticateSession(sessionID string) (string, error)
 	Setup(username, password string) error
-	Login(username, password string) (string, error)
+	Login(username, password string, rememberMe bool) (string, error)
 	Logout(sessionID string)
 }
 

@@ -121,13 +121,13 @@ func setupAuth(deps *ServerDependencies) gin.HandlerFunc {
 			return
 		}
 
-		sessionID, err := deps.Auth.Login(req.Username, req.Password)
+		sessionID, err := deps.Auth.Login(req.Username, req.Password, true)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "failed to create authenticated session"})
 			return
 		}
 
-		setSessionCookie(c, sessionID, deps.Auth.SessionTTL())
+		setSessionCookie(c, sessionID, deps.Auth.SessionTTL(), true)
 		c.JSON(http.StatusOK, AuthStatusResponse{
 			Initialized:   true,
 			Authenticated: true,
@@ -149,7 +149,7 @@ func loginAuth(deps *ServerDependencies) gin.HandlerFunc {
 			return
 		}
 
-		sessionID, err := deps.Auth.Login(req.Username, req.Password)
+		sessionID, err := deps.Auth.Login(req.Username, req.Password, req.RememberMe)
 		if err != nil {
 			switch {
 			case errors.Is(err, ErrAuthNotInitialized):
@@ -164,7 +164,7 @@ func loginAuth(deps *ServerDependencies) gin.HandlerFunc {
 			return
 		}
 
-		setSessionCookie(c, sessionID, deps.Auth.SessionTTL())
+		setSessionCookie(c, sessionID, deps.Auth.SessionTTL(), req.RememberMe)
 		c.JSON(http.StatusOK, AuthStatusResponse{
 			Initialized:   true,
 			Authenticated: true,
@@ -186,7 +186,7 @@ func logoutAuth(deps *ServerDependencies) gin.HandlerFunc {
 	}
 }
 
-func setSessionCookie(c *gin.Context, sessionID string, ttl time.Duration) {
+func setSessionCookie(c *gin.Context, sessionID string, ttl time.Duration, persistent bool) {
 	secure := isSecureRequest(c.Request)
 	cookie := &http.Cookie{
 		Name:     sessionCookieName,
@@ -195,8 +195,10 @@ func setSessionCookie(c *gin.Context, sessionID string, ttl time.Duration) {
 		HttpOnly: true,
 		SameSite: http.SameSiteLaxMode,
 		Secure:   secure,
-		MaxAge:   int(ttl.Seconds()),
-		Expires:  time.Now().Add(ttl).UTC(),
+	}
+	if persistent {
+		cookie.MaxAge = int(ttl.Seconds())
+		cookie.Expires = time.Now().Add(ttl).UTC()
 	}
 	http.SetCookie(c.Writer, cookie)
 }
