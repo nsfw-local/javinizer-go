@@ -103,14 +103,6 @@ func ApplyEnvironmentOverrides(cfg *Config) {
 	if provider := os.Getenv("TRANSLATION_PROVIDER"); provider != "" {
 		cfg.Metadata.Translation.Provider = strings.ToLower(strings.TrimSpace(provider))
 	}
-
-	// Docker auto-detection
-	if len(cfg.API.Security.AllowedDirectories) == 0 {
-		if _, err := os.Stat("/media"); err == nil {
-			cfg.API.Security.AllowedDirectories = []string{"/media"}
-			logging.Debugf("Auto-detected Docker environment, setting allowed directories to [/media]")
-		}
-	}
 }
 
 // ApplyScrapeFlagOverrides applies CLI flag overrides to config
