@@ -89,7 +89,7 @@
 				<label class="block text-sm font-medium mb-2" for="translation-provider">Provider</label>
 				<select id="translation-provider" bind:value={config.metadata.translation.provider} class={inputClass}>
 					<option value="openai">OpenAI (ChatGPT)</option>
-					<option value="openai-compatible">OpenAI Compatible LLM (Ollama/vLLM/OpenRouter)</option>
+					<option value="openai_compatible">OpenAI Compatible LLM (Ollama/vLLM/OpenRouter)</option>
 					<option value="anthropic">Anthropic (Claude)</option>
 					<option value="deepl">DeepL</option>
 					<option value="google">Google Translate</option>
@@ -171,31 +171,31 @@
 				/>
 			</fieldset>
 		</SettingsSubsection>
-	{:else if config.metadata.translation?.provider === 'openai-compatible'}
+	{:else if config.metadata.translation?.provider === 'openai_compatible'}
 		<SettingsSubsection title="OpenAI Compatible LLM Provider">
 			<fieldset disabled={!translationEnabled} class={`space-y-0 ${!translationEnabled ? 'opacity-60' : ''}`}>
 				<FormTextInput
 					label="Base URL"
 					description="OpenAI-compatible API base URL (works with Ollama, vLLM, OpenRouter, and compatible services)"
-					value={config.metadata.translation?.['openai-compatible']?.base_url ?? 'http://localhost:11434/v1'}
+					value={config.metadata.translation?.['openai_compatible']?.base_url ?? 'http://localhost:11434/v1'}
 					placeholder="http://localhost:11434/v1"
 					onchange={(val) => {
 						if (!config.metadata.translation) config.metadata.translation = {};
-						if (!config.metadata.translation['openai-compatible']) config.metadata.translation['openai-compatible'] = {};
-						config.metadata.translation['openai-compatible'].base_url = val.trim();
+						if (!config.metadata.translation['openai_compatible']) config.metadata.translation['openai_compatible'] = {};
+						config.metadata.translation['openai_compatible'].base_url = val.trim();
 					}}
 				/>
 
 				<div class="py-4 border-b border-border">
 					<div class="flex items-center justify-between mb-2 gap-2">
-						<label class="block text-sm font-medium" for="translation-openai-compatible-model-select">Model</label>
+						<label class="block text-sm font-medium" for="translation-openai_compatible-model-select">Model</label>
 						<Button
 							variant="outline"
 							size="sm"
 							onclick={fetchTranslationModels}
 							disabled={
 								fetchingTranslationModels ||
-								!(config.metadata.translation?.['openai-compatible']?.base_url ?? '').trim()
+								!(config.metadata.translation?.['openai_compatible']?.base_url ?? '').trim()
 							}
 						>
 							{#snippet children()}
@@ -206,24 +206,24 @@
 					</div>
 
 					{#if translationModelOptions.length > 0}
-						<select id="translation-openai-compatible-model-select" bind:value={config.metadata.translation['openai-compatible'].model} class={inputClass}>
+						<select id="translation-openai_compatible-model-select" bind:value={config.metadata.translation['openai_compatible'].model} class={inputClass}>
 							{#each translationModelOptions as modelName}
 								<option value={modelName}>{modelName}</option>
 							{/each}
 						</select>
 						<p class="text-xs text-muted-foreground mt-1">
-							Loaded from <code>{config.metadata.translation?.['openai-compatible']?.base_url}</code>. You can still edit manually below.
+							Loaded from <code>{config.metadata.translation?.['openai_compatible']?.base_url}</code>. You can still edit manually below.
 						</p>
 					{/if}
 
 					<input
-						id="translation-openai-compatible-model-input"
+						id="translation-openai_compatible-model-input"
 						type="text"
-						value={config.metadata.translation?.['openai-compatible']?.model ?? ''}
+						value={config.metadata.translation?.['openai_compatible']?.model ?? ''}
 						oninput={(e) => {
 							if (!config.metadata.translation) config.metadata.translation = {};
-							if (!config.metadata.translation['openai-compatible']) config.metadata.translation['openai-compatible'] = {};
-							config.metadata.translation['openai-compatible'].model = e.currentTarget.value.trim();
+							if (!config.metadata.translation['openai_compatible']) config.metadata.translation['openai_compatible'] = {};
+							config.metadata.translation['openai_compatible'].model = e.currentTarget.value.trim();
 						}}
 						class="{inputClass} mt-3"
 						placeholder="llama3"
@@ -234,11 +234,11 @@
 				<FormPasswordInput
 					label="API Key (Optional)"
 					description="Not required for local endpoints like Ollama"
-					value={config.metadata.translation?.['openai-compatible']?.api_key ?? ''}
+					value={config.metadata.translation?.['openai_compatible']?.api_key ?? ''}
 					onchange={(val) => {
 						if (!config.metadata.translation) config.metadata.translation = {};
-						if (!config.metadata.translation['openai-compatible']) config.metadata.translation['openai-compatible'] = {};
-						config.metadata.translation['openai-compatible'].api_key = val;
+						if (!config.metadata.translation['openai_compatible']) config.metadata.translation['openai_compatible'] = {};
+						config.metadata.translation['openai_compatible'].api_key = val;
 					}}
 				/>
 			</fieldset>
