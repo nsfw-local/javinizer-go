@@ -27,7 +27,7 @@ var globalCheckMutex sync.Mutex
 
 // NewService creates a new update service.
 func NewService(cfg *config.Config) *Service {
-	interval := time.Duration(cfg.System.UpdateCheckIntervalHours) * time.Hour
+	interval := time.Duration(cfg.System.VersionCheckIntervalHours) * time.Hour
 	if interval <= 0 {
 		interval = DefaultCheckInterval
 	}
@@ -39,7 +39,7 @@ func NewService(cfg *config.Config) *Service {
 		store:     store,
 		statePath: runtime.UpdateStatePath(),
 		interval:  interval,
-		enabled:   cfg.System.UpdateEnabled,
+		enabled:   cfg.System.VersionCheckEnabled,
 	}
 }
 

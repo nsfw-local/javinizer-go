@@ -79,9 +79,9 @@ func WithDatabaseDSN(dsn string) ConfigOption {
 	}
 }
 
-func WithUpdateEnabled(enabled bool) ConfigOption {
+func WithVersionCheckEnabled(enabled bool) ConfigOption {
 	return func(cfg *config.Config) {
-		cfg.System.UpdateEnabled = enabled
+		cfg.System.VersionCheckEnabled = enabled
 	}
 }
 
@@ -403,7 +403,7 @@ func TestRunInfo_UpdateSection_Disabled(t *testing.T) {
 	tempDataDir := t.TempDir()
 	t.Setenv("JAVINIZER_DATA_DIR", tempDataDir)
 
-	configPath, _ := createTestConfig(t, WithUpdateEnabled(false))
+	configPath, _ := createTestConfig(t, WithVersionCheckEnabled(false))
 
 	rootCmd := &cobra.Command{Use: "root"}
 	rootCmd.PersistentFlags().String("config", configPath, "config file")
@@ -425,7 +425,7 @@ func TestRunInfo_UpdateSection_NeverChecked(t *testing.T) {
 	tempDataDir := t.TempDir()
 	t.Setenv("JAVINIZER_DATA_DIR", tempDataDir)
 
-	configPath, _ := createTestConfig(t, WithUpdateEnabled(true))
+	configPath, _ := createTestConfig(t, WithVersionCheckEnabled(true))
 
 	rootCmd := &cobra.Command{Use: "root"}
 	rootCmd.PersistentFlags().String("config", configPath, "config file")
@@ -447,7 +447,7 @@ func TestRunInfo_UpdateSection_CachedState(t *testing.T) {
 	tempDataDir := t.TempDir()
 	t.Setenv("JAVINIZER_DATA_DIR", tempDataDir)
 
-	configPath, _ := createTestConfig(t, WithUpdateEnabled(true))
+	configPath, _ := createTestConfig(t, WithVersionCheckEnabled(true))
 
 	checkedAt := time.Now().UTC().Format(time.RFC3339)
 	statePath := filepath.Join(tempDataDir, "update_cache.json")
@@ -484,7 +484,7 @@ func TestRunInfo_UpdateSection_PrereleaseWarning(t *testing.T) {
 		t.Skip("current build version is prerelease; warning path requires stable current version")
 	}
 
-	configPath, _ := createTestConfig(t, WithUpdateEnabled(true))
+	configPath, _ := createTestConfig(t, WithVersionCheckEnabled(true))
 
 	statePath := filepath.Join(tempDataDir, "update_cache.json")
 	err := update.SaveStateToFile(statePath, &update.UpdateState{
@@ -554,7 +554,7 @@ func TestRunInfo_WriteFailures_Exhaustive(t *testing.T) {
 	tempDataDir := t.TempDir()
 	t.Setenv("JAVINIZER_DATA_DIR", tempDataDir)
 
-	configPath, _ := createTestConfig(t, WithUpdateEnabled(true))
+	configPath, _ := createTestConfig(t, WithVersionCheckEnabled(true))
 
 	// First run: count total writes for this command path.
 	countWriter := &countOnlyWriter{}

@@ -254,10 +254,10 @@ func DefaultConfig() *Config {
 			CLITimeout: 30,
 		},
 		System: SystemConfig{
-			Umask:                    "002",
-			UpdateEnabled:            true,
-			UpdateCheckIntervalHours: 24,
-			TempDir:                  "data/temp",
+			Umask:                     "002",
+			VersionCheckEnabled:       true,
+			VersionCheckIntervalHours: 24,
+			TempDir:                   "data/temp",
 		},
 	}
 }

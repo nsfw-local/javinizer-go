@@ -78,8 +78,8 @@ func TestVersionCommand_CheckHonorsJAVINIZER_CONFIG(t *testing.T) {
 	cfgPath := filepath.Join(tmpDir, "config.yaml")
 	configText := `config_version: 3
 system:
-  update_enabled: false
-  update_check_interval_hours: 24
+  version_check_enabled: false
+  version_check_interval_hours: 24
 `
 	require.NoError(t, os.WriteFile(cfgPath, []byte(configText), 0644))
 	t.Setenv("JAVINIZER_CONFIG", cfgPath)
@@ -103,8 +103,8 @@ func TestVersionCommand_CheckReturnsStderrWriteError(t *testing.T) {
 	cfgPath := filepath.Join(tmpDir, "config.yaml")
 	configText := `config_version: 3
 system:
-  update_enabled: true
-  update_check_interval_hours: 24
+  version_check_enabled: true
+  version_check_interval_hours: 24
 `
 	require.NoError(t, os.WriteFile(cfgPath, []byte(configText), 0644))
 	t.Setenv("JAVINIZER_CONFIG", cfgPath)

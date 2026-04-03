@@ -86,8 +86,8 @@ system:
 	require.NoError(t, err)
 	assert.Equal(t, CurrentConfigVersion, cfg.ConfigVersion)
 	// Legacy configs are reset to defaults, so user settings are not preserved
-	assert.Equal(t, DefaultConfig().System.UpdateEnabled, cfg.System.UpdateEnabled)
-	assert.Equal(t, DefaultConfig().System.UpdateCheckIntervalHours, cfg.System.UpdateCheckIntervalHours)
+	assert.Equal(t, DefaultConfig().System.VersionCheckEnabled, cfg.System.VersionCheckEnabled)
+	assert.Equal(t, DefaultConfig().System.VersionCheckIntervalHours, cfg.System.VersionCheckIntervalHours)
 
 	saved, err := os.ReadFile(cfgPath)
 	require.NoError(t, err)

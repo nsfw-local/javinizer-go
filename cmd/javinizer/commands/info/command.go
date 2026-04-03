@@ -98,10 +98,10 @@ func printUpdateStatus(cmd *cobra.Command, cfg *config.Config) error {
 	if _, err := fmt.Fprintf(cmd.OutOrStdout(), "  - Current version: %s\n", version.Short()); err != nil {
 		return err
 	}
-	if _, err := fmt.Fprintf(cmd.OutOrStdout(), "  - Update enabled: %v\n", cfg.System.UpdateEnabled); err != nil {
+	if _, err := fmt.Fprintf(cmd.OutOrStdout(), "  - Update enabled: %v\n", cfg.System.VersionCheckEnabled); err != nil {
 		return err
 	}
-	if _, err := fmt.Fprintf(cmd.OutOrStdout(), "  - Check interval: %d hours\n", cfg.System.UpdateCheckIntervalHours); err != nil {
+	if _, err := fmt.Fprintf(cmd.OutOrStdout(), "  - Check interval: %d hours\n", cfg.System.VersionCheckIntervalHours); err != nil {
 		return err
 	}
 

@@ -33,7 +33,7 @@ func TestVersionStatus(t *testing.T) {
 		t.Setenv("JAVINIZER_DATA_DIR", tempDataDir)
 
 		cfg := config.DefaultConfig()
-		cfg.System.UpdateEnabled = false
+		cfg.System.VersionCheckEnabled = false
 
 		deps := &ServerDependencies{}
 		deps.SetConfig(cfg)
@@ -61,7 +61,7 @@ func TestVersionStatus(t *testing.T) {
 		t.Setenv("JAVINIZER_DATA_DIR", tempDataDir)
 
 		cfg := config.DefaultConfig()
-		cfg.System.UpdateEnabled = true
+		cfg.System.VersionCheckEnabled = true
 
 		deps := &ServerDependencies{}
 		deps.SetConfig(cfg)
@@ -101,7 +101,7 @@ func TestVersionStatus(t *testing.T) {
 		require.NoError(t, update.SaveStateToFile(statePath, state))
 
 		cfg := config.DefaultConfig()
-		cfg.System.UpdateEnabled = true
+		cfg.System.VersionCheckEnabled = true
 
 		deps := &ServerDependencies{}
 		deps.SetConfig(cfg)
@@ -132,7 +132,7 @@ func TestVersionCheck_Disabled(t *testing.T) {
 	t.Setenv("JAVINIZER_DATA_DIR", tempDataDir)
 
 	cfg := config.DefaultConfig()
-	cfg.System.UpdateEnabled = false
+	cfg.System.VersionCheckEnabled = false
 
 	deps := &ServerDependencies{}
 	deps.SetConfig(cfg)

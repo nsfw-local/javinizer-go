@@ -82,10 +82,10 @@ type SystemConfig struct {
 	// Umask for file creation (e.g., "002" for rwxrwxr-x)
 	// Can be overridden with UMASK environment variable
 	Umask string `yaml:"umask" json:"umask"`
-	// UpdateEnabled enables checking for new releases
-	UpdateEnabled bool `yaml:"update_enabled" json:"update_enabled"`
-	// UpdateCheckIntervalHours is the interval between update checks in hours
-	UpdateCheckIntervalHours int `yaml:"update_check_interval_hours" json:"update_check_interval_hours"`
+	// VersionCheckEnabled enables checking for new releases
+	VersionCheckEnabled bool `yaml:"version_check_enabled" json:"version_check_enabled"`
+	// VersionCheckIntervalHours is the interval between version checks in hours
+	VersionCheckIntervalHours int `yaml:"version_check_interval_hours" json:"version_check_interval_hours"`
 	// TempDir is the base directory for temporary files (default: "data/temp").
 	// Can be overridden with JAVINIZER_TEMP_DIR environment variable.
 	// Subdirectory "posters/{jobID}" is created for batch job temp posters.
@@ -284,8 +284,8 @@ func (c *Config) Validate() error {
 
 	// Validate update settings
 	// Allow 0 to mean "use default" (handled by DefaultConfig and migrations)
-	if c.System.UpdateCheckIntervalHours != 0 && (c.System.UpdateCheckIntervalHours < 1 || c.System.UpdateCheckIntervalHours > 168) {
-		return fmt.Errorf("system.update_check_interval_hours must be between 1 and 168 (1 week), or 0 for default")
+	if c.System.VersionCheckIntervalHours != 0 && (c.System.VersionCheckIntervalHours < 1 || c.System.VersionCheckIntervalHours > 168) {
+		return fmt.Errorf("system.version_check_interval_hours must be between 1 and 168 (1 week), or 0 for default")
 	}
 
 	return nil

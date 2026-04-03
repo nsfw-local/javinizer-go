@@ -2847,13 +2847,13 @@
                     "description": "Umask for file creation (e.g., \"002\" for rwxrwxr-x)\nCan be overridden with UMASK environment variable",
                     "type": "string"
                 },
-                "update_check_interval_hours": {
-                    "description": "UpdateCheckIntervalHours is the interval between update checks in hours",
-                    "type": "integer"
-                },
-                "update_enabled": {
-                    "description": "UpdateEnabled enables checking for new releases",
+                "version_check_enabled": {
+                    "description": "VersionCheckEnabled enables checking for new releases",
                     "type": "boolean"
+                },
+                "version_check_interval_hours": {
+                    "description": "VersionCheckIntervalHours is the interval between version checks in hours",
+                    "type": "integer"
                 }
             }
         },
