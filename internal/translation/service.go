@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"strings"
 	"sync"
+	"time"
 
 	"golang.org/x/sync/errgroup"
 	"golang.org/x/sync/semaphore"
@@ -215,9 +216,10 @@ func (s *Service) translateTexts(ctx context.Context, sourceLang, targetLang str
 }
 
 type openAIChatRequest struct {
-	Model       string              `json:"model"`
-	Temperature float64             `json:"temperature"`
-	Messages    []openAIChatMessage `json:"messages"`
+	Model              string              `json:"model"`
+	Temperature        float64             `json:"temperature"`
+	Messages           []openAIChatMessage `json:"messages"`
+	ChatTemplateKwargs map[string]any      `json:"chat_template_kwargs,omitempty"`
 }
 
 type openAIChatMessage struct {
@@ -338,6 +340,7 @@ func (s *Service) translateWithOpenAICompatible(ctx context.Context, sourceLang,
 			{Role: "system", Content: systemPrompt},
 			{Role: "user", Content: "Translate this JSON array of strings: " + string(payloadBytes)},
 		},
+		ChatTemplateKwargs: map[string]any{"enable_thinking": false},
 	}
 
 	body, err := json.Marshal(requestBody)
@@ -347,6 +350,7 @@ func (s *Service) translateWithOpenAICompatible(ctx context.Context, sourceLang,
 
 	logging.Debugf("Translation (openai-compatible): POST %s model=%s texts=%d", baseURL+"/chat/completions", model, len(texts))
 	logging.Debugf("Translation (openai-compatible): system prompt: %s", systemPrompt)
+	logging.Debugf("Translation (openai-compatible): input: %s", string(payloadBytes))
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, baseURL+"/chat/completions", bytes.NewReader(body))
 	if err != nil {
@@ -357,10 +361,13 @@ func (s *Service) translateWithOpenAICompatible(ctx context.Context, sourceLang,
 	}
 	req.Header.Set("Content-Type", "application/json")
 
+	logging.Debugf("Translation (openai-compatible): sending request...")
+	start := time.Now()
 	resp, err := s.httpClient.Do(req)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("openai-compatible request failed after %v: %w", time.Since(start), err)
 	}
+	logging.Debugf("Translation (openai-compatible): response received in %v (status %d)", time.Since(start), resp.StatusCode)
 	defer func() { _ = resp.Body.Close() }()
 
 	respBody, err := io.ReadAll(resp.Body)
@@ -370,6 +377,8 @@ func (s *Service) translateWithOpenAICompatible(ctx context.Context, sourceLang,
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return nil, fmt.Errorf("openai-compatible translation failed with status %d: %s", resp.StatusCode, string(respBody))
 	}
+
+	logging.Debugf("Translation (openai-compatible): response: %s", string(respBody))
 
 	var decoded openAIChatResponse
 	if err := json.Unmarshal(respBody, &decoded); err != nil {
