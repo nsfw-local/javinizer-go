@@ -74,6 +74,12 @@ func ApplyEnvironmentOverrides(cfg *Config) {
 	if googleKey := os.Getenv("GOOGLE_TRANSLATE_API_KEY"); googleKey != "" {
 		cfg.Metadata.Translation.Google.APIKey = strings.TrimSpace(googleKey)
 	}
+	if openAICompatibleKey := os.Getenv("OPENAI_COMPATIBLE_API_KEY"); openAICompatibleKey != "" {
+		cfg.Metadata.Translation.OpenAICompatible.APIKey = strings.TrimSpace(openAICompatibleKey)
+	}
+	if anthropicKey := os.Getenv("ANTHROPIC_API_KEY"); anthropicKey != "" {
+		cfg.Metadata.Translation.Anthropic.APIKey = strings.TrimSpace(anthropicKey)
+	}
 
 	// Translation provider settings (separate from credentials)
 	if provider := os.Getenv("METADATA_TRANSLATION_PROVIDER"); provider != "" {

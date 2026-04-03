@@ -367,8 +367,28 @@ func (c *Config) validateTranslationConfig() error {
 				return err
 			}
 		}
+	case "openai-compatible":
+		if strings.TrimSpace(t.OpenAICompatible.BaseURL) == "" {
+			return fmt.Errorf("metadata.translation.openai_compatible.base_url is required when provider=openai-compatible")
+		}
+		if err := validateHTTPBaseURL("metadata.translation.openai_compatible.base_url", t.OpenAICompatible.BaseURL); err != nil {
+			return err
+		}
+		if strings.TrimSpace(t.OpenAICompatible.Model) == "" {
+			return fmt.Errorf("metadata.translation.openai_compatible.model is required when provider=openai-compatible")
+		}
+	case "anthropic":
+		if strings.TrimSpace(t.Anthropic.BaseURL) == "" {
+			return fmt.Errorf("metadata.translation.anthropic.base_url is required when provider=anthropic")
+		}
+		if err := validateHTTPBaseURL("metadata.translation.anthropic.base_url", t.Anthropic.BaseURL); err != nil {
+			return err
+		}
+		if strings.TrimSpace(t.Anthropic.Model) == "" {
+			return fmt.Errorf("metadata.translation.anthropic.model is required when provider=anthropic")
+		}
 	default:
-		return fmt.Errorf("metadata.translation.provider must be one of: openai, deepl, google")
+		return fmt.Errorf("metadata.translation.provider must be one of: openai, openai-compatible, anthropic, deepl, google")
 	}
 
 	// REGV-04: Validate API key presence at config time
@@ -385,6 +405,12 @@ func (c *Config) validateTranslationConfig() error {
 		// Google free mode doesn't require API key; paid mode does
 		if googleMode == "paid" && strings.TrimSpace(t.Google.APIKey) == "" {
 			return fmt.Errorf("metadata.translation.google.api_key is required when provider=google and mode=paid")
+		}
+	case "openai-compatible":
+		// API key is optional for self-hosted endpoints
+	case "anthropic":
+		if strings.TrimSpace(t.Anthropic.APIKey) == "" {
+			return fmt.Errorf("metadata.translation.anthropic.api_key is required when provider=anthropic")
 		}
 	}
 
