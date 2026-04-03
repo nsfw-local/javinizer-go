@@ -33,6 +33,8 @@ import (
 	_ "github.com/javinizer/javinizer-go/internal/scraper/mgstage"
 	_ "github.com/javinizer/javinizer-go/internal/scraper/r18dev"
 	_ "github.com/javinizer/javinizer-go/internal/scraper/tokyohot"
+
+	_ "github.com/javinizer/javinizer-go/internal/config/migrations"
 )
 
 // MockScraper is a mock scraper for testing
