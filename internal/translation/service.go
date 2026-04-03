@@ -249,11 +249,7 @@ func (s *Service) translateWithOpenAI(ctx context.Context, sourceLang, targetLan
 		model = "gpt-4o-mini"
 	}
 
-	systemPrompt := "You are a translation engine. Translate each input item to the requested target language. Preserve order and return ONLY a valid JSON array of translated strings."
-	if sourceLang != "auto" {
-		systemPrompt += " Source language: " + sourceLang + "."
-	}
-	systemPrompt += " Target language: " + targetLang + "."
+	systemPrompt := fmt.Sprintf("You are a translation engine. Translate each input item to the requested target language. Preserve order and return ONLY a single valid JSON array of translated strings. Do NOT split into multiple arrays. Do NOT add any text outside the JSON array. Source language: %s. Target language: %s.", sourceLang, targetLang)
 
 	payloadBytes, err := json.Marshal(texts)
 	if err != nil {
@@ -322,11 +318,7 @@ func (s *Service) translateWithOpenAICompatible(ctx context.Context, sourceLang,
 		return nil, fmt.Errorf("openai-compatible model is required")
 	}
 
-	systemPrompt := "You are a translation engine. Translate each input item to the requested target language. Preserve order and return ONLY a valid JSON array of translated strings."
-	if sourceLang != "auto" {
-		systemPrompt += " Source language: " + sourceLang + "."
-	}
-	systemPrompt += " Target language: " + targetLang + "."
+	systemPrompt := fmt.Sprintf("You are a translation engine. Translate each input item to the requested target language. Preserve order and return ONLY a single valid JSON array of translated strings. Do NOT split into multiple arrays. Do NOT add any text outside the JSON array. Source language: %s. Target language: %s.", sourceLang, targetLang)
 
 	payloadBytes, err := json.Marshal(texts)
 	if err != nil {
@@ -408,11 +400,7 @@ func (s *Service) translateWithAnthropic(ctx context.Context, sourceLang, target
 		model = "claude-sonnet-4-20250514"
 	}
 
-	systemPrompt := "You are a translation engine. Translate each input item to the requested target language. Preserve order and return ONLY a valid JSON array of translated strings."
-	if sourceLang != "auto" {
-		systemPrompt += " Source language: " + sourceLang + "."
-	}
-	systemPrompt += " Target language: " + targetLang + "."
+	systemPrompt := fmt.Sprintf("You are a translation engine. Translate each input item to the requested target language. Preserve order and return ONLY a single valid JSON array of translated strings. Do NOT split into multiple arrays. Do NOT add any text outside the JSON array. Source language: %s. Target language: %s.", sourceLang, targetLang)
 
 	payloadBytes, err := json.Marshal(texts)
 	if err != nil {
@@ -820,15 +808,60 @@ func parseStringArrayPayload(payload string) ([]string, error) {
 	cleaned = strings.TrimSuffix(cleaned, "```")
 	cleaned = strings.TrimSpace(cleaned)
 
-	start := strings.Index(cleaned, "[")
-	end := strings.LastIndex(cleaned, "]")
-	if start >= 0 && end > start {
-		cleaned = cleaned[start : end+1]
+	var out []string
+	pos := 0
+	for pos < len(cleaned) {
+		start := strings.Index(cleaned[pos:], "[")
+		if start < 0 {
+			break
+		}
+		start += pos
+
+		depth := 0
+		end := -1
+		inString := false
+		escaped := false
+		for i := start; i < len(cleaned); i++ {
+			ch := cleaned[i]
+			if escaped {
+				escaped = false
+				continue
+			}
+			if ch == '\\' && inString {
+				escaped = true
+				continue
+			}
+			if ch == '"' {
+				inString = !inString
+				continue
+			}
+			if inString {
+				continue
+			}
+			if ch == '[' {
+				depth++
+			} else if ch == ']' {
+				depth--
+				if depth == 0 {
+					end = i
+					break
+				}
+			}
+		}
+
+		if end < 0 {
+			break
+		}
+
+		var arr []string
+		if err := json.Unmarshal([]byte(cleaned[start:end+1]), &arr); err == nil {
+			out = append(out, arr...)
+		}
+		pos = end + 1
 	}
 
-	var out []string
-	if err := json.Unmarshal([]byte(cleaned), &out); err != nil {
-		return nil, fmt.Errorf("failed to parse translated output payload: %w", err)
+	if len(out) == 0 {
+		return nil, fmt.Errorf("failed to parse translated output payload: no valid JSON arrays found")
 	}
 	return out, nil
 }
