@@ -182,12 +182,6 @@
 													</p>
 												</div>
 											</div>
-
-											{#if !(config.scrapers?.proxy?.enabled ?? false)}
-												<p class="text-xs text-amber-600">
-													Global proxy is currently disabled. "Inherit Global Proxy" will behave as direct until enabled.
-												</p>
-											{/if}
 										</div>
 									{/if}
 
