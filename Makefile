@@ -1,4 +1,4 @@
-.PHONY: help build run run-api run-api-dev test test-short test-race test-verbose bench clean clean-all deps install web-dev web-build web-preview web-install web-clean
+.PHONY: help build run run-api run-api-dev test test-short test-race test-verbose bench clean clean-all deps install web-dev web-build web-preview web-install web-clean web-restore-placeholder
 .PHONY: coverage coverage-fast coverage-html coverage-check coverage-func ci simulate-ci
 .PHONY: fmt lint vet swagger docs mocks
 .PHONY: build-cli-linux build-cli-darwin build-cli-windows build-cli-all
@@ -48,7 +48,8 @@ help:
 	@echo "Web Frontend:"
 	@echo "  make web-install        - Install npm dependencies"
 	@echo "  make web-dev            - Start dev server with hot reload"
-	@echo "  make web-build          - Build frontend and sync to web/dist"
+	@echo "  make web-build          - Build frontend bundle"
+	@echo "  make web-restore-placeholder - Restore tracked web/dist placeholder files"
 	@echo "  make web-preview        - Preview production build"
 	@echo "  make web-clean          - Clean node_modules and build artifacts"
 	@echo ""
@@ -95,7 +96,7 @@ LDFLAGS_RELEASE := -ldflags "\
 # Build the application (single binary with embedded web UI and version info)
 build: web-build
 	@echo "Building javinizer $(VERSION) (commit: $(COMMIT))..."
-	go build $(LDFLAGS) -o bin/javinizer ./cmd/javinizer
+	./scripts/with_embedded_web.sh go build $(LDFLAGS) -o bin/javinizer ./cmd/javinizer
 
 # Run the CLI (primary target)
 run:
@@ -195,8 +196,8 @@ deps:
 	go mod tidy
 
 # Install the binary
-install:
-	go build $(LDFLAGS) -o $(GOPATH)/bin/javinizer ./cmd/javinizer
+install: web-build
+	./scripts/with_embedded_web.sh go build $(LDFLAGS) -o $(GOPATH)/bin/javinizer ./cmd/javinizer
 
 # Format code
 fmt:
@@ -257,9 +258,11 @@ web-dev:
 
 web-build:
 	cd web/frontend && npm run build
+
+web-restore-placeholder:
 	rm -rf web/dist
 	mkdir -p web/dist
-	cp -R web/frontend/build/. web/dist/
+	cp -R web/placeholder/. web/dist/
 
 web-preview:
 	cd web/frontend && npm run preview
@@ -274,19 +277,19 @@ web-clean:
 # CLI Binary Build Targets (for multi-platform releases)
 # ============================================================================
 
-build-cli-linux:
+build-cli-linux: web-build
 	@echo "Building CLI for Linux (amd64) - $(VERSION)..."
-	CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build $(LDFLAGS_RELEASE) -o bin/javinizer-linux-amd64 ./cmd/javinizer
+	CGO_ENABLED=1 GOOS=linux GOARCH=amd64 ./scripts/with_embedded_web.sh go build $(LDFLAGS_RELEASE) -o bin/javinizer-linux-amd64 ./cmd/javinizer
 
-build-cli-darwin:
+build-cli-darwin: web-build
 	@echo "Building CLI for macOS - $(VERSION)..."
-	CGO_ENABLED=1 GOOS=darwin GOARCH=amd64 go build $(LDFLAGS_RELEASE) -o bin/javinizer-darwin-amd64 ./cmd/javinizer
-	CGO_ENABLED=1 GOOS=darwin GOARCH=arm64 go build $(LDFLAGS_RELEASE) -o bin/javinizer-darwin-arm64 ./cmd/javinizer
+	CGO_ENABLED=1 GOOS=darwin GOARCH=amd64 ./scripts/with_embedded_web.sh go build $(LDFLAGS_RELEASE) -o bin/javinizer-darwin-amd64 ./cmd/javinizer
+	CGO_ENABLED=1 GOOS=darwin GOARCH=arm64 ./scripts/with_embedded_web.sh go build $(LDFLAGS_RELEASE) -o bin/javinizer-darwin-arm64 ./cmd/javinizer
 	lipo -create bin/javinizer-darwin-amd64 bin/javinizer-darwin-arm64 -output bin/javinizer-darwin-universal
 
-build-cli-windows:
+build-cli-windows: web-build
 	@echo "Building CLI for Windows - $(VERSION)..."
-	CGO_ENABLED=1 GOOS=windows GOARCH=amd64 go build $(LDFLAGS_RELEASE) -o bin/javinizer-windows-amd64.exe ./cmd/javinizer
+	CGO_ENABLED=1 GOOS=windows GOARCH=amd64 ./scripts/with_embedded_web.sh go build $(LDFLAGS_RELEASE) -o bin/javinizer-windows-amd64.exe ./cmd/javinizer
 
 build-cli-all: build-cli-linux build-cli-darwin build-cli-windows
 	@echo "All CLI binaries built successfully!"
