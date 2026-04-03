@@ -60,6 +60,9 @@ func mergeTranslationFields(current, incoming models.MovieTranslation) models.Mo
 	if incoming.SourceName != "" {
 		merged.SourceName = incoming.SourceName
 	}
+	if incoming.SettingsHash != "" {
+		merged.SettingsHash = incoming.SettingsHash
+	}
 
 	return merged
 }

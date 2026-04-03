@@ -79,6 +79,7 @@ func setupTestDB(t *testing.T) (string, *database.DB) {
 
 	// Create temp config file with in-memory database
 	configContent := `
+config_version: 3
 database:
   dsn: ":memory:"
 scrapers:
@@ -277,6 +278,7 @@ func TestRun_CustomScrapers_OverridesMetadataPriority(t *testing.T) {
 	}
 
 	configContent := `
+config_version: 3
 database:
   dsn: ":memory:"
 scrapers:

@@ -157,6 +157,35 @@ func Run(cmd *cobra.Command, args []string, configFile string, deps *commandutil
 	if !usingCustomScrapers && !forceRefresh {
 		if movie, err := movieRepo.FindByID(id); err == nil {
 			logging.Info("✅ Found in cache!")
+
+			// Check if translation needs to be re-applied due to settings change
+			if cfg.Metadata.Translation.Enabled {
+				currentHash := cfg.Metadata.Translation.SettingsHash()
+				targetLang := cfg.Metadata.Translation.TargetLanguage
+
+				// Check if we have a translation matching current settings
+				hasValidTranslation := false
+				for _, trans := range movie.Translations {
+					if trans.Language == targetLang && trans.SettingsHash == currentHash {
+						hasValidTranslation = true
+						break
+					}
+				}
+
+				// If no valid translation found, re-translate
+				if !hasValidTranslation {
+					logging.Infof("🔄 Translation settings changed, re-translating...")
+					agg.ApplyConfiguredTranslation(movie)
+
+					// Save updated movie with new translation
+					if err := movieRepo.Upsert(movie); err != nil {
+						logging.Warnf("Failed to save re-translated movie: %v", err)
+					} else {
+						logging.Info("💾 Updated translation in database")
+					}
+				}
+			}
+
 			return movie, nil, nil
 		}
 	}

@@ -2,10 +2,23 @@ package scrape_test
 
 import (
 	"bytes"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"os"
 	"testing"
 
 	"github.com/javinizer/javinizer-go/cmd/javinizer/commands/scrape"
+	"github.com/javinizer/javinizer-go/internal/commandutil"
+	"github.com/javinizer/javinizer-go/internal/config"
+	"github.com/javinizer/javinizer-go/internal/database"
+	"github.com/javinizer/javinizer-go/internal/models"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	// Register scraper defaults for NormalizeScraperConfigs
+	_ "github.com/javinizer/javinizer-go/internal/scraper/dmm"
+	_ "github.com/javinizer/javinizer-go/internal/scraper/r18dev"
 )
 
 // Tests
@@ -206,4 +219,208 @@ func TestScrapeCommand_CanBeInstantiated(t *testing.T) {
 	assert.NotNil(t, cmd)
 	assert.Equal(t, "scrape [id]", cmd.Use)
 	assert.NotNil(t, cmd.RunE, "RunE should be set")
+}
+
+func TestRun_CacheHit_HashMismatch(t *testing.T) {
+	if testing.Short() {
+		t.Skip("integration test")
+	}
+
+	// Setup mock OpenAI server
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// OpenAI expects content to be a JSON array string
+		response := map[string]interface{}{
+			"choices": []map[string]interface{}{
+				{
+					"message": map[string]interface{}{
+						"content": json.RawMessage(`["New Translation Title"]`),
+					},
+				},
+			},
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(response)
+	}))
+	defer server.Close()
+
+	// Create temp config file with NEW translation settings (gpt-4)
+	configContent := `
+config_version: 3
+database:
+  dsn: ":memory:"
+scrapers:
+  priority: ["mock"]
+  dmm:
+    enabled: true
+  r18dev:
+    enabled: true
+metadata:
+  translation:
+    enabled: true
+    provider: openai
+    source_language: ja
+    target_language: en
+    fields:
+      title: true
+    openai:
+      model: gpt-4
+      api_key: test-key
+      base_url: ` + server.URL + `
+  priority:
+    id: ["mock"]
+    content_id: ["mock"]
+    title: ["mock"]
+    description: ["mock"]
+matching:
+  extensions: [".mp4"]
+  regex_enabled: false
+`
+	tmpFile := t.TempDir() + "/config.yaml"
+	require.NoError(t, os.WriteFile(tmpFile, []byte(configContent), 0644))
+
+	// Load config and create database
+	cfg, err := config.Load(tmpFile)
+	require.NoError(t, err)
+	db, err := database.New(cfg)
+	require.NoError(t, err)
+	defer db.Close()
+	require.NoError(t, db.AutoMigrate())
+
+	// Create cached movie with OLD translation (different hash - gpt-3.5-turbo)
+	oldConfig := config.TranslationConfig{
+		Provider:       "openai",
+		TargetLanguage: "en",
+		OpenAI:         config.OpenAITranslationConfig{Model: "gpt-3.5-turbo"},
+	}
+	oldHash := oldConfig.SettingsHash()
+
+	cachedMovie := &models.Movie{
+		ContentID: "test001",
+		ID:        "TEST-001",
+		Title:     "Cached Title",
+		Translations: []models.MovieTranslation{
+			{
+				Language:     "en",
+				Title:        "Old Translation",
+				SettingsHash: oldHash,
+				SourceName:   "translation-service",
+			},
+		},
+	}
+	movieRepo := database.NewMovieRepository(db)
+	require.NoError(t, movieRepo.Create(cachedMovie))
+
+	// Setup command and dependencies
+	cmd := scrape.NewCommand()
+	registry := models.NewScraperRegistry()
+	deps, err := commandutil.NewDependenciesWithOptions(cfg, &commandutil.DependenciesOptions{
+		DB:              db,
+		ScraperRegistry: registry,
+	})
+	require.NoError(t, err)
+	defer func() { _ = deps.Close() }()
+
+	// Run scrape - should hit cache, detect hash mismatch, re-translate
+	movie, results, err := scrape.Run(cmd, []string{"TEST-001"}, tmpFile, deps)
+
+	require.NoError(t, err)
+	assert.NotNil(t, movie)
+	assert.Nil(t, results) // Cache hit returns nil results
+
+	// Verify: should have updated the translation (replaced old with new)
+	assert.Len(t, movie.Translations, 1, "should replace old translation with new one")
+
+	// Verify translation has NEW hash
+	newHash := cfg.Metadata.Translation.SettingsHash()
+	assert.Equal(t, newHash, movie.Translations[0].SettingsHash, "should have new hash")
+	assert.Equal(t, "en", movie.Translations[0].Language)
+	assert.Equal(t, "New Translation Title", movie.Translations[0].Title)
+}
+
+func TestRun_CacheHit_HashMatch(t *testing.T) {
+	if testing.Short() {
+		t.Skip("integration test")
+	}
+
+	// Create temp config file
+	configContent := `
+config_version: 3
+database:
+  dsn: ":memory:"
+scrapers:
+  priority: ["mock"]
+  dmm:
+    enabled: true
+  r18dev:
+    enabled: true
+metadata:
+  translation:
+    enabled: true
+    provider: openai
+    source_language: ja
+    target_language: en
+    fields:
+      title: true
+    openai:
+      model: gpt-4
+      api_key: test-key
+  priority:
+    id: ["mock"]
+    content_id: ["mock"]
+    title: ["mock"]
+    description: ["mock"]
+matching:
+  extensions: [".mp4"]
+  regex_enabled: false
+`
+	tmpFile := t.TempDir() + "/config.yaml"
+	require.NoError(t, os.WriteFile(tmpFile, []byte(configContent), 0644))
+
+	// Load config and create database
+	cfg, err := config.Load(tmpFile)
+	require.NoError(t, err)
+	db, err := database.New(cfg)
+	require.NoError(t, err)
+	defer db.Close()
+	require.NoError(t, db.AutoMigrate())
+
+	// Create cached movie with MATCHING hash
+	matchingHash := cfg.Metadata.Translation.SettingsHash()
+
+	cachedMovie := &models.Movie{
+		ContentID: "test002",
+		ID:        "TEST-002",
+		Title:     "Cached Title",
+		Translations: []models.MovieTranslation{
+			{
+				Language:     "en",
+				Title:        "Cached Translation",
+				SettingsHash: matchingHash,
+				SourceName:   "translation-service",
+			},
+		},
+	}
+	movieRepo := database.NewMovieRepository(db)
+	require.NoError(t, movieRepo.Create(cachedMovie))
+
+	// Setup command and dependencies
+	cmd := scrape.NewCommand()
+	registry := models.NewScraperRegistry()
+	deps, err := commandutil.NewDependenciesWithOptions(cfg, &commandutil.DependenciesOptions{
+		DB:              db,
+		ScraperRegistry: registry,
+	})
+	require.NoError(t, err)
+	defer func() { _ = deps.Close() }()
+
+	// Run scrape - should hit cache, hash matches, NO re-translation
+	movie, results, err := scrape.Run(cmd, []string{"TEST-002"}, tmpFile, deps)
+
+	require.NoError(t, err)
+	assert.NotNil(t, movie)
+	assert.Nil(t, results) // Cache hit
+
+	// Verify: should have only 1 translation (no new one added)
+	assert.Len(t, movie.Translations, 1, "should NOT add duplicate translation")
+	assert.Equal(t, matchingHash, movie.Translations[0].SettingsHash)
 }
