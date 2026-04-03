@@ -18,12 +18,10 @@ api:
             - http://127.0.0.1:5173
 
         # Allowed directories for API file operations (organize, preview, etc.)
-        # SECURITY: Empty list = deny all (secure by default)
-        # Docker deployments: add /media for containerized setups
-        # Manual deployments: add your media library path(s) below
+        # Default is current working directory. For Docker, use /media
+        # Add your media library paths here
         allowed_directories:
-            - /media
-            - ./media
+            - .
 
         # Explicitly deny specific directories (optional)
         denied_directories: []
@@ -38,6 +36,13 @@ system:
     # 022 = rwxr-xr-x (only owner can write, others can read)
     # Can be overridden with UMASK environment variable
     umask: "002"
+    # Enable automatic version checking (notifications only, no auto-update)
+    version_check_enabled: true
+    # Interval between version checks in hours (default: 24)
+    version_check_interval_hours: 24
+    # Base directory for temporary files (posters, etc.)
+    # Can be overridden with JAVINIZER_TEMP_DIR environment variable
+    temp_dir: data/temp
 scrapers:
     user_agent: Javinizer (+https://github.com/javinizer/Javinizer)
     # Referer header for CDN compatibility (required by DMM/R18 CDN)
@@ -112,7 +117,7 @@ scrapers:
         max_retries: 3               # Retry up to 3 times on rate limit (429)
         respect_retry_after: true    # Respect Retry-After header from server
     dmm:
-        enabled: true
+        enabled: false
         use_browser: true                # Enable browser for DMM streaming pages
         # scrape_actress: null          # Optional: inherit from global (true)
         # Or override: scrape_actress: false
@@ -121,7 +126,7 @@ scrapers:
         user_agent: ""
         use_flaresolverr: false
     libredmm:
-        enabled: true
+        enabled: false
         request_delay: 500
         base_url: "https://www.libredmm.com"
     mgstage:
@@ -322,6 +327,10 @@ metadata:
             api_key: ""               # Optional for local/self-hosted endpoints
             model: ""
             enable_thinking: false    # Automatically mapped to backend-specific thinking controls when supported
+        anthropic:
+            base_url: https://api.anthropic.com
+            api_key: ""               # Required when provider=anthropic (set via ANTHROPIC_API_KEY env var)
+            model: claude-sonnet-4-20250514
 
     # Genres to ignore/filter out. Supports both exact strings and regex patterns.
     # Patterns starting with ^, ending with $, or containing regex metacharacters are treated as regex.
