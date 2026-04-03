@@ -2539,6 +2539,10 @@ const docTemplate = `{
                     "description": "e.g., http://localhost:11434/v1",
                     "type": "string"
                 },
+                "enable_thinking": {
+                    "description": "Toggle reasoning/thinking when supported by the backend",
+                    "type": "boolean"
+                },
                 "model": {
                     "description": "e.g., llama3.1",
                     "type": "string"
@@ -2928,7 +2932,7 @@ const docTemplate = `{
                     "type": "boolean"
                 },
                 "provider": {
-                    "description": "openai, deepl, google",
+                    "description": "openai, openai-compatible, anthropic, deepl, google",
                     "type": "string"
                 },
                 "source_language": {

@@ -975,8 +975,9 @@
 
 	async function fetchTranslationModels() {
 		const provider = config?.metadata?.translation?.provider;
-		const baseUrl = config?.metadata?.translation?.[provider]?.base_url;
-		const apiKey = config?.metadata?.translation?.[provider]?.api_key;
+		const configKey = provider === 'openai-compatible' ? 'openai_compatible' : provider;
+		const baseUrl = config?.metadata?.translation?.[configKey]?.base_url;
+		const apiKey = config?.metadata?.translation?.[configKey]?.api_key;
 
 		fetchingTranslationModels = true;
 		try {

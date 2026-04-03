@@ -194,4 +194,29 @@ func TestTranslationConfig_SettingsHash(t *testing.T) {
 
 		assert.Equal(t, cfg1.SettingsHash(), cfg2.SettingsHash(), "language case should not affect hash")
 	})
+
+	t.Run("different hash for openai-compatible thinking toggle", func(t *testing.T) {
+		thinkingDisabled := false
+		thinkingEnabled := true
+
+		cfg1 := TranslationConfig{
+			Provider:       "openai-compatible",
+			TargetLanguage: "en",
+			OpenAICompatible: OpenAICompatibleTranslationConfig{
+				Model:          "qwen3",
+				EnableThinking: &thinkingDisabled,
+			},
+		}
+
+		cfg2 := TranslationConfig{
+			Provider:       "openai-compatible",
+			TargetLanguage: "en",
+			OpenAICompatible: OpenAICompatibleTranslationConfig{
+				Model:          "qwen3",
+				EnableThinking: &thinkingEnabled,
+			},
+		}
+
+		assert.NotEqual(t, cfg1.SettingsHash(), cfg2.SettingsHash(), "thinking toggle should affect hash")
+	})
 }

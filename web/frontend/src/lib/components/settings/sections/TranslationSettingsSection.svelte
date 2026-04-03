@@ -89,7 +89,7 @@
 				<label class="block text-sm font-medium mb-2" for="translation-provider">Provider</label>
 				<select id="translation-provider" bind:value={config.metadata.translation.provider} class={inputClass}>
 					<option value="openai">OpenAI (ChatGPT)</option>
-					<option value="openai_compatible">OpenAI Compatible LLM (Ollama/vLLM/OpenRouter)</option>
+					<option value="openai-compatible">OpenAI Compatible LLM (Ollama/vLLM/OpenRouter)</option>
 					<option value="anthropic">Anthropic (Claude)</option>
 					<option value="deepl">DeepL</option>
 					<option value="google">Google Translate</option>
@@ -171,7 +171,7 @@
 				/>
 			</fieldset>
 		</SettingsSubsection>
-	{:else if config.metadata.translation?.provider === 'openai_compatible'}
+	{:else if config.metadata.translation?.provider === 'openai-compatible'}
 		<SettingsSubsection title="OpenAI Compatible LLM Provider">
 			<fieldset disabled={!translationEnabled} class={`space-y-0 ${!translationEnabled ? 'opacity-60' : ''}`}>
 				<FormTextInput
@@ -241,6 +241,18 @@
 						config.metadata.translation['openai_compatible'].api_key = val;
 					}}
 				/>
+
+				<FormToggle
+					label="Enable thinking"
+					description="Automatically maps to backend-specific reasoning controls for supported OpenAI-compatible engines like vLLM, Ollama, and llama.cpp"
+					checked={config.metadata.translation?.['openai_compatible']?.enable_thinking ?? false}
+					onchange={(val) => {
+						if (!config.metadata.translation) config.metadata.translation = {};
+						if (!config.metadata.translation['openai_compatible']) config.metadata.translation['openai_compatible'] = {};
+						config.metadata.translation['openai_compatible'].enable_thinking = val;
+					}}
+				/>
+				
 			</fieldset>
 		</SettingsSubsection>
 	{:else if config.metadata.translation?.provider === 'anthropic'}

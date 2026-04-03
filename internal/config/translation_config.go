@@ -31,7 +31,7 @@ type MetadataConfig struct {
 // TranslationConfig holds metadata translation settings.
 type TranslationConfig struct {
 	Enabled                 bool                              `yaml:"enabled" json:"enabled"`                                     // Enable metadata translation after aggregation
-	Provider                string                            `yaml:"provider" json:"provider"`                                   // openai, deepl, google
+	Provider                string                            `yaml:"provider" json:"provider"`                                   // openai, openai-compatible, anthropic, deepl, google
 	SourceLanguage          string                            `yaml:"source_language" json:"source_language"`                     // Source language code (e.g., en, ja, auto)
 	TargetLanguage          string                            `yaml:"target_language" json:"target_language"`                     // Target language code (e.g., en, ja, zh)
 	TimeoutSeconds          int                               `yaml:"timeout_seconds" json:"timeout_seconds"`                     // Request timeout in seconds
@@ -82,9 +82,11 @@ type GoogleTranslationConfig struct {
 // OpenAICompatibleTranslationConfig holds settings for self-hosted or third-party
 // OpenAI-compatible translation endpoints (Ollama, vLLM, LM Studio, OpenRouter, etc.).
 type OpenAICompatibleTranslationConfig struct {
-	BaseURL string `yaml:"base_url" json:"base_url"` // e.g., http://localhost:11434/v1
-	APIKey  string `yaml:"api_key" json:"api_key"`   // Optional for local endpoints
-	Model   string `yaml:"model" json:"model"`       // e.g., llama3.1
+	BaseURL        string `yaml:"base_url" json:"base_url"`                         // e.g., http://localhost:11434/v1
+	APIKey         string `yaml:"api_key" json:"api_key"`                           // Optional for local endpoints
+	Model          string `yaml:"model" json:"model"`                               // e.g., llama3.1
+	EnableThinking *bool  `yaml:"enable_thinking" json:"enable_thinking,omitempty"` // Toggle reasoning/thinking when supported by the backend
+	BackendType    string `yaml:"backend_type,omitempty" json:"backend_type,omitempty" swaggerignore:"true"`
 }
 
 // AnthropicTranslationConfig holds Anthropic (Claude) translation settings.
@@ -165,6 +167,7 @@ func (tc *TranslationConfig) SettingsHash() string {
 		hashInput.OpenAIModel = tc.OpenAI.Model
 	case "openai_compatible", "openai-compatible":
 		hashInput.OpenAICompatibleModel = tc.OpenAICompatible.Model
+		hashInput.OpenAICompatibleEnableThinking = tc.OpenAICompatible.EffectiveEnableThinking()
 	case "anthropic":
 		hashInput.AnthropicModel = tc.Anthropic.Model
 	case "deepl":
@@ -189,15 +192,40 @@ func (tc *TranslationConfig) SettingsHash() string {
 // settingsHashInput is a simplified struct for hash computation.
 // Only includes settings that affect translation output.
 type settingsHashInput struct {
-	Provider                string                  `json:"provider"`
-	SourceLanguage          string                  `json:"source_language"`
-	TargetLanguage          string                  `json:"target_language"`
-	ApplyToPrimary          bool                    `json:"apply_to_primary"`
-	OverwriteExistingTarget bool                    `json:"overwrite_existing_target"`
-	Fields                  TranslationFieldsConfig `json:"fields"`
-	OpenAIModel             string                  `json:"openai_model,omitempty"`
-	OpenAICompatibleModel   string                  `json:"openai_compatible_model,omitempty"`
-	AnthropicModel          string                  `json:"anthropic_model,omitempty"`
-	DeepLMode               string                  `json:"deepl_mode,omitempty"`
-	GoogleMode              string                  `json:"google_mode,omitempty"`
+	Provider                       string                  `json:"provider"`
+	SourceLanguage                 string                  `json:"source_language"`
+	TargetLanguage                 string                  `json:"target_language"`
+	ApplyToPrimary                 bool                    `json:"apply_to_primary"`
+	OverwriteExistingTarget        bool                    `json:"overwrite_existing_target"`
+	Fields                         TranslationFieldsConfig `json:"fields"`
+	OpenAIModel                    string                  `json:"openai_model,omitempty"`
+	OpenAICompatibleModel          string                  `json:"openai_compatible_model,omitempty"`
+	OpenAICompatibleEnableThinking bool                    `json:"openai_compatible_enable_thinking,omitempty"`
+	AnthropicModel                 string                  `json:"anthropic_model,omitempty"`
+	DeepLMode                      string                  `json:"deepl_mode,omitempty"`
+	GoogleMode                     string                  `json:"google_mode,omitempty"`
+}
+
+func (oc OpenAICompatibleTranslationConfig) EffectiveEnableThinking() bool {
+	if oc.EnableThinking == nil {
+		return false
+	}
+	return *oc.EnableThinking
+}
+
+func (oc OpenAICompatibleTranslationConfig) NormalizedBackendType() string {
+	switch strings.ToLower(strings.TrimSpace(oc.BackendType)) {
+	case "", "auto":
+		return ""
+	case "vllm":
+		return "vllm"
+	case "ollama":
+		return "ollama"
+	case "llama.cpp", "llamacpp", "llama_cpp":
+		return "llama.cpp"
+	case "other", "generic":
+		return "other"
+	default:
+		return strings.ToLower(strings.TrimSpace(oc.BackendType))
+	}
 }

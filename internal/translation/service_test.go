@@ -1647,6 +1647,74 @@ func TestTranslateMovie_TranslationCountMismatch(t *testing.T) {
 	}
 }
 
+func TestTranslateTexts_RetryOnLLMCountMismatch(t *testing.T) {
+	t.Run("openai-compatible retries and succeeds after mismatch", func(t *testing.T) {
+		requestCount := 0
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			requestCount++
+			content := `["too-many","items"]`
+			if requestCount == 2 {
+				content = `["translated"]`
+			}
+			response := map[string]interface{}{
+				"choices": []map[string]interface{}{
+					{
+						"message": map[string]string{
+							"content": content,
+						},
+					},
+				},
+			}
+			_ = json.NewEncoder(w).Encode(response)
+		}))
+		defer server.Close()
+
+		s := New(config.TranslationConfig{
+			Provider: "openai-compatible",
+			OpenAICompatible: config.OpenAICompatibleTranslationConfig{
+				BaseURL: server.URL,
+				Model:   "test-model",
+			},
+		})
+
+		result, err := s.translateTexts(context.Background(), "ja", "en", []string{"test"})
+		require.NoError(t, err)
+		assert.Equal(t, []string{"translated"}, result)
+		assert.Equal(t, 2, requestCount)
+	})
+
+	t.Run("openai-compatible stops after max retries", func(t *testing.T) {
+		requestCount := 0
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			requestCount++
+			response := map[string]interface{}{
+				"choices": []map[string]interface{}{
+					{
+						"message": map[string]string{
+							"content": `["too-many","items"]`,
+						},
+					},
+				},
+			}
+			_ = json.NewEncoder(w).Encode(response)
+		}))
+		defer server.Close()
+
+		s := New(config.TranslationConfig{
+			Provider: "openai-compatible",
+			OpenAICompatible: config.OpenAICompatibleTranslationConfig{
+				BaseURL: server.URL,
+				Model:   "test-model",
+			},
+		})
+
+		_, err := s.translateTexts(context.Background(), "ja", "en", []string{"test"})
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "translation provider returned 2 items for 1 inputs")
+		assert.Equal(t, maxTranslationRetries, requestCount)
+	})
+}
+
 // =============================================================================
 // Malformed response tests
 // =============================================================================
@@ -2082,11 +2150,6 @@ func TestParseStringArrayPayload_EdgeCases(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name:    "nested array extracts inner strings via fallback",
-			input:   `[["nested"]]`,
-			wantErr: false,
-		},
-		{
 			name:    "escaped quotes in strings",
 			input:   `["hello \"world\"","test"]`,
 			wantErr: false,
@@ -2297,6 +2360,230 @@ func TestTranslateWithOpenAICompatible(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestTranslateWithOpenAICompatible_UsesCompactMarkerPromptAndResponse(t *testing.T) {
+	var capturedBody map[string]interface{}
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&capturedBody)
+		response := map[string]interface{}{
+			"choices": []map[string]interface{}{
+				{
+					"message": map[string]string{
+						"content": `<<<JZ_0>>>
+Karen
+<<<JZ_1>>>
+She says "It's forceful..." but looks happy while being teased.
+`,
+					},
+				},
+			},
+		}
+		_ = json.NewEncoder(w).Encode(response)
+	}))
+	defer server.Close()
+
+	s := New(config.TranslationConfig{
+		Provider:       "openai-compatible",
+		TargetLanguage: "en",
+		SourceLanguage: "ja",
+		OpenAICompatible: config.OpenAICompatibleTranslationConfig{
+			BaseURL: server.URL,
+			Model:   "llama3",
+		},
+	})
+
+	result, err := s.translateTexts(context.Background(), "ja", "en", []string{"かれん", "強引って言いながら嬉しそう"})
+	require.NoError(t, err)
+	assert.Equal(t, []string{
+		"Karen",
+		`She says "It's forceful..." but looks happy while being teased.`,
+	}, result)
+
+	messages := capturedBody["messages"].([]interface{})
+	require.Len(t, messages, 2)
+
+	systemPrompt := messages[0].(map[string]interface{})["content"].(string)
+	userPrompt := messages[1].(map[string]interface{})["content"].(string)
+
+	assert.Contains(t, systemPrompt, "Do not use JSON")
+	assert.Contains(t, userPrompt, "Translate this JSON array of strings:")
+	assert.Contains(t, userPrompt, "<<<JZ_0>>>")
+	assert.Contains(t, userPrompt, "<<<JZ_1>>>")
+	assert.NotContains(t, userPrompt, "<<<JAVINIZER_INPUT_0>>>")
+}
+
+func TestTranslateWithOpenAICompatible_ThinkingControls(t *testing.T) {
+	t.Run("vllm uses chat_template_kwargs", func(t *testing.T) {
+		var capturedBody map[string]interface{}
+		thinkingEnabled := false
+
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			require.NoError(t, json.NewDecoder(r.Body).Decode(&capturedBody))
+			response := map[string]interface{}{
+				"choices": []map[string]interface{}{
+					{
+						"message": map[string]string{
+							"content": `<<<JZ_0>>>
+translated
+`,
+						},
+					},
+				},
+			}
+			_ = json.NewEncoder(w).Encode(response)
+		}))
+		defer server.Close()
+
+		s := New(config.TranslationConfig{
+			Provider: "openai-compatible",
+			OpenAICompatible: config.OpenAICompatibleTranslationConfig{
+				BaseURL:        server.URL,
+				Model:          "test-model",
+				EnableThinking: &thinkingEnabled,
+				BackendType:    "vllm",
+			},
+		})
+
+		result, err := s.translateTexts(context.Background(), "ja", "en", []string{"test"})
+		require.NoError(t, err)
+		assert.Equal(t, []string{"translated"}, result)
+
+		assert.NotContains(t, capturedBody, "reasoning_effort")
+		assert.NotContains(t, capturedBody, "enable_thinking")
+		kwargs := capturedBody["chat_template_kwargs"].(map[string]interface{})
+		assert.Equal(t, false, kwargs["enable_thinking"])
+		assert.Equal(t, false, kwargs["thinking"])
+	})
+
+	t.Run("ollama uses reasoning_effort", func(t *testing.T) {
+		var capturedBody map[string]interface{}
+		thinkingEnabled := true
+
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			require.NoError(t, json.NewDecoder(r.Body).Decode(&capturedBody))
+			response := map[string]interface{}{
+				"choices": []map[string]interface{}{
+					{
+						"message": map[string]string{
+							"content": `<<<JZ_0>>>
+translated
+`,
+						},
+					},
+				},
+			}
+			_ = json.NewEncoder(w).Encode(response)
+		}))
+		defer server.Close()
+
+		s := New(config.TranslationConfig{
+			Provider: "openai-compatible",
+			OpenAICompatible: config.OpenAICompatibleTranslationConfig{
+				BaseURL:        server.URL,
+				Model:          "test-model",
+				EnableThinking: &thinkingEnabled,
+				BackendType:    "ollama",
+			},
+		})
+
+		result, err := s.translateTexts(context.Background(), "ja", "en", []string{"test"})
+		require.NoError(t, err)
+		assert.Equal(t, []string{"translated"}, result)
+
+		assert.Equal(t, "medium", capturedBody["reasoning_effort"])
+		assert.NotContains(t, capturedBody, "chat_template_kwargs")
+		assert.NotContains(t, capturedBody, "enable_thinking")
+	})
+
+	t.Run("llama.cpp uses enable_thinking field", func(t *testing.T) {
+		var capturedBody map[string]interface{}
+		thinkingEnabled := false
+
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			require.NoError(t, json.NewDecoder(r.Body).Decode(&capturedBody))
+			response := map[string]interface{}{
+				"choices": []map[string]interface{}{
+					{
+						"message": map[string]string{
+							"content": `<<<JZ_0>>>
+translated
+`,
+						},
+					},
+				},
+			}
+			_ = json.NewEncoder(w).Encode(response)
+		}))
+		defer server.Close()
+
+		s := New(config.TranslationConfig{
+			Provider: "openai-compatible",
+			OpenAICompatible: config.OpenAICompatibleTranslationConfig{
+				BaseURL:        server.URL,
+				Model:          "test-model.gguf",
+				EnableThinking: &thinkingEnabled,
+				BackendType:    "llama.cpp",
+			},
+		})
+
+		result, err := s.translateTexts(context.Background(), "ja", "en", []string{"test"})
+		require.NoError(t, err)
+		assert.Equal(t, []string{"translated"}, result)
+
+		assert.Equal(t, false, capturedBody["enable_thinking"])
+		assert.NotContains(t, capturedBody, "chat_template_kwargs")
+		assert.NotContains(t, capturedBody, "reasoning_effort")
+	})
+
+	t.Run("auto fallback tries another backend control", func(t *testing.T) {
+		requestKinds := make([]string, 0, 2)
+		thinkingEnabled := false
+
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			var body map[string]interface{}
+			require.NoError(t, json.NewDecoder(r.Body).Decode(&body))
+
+			switch {
+			case body["chat_template_kwargs"] != nil:
+				requestKinds = append(requestKinds, "chat_template_kwargs")
+				w.WriteHeader(http.StatusBadRequest)
+				_, _ = w.Write([]byte(`{"error":"unknown field chat_template_kwargs"}`))
+			case body["reasoning_effort"] != nil:
+				requestKinds = append(requestKinds, "reasoning_effort")
+				response := map[string]interface{}{
+					"choices": []map[string]interface{}{
+						{
+							"message": map[string]string{
+								"content": `<<<JZ_0>>>
+translated
+`,
+							},
+						},
+					},
+				}
+				_ = json.NewEncoder(w).Encode(response)
+			default:
+				t.Fatalf("unexpected request body: %#v", body)
+			}
+		}))
+		defer server.Close()
+
+		s := New(config.TranslationConfig{
+			Provider: "openai-compatible",
+			OpenAICompatible: config.OpenAICompatibleTranslationConfig{
+				BaseURL:        server.URL,
+				Model:          "test-model",
+				EnableThinking: &thinkingEnabled,
+			},
+		})
+
+		result, err := s.translateTexts(context.Background(), "ja", "en", []string{"test"})
+		require.NoError(t, err)
+		assert.Equal(t, []string{"translated"}, result)
+		assert.Equal(t, []string{"chat_template_kwargs", "reasoning_effort"}, requestKinds)
+	})
 }
 
 // =============================================================================

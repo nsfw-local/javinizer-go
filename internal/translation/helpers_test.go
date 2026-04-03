@@ -385,6 +385,12 @@ func TestParseStringArrayPayload(t *testing.T) {
 			wantErr:  true,
 		},
 		{
+			name:     "malformed json string array",
+			input:    `["Karen","She says "It's forceful..." but looks happy"]`,
+			expected: nil,
+			wantErr:  true,
+		},
+		{
 			name:     "empty strings in array",
 			input:    `["hello","","world"]`,
 			expected: []string{"hello", "", "world"},
@@ -414,12 +420,6 @@ func TestParseStringArrayPayload(t *testing.T) {
 			expected: nil,
 			wantErr:  true,
 		},
-		{
-			name:     "nested array extracts inner strings via fallback",
-			input:    `[["nested"]]`,
-			expected: []string{"nested"},
-			wantErr:  false,
-		},
 	}
 
 	for _, tt := range tests {
@@ -435,6 +435,28 @@ func TestParseStringArrayPayload(t *testing.T) {
 			assert.Equal(t, tt.expected, got)
 		})
 	}
+}
+
+func TestParseLLMTranslationPayload(t *testing.T) {
+	t.Run("parses compact marked output with embedded quotes", func(t *testing.T) {
+		input := `<<<JZ_0>>>
+Karen
+<<<JZ_1>>>
+She says "It's forceful..." but looks happy while being teased.`
+
+		got, err := parseLLMTranslationPayload(input, 2)
+		require.NoError(t, err)
+		assert.Equal(t, []string{
+			"Karen",
+			`She says "It's forceful..." but looks happy while being teased.`,
+		}, got)
+	})
+
+	t.Run("falls back to json array payload", func(t *testing.T) {
+		got, err := parseLLMTranslationPayload(`["hello","world"]`, 2)
+		require.NoError(t, err)
+		assert.Equal(t, []string{"hello", "world"}, got)
+	})
 }
 
 // =============================================================================

@@ -374,6 +374,14 @@ func (c *Config) validateTranslationConfig() error {
 		if err := validateHTTPBaseURL("metadata.translation.openai_compatible.base_url", t.OpenAICompatible.BaseURL); err != nil {
 			return err
 		}
+		if strings.TrimSpace(t.OpenAICompatible.Model) == "" {
+			return fmt.Errorf("metadata.translation.openai_compatible.model is required when provider=openai-compatible")
+		}
+		switch t.OpenAICompatible.NormalizedBackendType() {
+		case "", "vllm", "ollama", "llama.cpp", "other":
+		default:
+			return fmt.Errorf("metadata.translation.openai_compatible.backend_type must be one of: auto, vllm, ollama, llama.cpp, other")
+		}
 	case "anthropic":
 		if strings.TrimSpace(t.Anthropic.BaseURL) == "" {
 			return fmt.Errorf("metadata.translation.anthropic.base_url is required when provider=anthropic")

@@ -211,6 +211,7 @@ func (s *Service) translateTexts(ctx context.Context, sourceLang, targetLang str
 
 	var lastResult *translationResult
 	var lastErr error
+	expectedCount := len(texts)
 
 	for attempt := 1; attempt <= maxTranslationRetries; attempt++ {
 		var result *translationResult
@@ -231,7 +232,15 @@ func (s *Service) translateTexts(ctx context.Context, sourceLang, targetLang str
 			return nil, fmt.Errorf("unsupported translation provider: %s", provider)
 		}
 
-		if err == nil && result != nil && len(result.texts) > 0 {
+		if err == nil {
+			if result == nil {
+				err = fmt.Errorf("translation provider returned no result")
+			} else if len(result.texts) != expectedCount {
+				err = fmt.Errorf("translation provider returned %d items for %d inputs", len(result.texts), expectedCount)
+			}
+		}
+
+		if err == nil && result != nil {
 			return result.texts, nil
 		}
 
@@ -263,6 +272,9 @@ func isRetryableError(err error, result *translationResult) bool {
 	if err == nil {
 		return result != nil && len(result.texts) == 0 && result.rawLLM != ""
 	}
+	if strings.Contains(err.Error(), "translation provider returned") {
+		return result != nil && result.rawLLM != ""
+	}
 	return strings.Contains(err.Error(), "failed to parse") ||
 		strings.Contains(err.Error(), "no valid JSON arrays found")
 }
@@ -272,6 +284,8 @@ type openAIChatRequest struct {
 	Temperature        float64             `json:"temperature"`
 	Messages           []openAIChatMessage `json:"messages"`
 	ChatTemplateKwargs map[string]any      `json:"chat_template_kwargs,omitempty"`
+	ReasoningEffort    string              `json:"reasoning_effort,omitempty"`
+	EnableThinking     *bool               `json:"enable_thinking,omitempty"`
 }
 
 type openAIChatMessage struct {
@@ -285,6 +299,238 @@ type openAIChatResponse struct {
 			Content json.RawMessage `json:"content"`
 		} `json:"message"`
 	} `json:"choices"`
+}
+
+type openAICompatibleThinkingStrategy string
+
+const (
+	openAICompatibleThinkingStrategyChatTemplateKwargs openAICompatibleThinkingStrategy = "chat_template_kwargs"
+	openAICompatibleThinkingStrategyReasoningEffort    openAICompatibleThinkingStrategy = "reasoning_effort"
+	openAICompatibleThinkingStrategyEnableThinking     openAICompatibleThinkingStrategy = "enable_thinking"
+	openAICompatibleThinkingStrategyNone               openAICompatibleThinkingStrategy = "none"
+)
+
+type openAIChatCallOptions struct {
+	provider  string
+	baseURL   string
+	endpoint  string
+	model     string
+	headers   map[string]string
+	request   openAIChatRequest
+	textCount int
+	logInput  bool
+	logTiming bool
+}
+
+func buildLLMTranslationPrompts(sourceLang, targetLang string, texts []string) (string, string, error) {
+	systemPrompt := fmt.Sprintf("You are a translation engine. Translate each input item to the requested target language. Preserve order and return ONLY the indexed output markers in ascending order. Do not use JSON. Do not add commentary. Do not omit any index. Keep each translation on a single logical line; if needed, replace internal newlines with spaces. Source language: %s. Target language: %s.", sourceLang, targetLang)
+
+	payloadBytes, err := json.Marshal(texts)
+	if err != nil {
+		return "", "", err
+	}
+
+	var userPrompt strings.Builder
+	userPrompt.WriteString("Translate this JSON array of strings: ")
+	userPrompt.Write(payloadBytes)
+	userPrompt.WriteString("\nReturn output in this exact pattern:\n")
+	for i := range texts {
+		userPrompt.WriteString(translationCompactOutputMarker(i))
+		userPrompt.WriteString("\ntranslated text\n")
+	}
+
+	return systemPrompt, strings.TrimSpace(userPrompt.String()), nil
+}
+
+func translationCompactOutputMarker(i int) string {
+	return fmt.Sprintf("<<<JZ_%d>>>", i)
+}
+
+func buildOpenAICompatibleThinkingStrategies(baseURL, model string, cfg config.OpenAICompatibleTranslationConfig) []openAICompatibleThinkingStrategy {
+	switch cfg.NormalizedBackendType() {
+	case "vllm":
+		return []openAICompatibleThinkingStrategy{
+			openAICompatibleThinkingStrategyChatTemplateKwargs,
+			openAICompatibleThinkingStrategyReasoningEffort,
+			openAICompatibleThinkingStrategyEnableThinking,
+			openAICompatibleThinkingStrategyNone,
+		}
+	case "ollama":
+		return []openAICompatibleThinkingStrategy{
+			openAICompatibleThinkingStrategyReasoningEffort,
+			openAICompatibleThinkingStrategyChatTemplateKwargs,
+			openAICompatibleThinkingStrategyEnableThinking,
+			openAICompatibleThinkingStrategyNone,
+		}
+	case "llama.cpp":
+		return []openAICompatibleThinkingStrategy{
+			openAICompatibleThinkingStrategyEnableThinking,
+			openAICompatibleThinkingStrategyChatTemplateKwargs,
+			openAICompatibleThinkingStrategyReasoningEffort,
+			openAICompatibleThinkingStrategyNone,
+		}
+	case "other":
+		return []openAICompatibleThinkingStrategy{
+			openAICompatibleThinkingStrategyChatTemplateKwargs,
+			openAICompatibleThinkingStrategyReasoningEffort,
+			openAICompatibleThinkingStrategyEnableThinking,
+			openAICompatibleThinkingStrategyNone,
+		}
+	}
+
+	switch {
+	case looksLikeOllamaBaseURL(baseURL):
+		return []openAICompatibleThinkingStrategy{
+			openAICompatibleThinkingStrategyReasoningEffort,
+			openAICompatibleThinkingStrategyChatTemplateKwargs,
+			openAICompatibleThinkingStrategyEnableThinking,
+			openAICompatibleThinkingStrategyNone,
+		}
+	case looksLikeLlamaCppBackend(baseURL, model):
+		return []openAICompatibleThinkingStrategy{
+			openAICompatibleThinkingStrategyEnableThinking,
+			openAICompatibleThinkingStrategyChatTemplateKwargs,
+			openAICompatibleThinkingStrategyReasoningEffort,
+			openAICompatibleThinkingStrategyNone,
+		}
+	default:
+		return []openAICompatibleThinkingStrategy{
+			openAICompatibleThinkingStrategyChatTemplateKwargs,
+			openAICompatibleThinkingStrategyReasoningEffort,
+			openAICompatibleThinkingStrategyEnableThinking,
+			openAICompatibleThinkingStrategyNone,
+		}
+	}
+}
+
+func looksLikeOllamaBaseURL(baseURL string) bool {
+	parsed, err := url.Parse(strings.TrimSpace(baseURL))
+	if err != nil {
+		return false
+	}
+
+	host := strings.ToLower(parsed.Host)
+	return strings.Contains(host, "ollama") || strings.HasSuffix(host, ":11434")
+}
+
+func looksLikeLlamaCppBackend(baseURL, model string) bool {
+	parsed, err := url.Parse(strings.TrimSpace(baseURL))
+	if err == nil {
+		host := strings.ToLower(parsed.Host)
+		path := strings.ToLower(parsed.Path)
+		if strings.Contains(host, "llama") || strings.Contains(path, "llama") {
+			return true
+		}
+	}
+
+	model = strings.ToLower(strings.TrimSpace(model))
+	return strings.Contains(model, ".gguf") || strings.Contains(model, "gguf")
+}
+
+func applyOpenAICompatibleThinkingStrategy(base openAIChatRequest, strategy openAICompatibleThinkingStrategy, enabled bool) openAIChatRequest {
+	req := base
+	req.ChatTemplateKwargs = nil
+	req.ReasoningEffort = ""
+	req.EnableThinking = nil
+
+	switch strategy {
+	case openAICompatibleThinkingStrategyChatTemplateKwargs:
+		req.ChatTemplateKwargs = map[string]any{
+			"enable_thinking": enabled,
+			"thinking":        enabled,
+		}
+	case openAICompatibleThinkingStrategyReasoningEffort:
+		if enabled {
+			req.ReasoningEffort = "medium"
+		} else {
+			req.ReasoningEffort = "none"
+		}
+	case openAICompatibleThinkingStrategyEnableThinking:
+		req.EnableThinking = &enabled
+	}
+
+	return req
+}
+
+func isRetryableThinkingStrategyError(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "status 400") || strings.Contains(msg, "status 422")
+}
+
+func buildLLMTranslationResult(content string, textCount int) (*translationResult, error) {
+	parsed, err := parseLLMTranslationPayload(content, textCount)
+	if err != nil {
+		return &translationResult{rawLLM: content}, err
+	}
+	return &translationResult{texts: parsed, rawLLM: content}, nil
+}
+
+func decodeOpenAIChatTranslation(provider string, respBody []byte, textCount int) (*translationResult, error) {
+	var decoded openAIChatResponse
+	if err := json.Unmarshal(respBody, &decoded); err != nil {
+		return nil, fmt.Errorf("failed to decode %s response: %w", provider, err)
+	}
+	if len(decoded.Choices) == 0 {
+		return nil, fmt.Errorf("%s response contained no choices", provider)
+	}
+
+	return buildLLMTranslationResult(extractContentString(decoded.Choices[0].Message.Content), textCount)
+}
+
+func (s *Service) executeOpenAIChatTranslation(ctx context.Context, opts openAIChatCallOptions) (*translationResult, error) {
+	body, err := json.Marshal(opts.request)
+	if err != nil {
+		return nil, err
+	}
+
+	url := opts.baseURL + opts.endpoint
+	logging.Debugf("Translation (%s): POST %s model=%s texts=%d", opts.provider, url, opts.model, opts.textCount)
+	logging.Debugf("Translation (%s): system prompt: %s", opts.provider, opts.request.Messages[0].Content)
+	if opts.logInput && len(opts.request.Messages) > 1 {
+		logging.Debugf("Translation (%s): input: %s", opts.provider, opts.request.Messages[1].Content)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
+	if err != nil {
+		return nil, err
+	}
+	for key, value := range opts.headers {
+		req.Header.Set(key, value)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	start := time.Time{}
+	if opts.logTiming {
+		logging.Debugf("Translation (%s): sending request...", opts.provider)
+		start = time.Now()
+	}
+
+	resp, err := s.httpClient.Do(req)
+	if err != nil {
+		if opts.logTiming {
+			return nil, fmt.Errorf("%s request failed after %v: %w", opts.provider, time.Since(start), err)
+		}
+		return nil, err
+	}
+	if opts.logTiming {
+		logging.Debugf("Translation (%s): response received in %v (status %d)", opts.provider, time.Since(start), resp.StatusCode)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, fmt.Errorf("%s translation failed with status %d: %s", opts.provider, resp.StatusCode, string(respBody))
+	}
+
+	logging.Debugf("Translation (%s): response: %s", opts.provider, string(respBody))
+	return decodeOpenAIChatTranslation(opts.provider, respBody, opts.textCount)
 }
 
 func (s *Service) translateWithOpenAI(ctx context.Context, sourceLang, targetLang string, texts []string) (*translationResult, error) {
@@ -303,67 +549,29 @@ func (s *Service) translateWithOpenAI(ctx context.Context, sourceLang, targetLan
 		model = "gpt-4o-mini"
 	}
 
-	systemPrompt := fmt.Sprintf("You are a translation engine. Translate each input item to the requested target language. Preserve order and return ONLY a single valid JSON array of translated strings. Do NOT split into multiple arrays. Do NOT add any text outside the JSON array. Source language: %s. Target language: %s.", sourceLang, targetLang)
-
-	payloadBytes, err := json.Marshal(texts)
+	systemPrompt, userPrompt, err := buildLLMTranslationPrompts(sourceLang, targetLang, texts)
 	if err != nil {
 		return nil, err
 	}
 
-	requestBody := openAIChatRequest{
-		Model:       model,
-		Temperature: 0,
-		Messages: []openAIChatMessage{
-			{Role: "system", Content: systemPrompt},
-			{Role: "user", Content: "Translate this JSON array of strings: " + string(payloadBytes)},
+	return s.executeOpenAIChatTranslation(ctx, openAIChatCallOptions{
+		provider: providerOpenAI,
+		baseURL:  baseURL,
+		endpoint: "/chat/completions",
+		model:    model,
+		headers: map[string]string{
+			"Authorization": "Bearer " + apiKey,
 		},
-	}
-
-	body, err := json.Marshal(requestBody)
-	if err != nil {
-		return nil, err
-	}
-
-	logging.Debugf("Translation (openai): POST %s model=%s texts=%d", baseURL+"/chat/completions", model, len(texts))
-	logging.Debugf("Translation (openai): system prompt: %s", systemPrompt)
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, baseURL+"/chat/completions", bytes.NewReader(body))
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("Authorization", "Bearer "+apiKey)
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := s.httpClient.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	respBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, err
-	}
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("openai translation failed with status %d: %s", resp.StatusCode, string(respBody))
-	}
-
-	logging.Debugf("Translation (openai): response: %s", string(respBody))
-
-	var decoded openAIChatResponse
-	if err := json.Unmarshal(respBody, &decoded); err != nil {
-		return nil, fmt.Errorf("failed to decode openai response: %w", err)
-	}
-	if len(decoded.Choices) == 0 {
-		return nil, fmt.Errorf("openai response contained no choices")
-	}
-
-	content := extractContentString(decoded.Choices[0].Message.Content)
-	parsed, err := parseStringArrayPayload(content)
-	if err != nil {
-		return &translationResult{rawLLM: content}, err
-	}
-	return &translationResult{texts: parsed, rawLLM: content}, nil
+		request: openAIChatRequest{
+			Model:       model,
+			Temperature: 0,
+			Messages: []openAIChatMessage{
+				{Role: "system", Content: systemPrompt},
+				{Role: "user", Content: userPrompt},
+			},
+		},
+		textCount: len(texts),
+	})
 }
 
 func extractContentString(raw json.RawMessage) string {
@@ -389,74 +597,55 @@ func (s *Service) translateWithOpenAICompatible(ctx context.Context, sourceLang,
 		return nil, fmt.Errorf("openai-compatible model is required")
 	}
 
-	systemPrompt := fmt.Sprintf("You are a translation engine. Translate each input item to the requested target language. Preserve order and return ONLY a single valid JSON array of translated strings. Do NOT split into multiple arrays. Do NOT add any text outside the JSON array. Source language: %s. Target language: %s.", sourceLang, targetLang)
-
-	payloadBytes, err := json.Marshal(texts)
+	systemPrompt, userPrompt, err := buildLLMTranslationPrompts(sourceLang, targetLang, texts)
 	if err != nil {
 		return nil, err
 	}
 
-	requestBody := openAIChatRequest{
+	headers := map[string]string{}
+	if apiKey != "" {
+		headers["Authorization"] = "Bearer " + apiKey
+	}
+
+	baseRequest := openAIChatRequest{
 		Model:       model,
 		Temperature: 0,
 		Messages: []openAIChatMessage{
 			{Role: "system", Content: systemPrompt},
-			{Role: "user", Content: "Translate this JSON array of strings: " + string(payloadBytes)},
+			{Role: "user", Content: userPrompt},
 		},
-		ChatTemplateKwargs: map[string]any{"enable_thinking": false},
 	}
 
-	body, err := json.Marshal(requestBody)
-	if err != nil {
-		return nil, err
+	thinkingEnabled := s.cfg.OpenAICompatible.EffectiveEnableThinking()
+	strategies := buildOpenAICompatibleThinkingStrategies(baseURL, model, s.cfg.OpenAICompatible)
+
+	var lastErr error
+	for _, strategy := range strategies {
+		request := applyOpenAICompatibleThinkingStrategy(baseRequest, strategy, thinkingEnabled)
+		result, err := s.executeOpenAIChatTranslation(ctx, openAIChatCallOptions{
+			provider:  providerOpenAICompatible,
+			baseURL:   baseURL,
+			endpoint:  "/chat/completions",
+			model:     model,
+			headers:   headers,
+			request:   request,
+			textCount: len(texts),
+			logInput:  true,
+			logTiming: true,
+		})
+		if err == nil {
+			return result, nil
+		}
+
+		lastErr = err
+		if strategy == openAICompatibleThinkingStrategyNone || !isRetryableThinkingStrategyError(err) {
+			return nil, err
+		}
+
+		logging.Debugf("Translation (openai-compatible): thinking strategy %q failed (%v), trying fallback", strategy, err)
 	}
 
-	logging.Debugf("Translation (openai-compatible): POST %s model=%s texts=%d", baseURL+"/chat/completions", model, len(texts))
-	logging.Debugf("Translation (openai-compatible): system prompt: %s", systemPrompt)
-	logging.Debugf("Translation (openai-compatible): input: %s", string(payloadBytes))
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, baseURL+"/chat/completions", bytes.NewReader(body))
-	if err != nil {
-		return nil, err
-	}
-	if apiKey != "" {
-		req.Header.Set("Authorization", "Bearer "+apiKey)
-	}
-	req.Header.Set("Content-Type", "application/json")
-
-	logging.Debugf("Translation (openai-compatible): sending request...")
-	start := time.Now()
-	resp, err := s.httpClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("openai-compatible request failed after %v: %w", time.Since(start), err)
-	}
-	logging.Debugf("Translation (openai-compatible): response received in %v (status %d)", time.Since(start), resp.StatusCode)
-	defer func() { _ = resp.Body.Close() }()
-
-	respBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, err
-	}
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("openai-compatible translation failed with status %d: %s", resp.StatusCode, string(respBody))
-	}
-
-	logging.Debugf("Translation (openai-compatible): response: %s", string(respBody))
-
-	var decoded openAIChatResponse
-	if err := json.Unmarshal(respBody, &decoded); err != nil {
-		return nil, fmt.Errorf("failed to decode openai-compatible response: %w", err)
-	}
-	if len(decoded.Choices) == 0 {
-		return nil, fmt.Errorf("openai-compatible response contained no choices")
-	}
-
-	content := extractContentString(decoded.Choices[0].Message.Content)
-	parsed, err := parseStringArrayPayload(content)
-	if err != nil {
-		return &translationResult{rawLLM: content}, err
-	}
-	return &translationResult{texts: parsed, rawLLM: content}, nil
+	return nil, lastErr
 }
 
 func (s *Service) translateWithAnthropic(ctx context.Context, sourceLang, targetLang string, texts []string) (*translationResult, error) {
@@ -475,9 +664,7 @@ func (s *Service) translateWithAnthropic(ctx context.Context, sourceLang, target
 		model = "claude-sonnet-4-20250514"
 	}
 
-	systemPrompt := fmt.Sprintf("You are a translation engine. Translate each input item to the requested target language. Preserve order and return ONLY a single valid JSON array of translated strings. Do NOT split into multiple arrays. Do NOT add any text outside the JSON array. Source language: %s. Target language: %s.", sourceLang, targetLang)
-
-	payloadBytes, err := json.Marshal(texts)
+	systemPrompt, userPrompt, err := buildLLMTranslationPrompts(sourceLang, targetLang, texts)
 	if err != nil {
 		return nil, err
 	}
@@ -491,7 +678,7 @@ func (s *Service) translateWithAnthropic(ctx context.Context, sourceLang, target
 		"model":      model,
 		"max_tokens": 4096,
 		"system":     systemPrompt,
-		"messages":   []anthropicMessage{{Role: "user", Content: "Translate this JSON array of strings: " + string(payloadBytes)}},
+		"messages":   []anthropicMessage{{Role: "user", Content: userPrompt}},
 	}
 
 	body, err := json.Marshal(requestBody)
@@ -539,12 +726,7 @@ func (s *Service) translateWithAnthropic(ctx context.Context, sourceLang, target
 		return nil, fmt.Errorf("anthropic response contained no content blocks")
 	}
 
-	content := strings.TrimSpace(decoded.Content[0].Text)
-	parsed, err := parseStringArrayPayload(content)
-	if err != nil {
-		return &translationResult{rawLLM: content}, err
-	}
-	return &translationResult{texts: parsed, rawLLM: content}, nil
+	return buildLLMTranslationResult(strings.TrimSpace(decoded.Content[0].Text), len(texts))
 }
 
 type deepLTranslateResponse struct {
@@ -882,134 +1064,85 @@ func parseGoogleFreeResponse(payload []byte) (string, error) {
 	return strings.Join(parts, ""), nil
 }
 
-func parseStringArrayPayload(payload string) ([]string, error) {
+func normalizeTranslationPayload(payload string) string {
 	cleaned := strings.TrimSpace(payload)
 	cleaned = strings.TrimPrefix(cleaned, "```json")
 	cleaned = strings.TrimPrefix(cleaned, "```")
 	cleaned = strings.TrimSuffix(cleaned, "```")
-	cleaned = strings.TrimSpace(cleaned)
+	return strings.TrimSpace(cleaned)
+}
+
+func parseLLMTranslationPayload(payload string, expectedCount int) ([]string, error) {
+	cleaned := normalizeTranslationPayload(payload)
+	if expectedCount > 0 && strings.Contains(cleaned, translationCompactOutputMarker(0)) {
+		parsed, err := parseCompactTranslationPayload(cleaned, expectedCount)
+		if err != nil {
+			return nil, err
+		}
+		logging.Debugf("Translation: parseLLMTranslationPayload parsed %d compact tagged items", len(parsed))
+		return parsed, nil
+	}
+	return parseStringArrayPayload(cleaned)
+}
+
+func parseStringArrayPayload(payload string) ([]string, error) {
+	cleaned := normalizeTranslationPayload(payload)
 
 	logging.Debugf("Translation: parseStringArrayPayload input length=%d, first 200 chars: %s", len(cleaned), cleaned[:min(200, len(cleaned))])
 
-	var out []string
+	if result, err := unmarshalStringArray(cleaned); err == nil {
+		logging.Debugf("Translation: parseStringArrayPayload direct unmarshal successful (%d items)", len(result))
+		return result, nil
+	}
+
+	start := strings.IndexByte(cleaned, '[')
+	end := strings.LastIndexByte(cleaned, ']')
+	if start >= 0 && end > start {
+		candidate := strings.TrimSpace(cleaned[start : end+1])
+		if candidate != cleaned {
+			if result, err := unmarshalStringArray(candidate); err == nil {
+				logging.Debugf("Translation: parseStringArrayPayload extracted JSON array from wrapped content (%d items)", len(result))
+				return result, nil
+			}
+		}
+	}
+
+	return nil, fmt.Errorf("failed to parse translated output payload as JSON string array")
+}
+
+func parseCompactTranslationPayload(payload string, expectedCount int) ([]string, error) {
 	pos := 0
-	arrayNum := 0
-	for pos < len(cleaned) {
-		start := strings.Index(cleaned[pos:], "[")
+	out := make([]string, 0, expectedCount)
+
+	for i := 0; i < expectedCount; i++ {
+		startToken := translationCompactOutputMarker(i)
+		start := strings.Index(payload[pos:], startToken)
 		if start < 0 {
-			break
+			return nil, fmt.Errorf("failed to parse compact translation payload: missing output marker %d", i)
 		}
-		start += pos
+		start += pos + len(startToken)
 
-		if start+1 < len(cleaned) {
-			nextChar := cleaned[start+1]
-			if nextChar != '"' && nextChar != ' ' && nextChar != '\n' && nextChar != '\t' && nextChar != '[' {
-				pos = start + 1
-				continue
+		end := len(payload)
+		if i+1 < expectedCount {
+			nextToken := translationCompactOutputMarker(i + 1)
+			next := strings.Index(payload[start:], nextToken)
+			if next < 0 {
+				return nil, fmt.Errorf("failed to parse compact translation payload: missing output marker %d", i+1)
 			}
-		}
-
-		depth := 0
-		end := -1
-		inString := false
-		escaped := false
-		for i := start; i < len(cleaned); i++ {
-			ch := cleaned[i]
-			if escaped {
-				escaped = false
-				continue
-			}
-			if ch == '\\' && inString {
-				escaped = true
-				continue
-			}
-			if ch == '"' {
-				inString = !inString
-				continue
-			}
-			if inString {
-				continue
-			}
-			if ch == '[' {
-				depth++
-			} else if ch == ']' {
-				depth--
-				if depth == 0 {
-					end = i
-					break
-				}
-			}
+			end = start + next
 		}
 
-		if end < 0 {
-			logging.Debugf("Translation: parseStringArrayPayload array %d unclosed, stopping at pos=%d", arrayNum+1, pos)
-			break
-		}
-
-		jsonStr := cleaned[start : end+1]
-		if len(jsonStr) > 2 && jsonStr[1] == '[' {
-			logging.Debugf("Translation: parseStringArrayPayload array %d is nested, skipping", arrayNum+1)
-			pos = end + 1
-			arrayNum++
-			continue
-		}
-
-		arrayNum++
-		var arr []string
-		if err := json.Unmarshal([]byte(jsonStr), &arr); err != nil {
-			logging.Debugf("Translation: parseStringArrayPayload array %d unmarshal failed: %v", arrayNum, err)
-			pos = end + 1
-			continue
-		}
-		logging.Debugf("Translation: parseStringArrayPayload array %d has %d items", arrayNum, len(arr))
-		out = append(out, arr...)
-		pos = end + 1
+		out = append(out, strings.TrimSpace(payload[start:end]))
+		pos = end
 	}
 
-	logging.Debugf("Translation: parseStringArrayPayload found %d arrays, total %d items", arrayNum, len(out))
-
-	if len(out) == 0 {
-		out = extractQuotedStrings(cleaned)
-		if len(out) > 0 {
-			logging.Debugf("Translation: parseStringArrayPayload extracted %d strings via fallback", len(out))
-			return out, nil
-		}
-		return nil, fmt.Errorf("failed to parse translated output payload: no valid JSON arrays found")
-	}
 	return out, nil
 }
 
-func extractQuotedStrings(s string) []string {
-	var results []string
-	inString := false
-	escaped := false
-	var current strings.Builder
-
-	for i := 0; i < len(s); i++ {
-		ch := s[i]
-		if escaped {
-			escaped = false
-			if inString {
-				current.WriteByte(ch)
-			}
-			continue
-		}
-		if ch == '\\' && inString {
-			escaped = true
-			continue
-		}
-		if ch == '"' {
-			if inString {
-				results = append(results, current.String())
-				current.Reset()
-			}
-			inString = !inString
-			continue
-		}
-		if inString {
-			current.WriteByte(ch)
-		}
+func unmarshalStringArray(payload string) ([]string, error) {
+	var result []string
+	if err := json.Unmarshal([]byte(payload), &result); err != nil {
+		return nil, err
 	}
-
-	return results
+	return result, nil
 }

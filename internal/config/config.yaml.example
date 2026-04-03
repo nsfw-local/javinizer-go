@@ -288,7 +288,7 @@ metadata:
     # Metadata translation pipeline
     translation:
         enabled: false                # Opt-in: disabled by default
-        provider: openai              # openai | deepl | google
+        provider: openai              # openai | openai-compatible | anthropic | deepl | google
         source_language: ja           # e.g., en, ja, zh, auto
         target_language: en           # e.g., en, ja, zh
         timeout_seconds: 60
@@ -317,6 +317,11 @@ metadata:
             mode: free                # free (public endpoint) | paid (Cloud Translation API)
             base_url: ""              # Optional override
             api_key: ""               # Required for paid mode (GOOGLE_TRANSLATE_API_KEY)
+        openai_compatible:
+            base_url: http://localhost:11434/v1
+            api_key: ""               # Optional for local/self-hosted endpoints
+            model: ""
+            enable_thinking: false    # Automatically mapped to backend-specific thinking controls when supported
 
     # Genres to ignore/filter out. Supports both exact strings and regex patterns.
     # Patterns starting with ^, ending with $, or containing regex metacharacters are treated as regex.

@@ -406,6 +406,7 @@ export interface OpenAICompatibleTranslationConfig {
 	base_url: string;
 	api_key: string;
 	model: string;
+	enable_thinking?: boolean;
 }
 
 export interface AnthropicTranslationConfig {

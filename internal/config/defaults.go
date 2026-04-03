@@ -50,6 +50,8 @@ func buildDefaultsFromRegistry() map[string]*ScraperSettings {
 
 // DefaultConfig returns the default configuration
 func DefaultConfig() *Config {
+	thinkingDisabled := false
+
 	return &Config{
 		ConfigVersion: CurrentConfigVersion,
 		Server: ServerConfig{
@@ -162,9 +164,10 @@ func DefaultConfig() *Config {
 					APIKey:  "",
 				},
 				OpenAICompatible: OpenAICompatibleTranslationConfig{
-					BaseURL: "http://localhost:11434/v1",
-					APIKey:  "",
-					Model:   "",
+					BaseURL:        "http://localhost:11434/v1",
+					APIKey:         "",
+					Model:          "",
+					EnableThinking: &thinkingDisabled,
 				},
 				Anthropic: AnthropicTranslationConfig{
 					BaseURL: "https://api.anthropic.com",
