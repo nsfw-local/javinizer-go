@@ -341,32 +341,47 @@ definitions:
         description: Enable actress image lookup from database
         type: boolean
     type: object
-  config.Config:
+  config.BrowserConfig:
     properties:
-      api:
-        $ref: '#/definitions/config.APIConfig'
-      config_version:
+      binary_path:
+        description: Chrome/Chromium path (auto-discovered if empty)
+        type: string
+      block_css:
+        description: 'Block CSS for speed (default: false)'
+        type: boolean
+      block_images:
+        description: 'Block images for speed (default: true)'
+        type: boolean
+      debug_visible:
+        description: 'Show browser window for debugging (default: false)'
+        type: boolean
+      enabled:
+        description: 'Master kill-switch (default: false)'
+        type: boolean
+      headless:
+        description: 'Run headless (default: true)'
+        type: boolean
+      max_retries:
+        description: 'Retry attempts (default: 3)'
         type: integer
-      database:
-        $ref: '#/definitions/config.DatabaseConfig'
-      file_matching:
-        $ref: '#/definitions/config.MatchingConfig'
-      logging:
-        $ref: '#/definitions/config.LoggingConfig'
-      mediainfo:
-        $ref: '#/definitions/config.MediaInfoConfig'
-      metadata:
-        $ref: '#/definitions/config.MetadataConfig'
-      output:
-        $ref: '#/definitions/config.OutputConfig'
-      performance:
-        $ref: '#/definitions/config.PerformanceConfig'
-      scrapers:
-        $ref: '#/definitions/config.ScrapersConfig'
-      server:
-        $ref: '#/definitions/config.ServerConfig'
-      system:
-        $ref: '#/definitions/config.SystemConfig'
+      slow_mo:
+        description: 'Slow motion delay ms (default: 0)'
+        type: integer
+      stealth_mode:
+        description: 'Anti-detection measures (default: true)'
+        type: boolean
+      timeout:
+        description: 'Operation timeout in seconds (default: 30)'
+        type: integer
+      user_agent:
+        description: Override UA (empty = use scraper's)
+        type: string
+      window_height:
+        description: 'Viewport height (default: 1080)'
+        type: integer
+      window_width:
+        description: 'Viewport width (default: 1920)'
+        type: integer
     type: object
   config.DatabaseConfig:
     properties:
@@ -685,6 +700,10 @@ definitions:
     type: object
   config.ScrapersConfig:
     properties:
+      browser:
+        allOf:
+        - $ref: '#/definitions/config.BrowserConfig'
+        description: 'NEW: Global Browser configuration block'
       flaresolverr:
         allOf:
         - $ref: '#/definitions/config.FlareSolverrConfig'
@@ -704,6 +723,10 @@ definitions:
       request_timeout_seconds:
         description: 'Overall request timeout in seconds (default: 60)'
         type: integer
+      scrape_actress:
+        description: 'NEW: Global scrape_actress default (opt-out behavior, default:
+          true)'
+        type: boolean
       timeout_seconds:
         description: 'HTTP client timeout in seconds (default: 30)'
         type: integer
@@ -1000,6 +1023,8 @@ definitions:
         items:
           $ref: '#/definitions/contracts.ScraperChoice'
         type: array
+      default:
+        description: Default value for this option
       description:
         example: Enable detailed actress data scraping from DMM (may be slower)
         type: string
@@ -1550,6 +1575,12 @@ definitions:
         type: boolean
       target_url:
         type: string
+      token_expires_at:
+        description: Unix timestamp when token expires
+        type: integer
+      verification_token:
+        description: Token for save authorization
+        type: string
     type: object
   system.TranslationModelsRequest:
     properties:
@@ -1572,6 +1603,37 @@ definitions:
         items:
           type: string
         type: array
+    type: object
+  system.UpdateConfigRequest:
+    properties:
+      api:
+        $ref: '#/definitions/config.APIConfig'
+      config_version:
+        type: integer
+      database:
+        $ref: '#/definitions/config.DatabaseConfig'
+      file_matching:
+        $ref: '#/definitions/config.MatchingConfig'
+      logging:
+        $ref: '#/definitions/config.LoggingConfig'
+      mediainfo:
+        $ref: '#/definitions/config.MediaInfoConfig'
+      metadata:
+        $ref: '#/definitions/config.MetadataConfig'
+      output:
+        $ref: '#/definitions/config.OutputConfig'
+      performance:
+        $ref: '#/definitions/config.PerformanceConfig'
+      proxy_verification_tokens:
+        additionalProperties:
+          type: string
+        type: object
+      scrapers:
+        $ref: '#/definitions/config.ScrapersConfig'
+      server:
+        $ref: '#/definitions/config.ServerConfig'
+      system:
+        $ref: '#/definitions/config.SystemConfig'
     type: object
   temp.ErrorResponse:
     properties:
@@ -2150,12 +2212,12 @@ paths:
       description: Update and save the server configuration. The server will reload
         scrapers and aggregator with the new settings.
       parameters:
-      - description: Full configuration object
+      - description: Full configuration object with optional proxy verification tokens
         in: body
         name: config
         required: true
         schema:
-          $ref: '#/definitions/config.Config'
+          $ref: '#/definitions/system.UpdateConfigRequest'
       produces:
       - application/json
       responses:

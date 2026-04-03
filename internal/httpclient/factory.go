@@ -43,6 +43,12 @@ func normalizeProxyURL(raw string) string {
 
 // NewTransport creates an http.Transport with optional proxy support
 func NewTransport(proxyProfile *config.ProxyProfile) (*http.Transport, error) {
+	if proxyProfile != nil && proxyProfile.URL != "" {
+		logging.Debugf("HTTPClient: Creating transport with proxy: %s", SanitizeProxyURL(proxyProfile.URL))
+	} else {
+		logging.Debugf("HTTPClient: Creating transport without proxy")
+	}
+
 	// Clone default transport to preserve Go's safety timeouts
 	// (DialContext timeout, TLSHandshakeTimeout, ExpectContinueTimeout, etc.)
 	transport := http.DefaultTransport.(*http.Transport).Clone()
@@ -110,6 +116,12 @@ func NewHTTPClient(proxyProfile *config.ProxyProfile, timeout time.Duration) (*h
 
 // NewRestyClient creates a resty.Client with proxy support
 func NewRestyClient(proxyProfile *config.ProxyProfile, timeout time.Duration, retries int) (*resty.Client, error) {
+	if proxyProfile != nil && proxyProfile.URL != "" {
+		logging.Debugf("HTTPClient: Creating Resty client with proxy: %s", SanitizeProxyURL(proxyProfile.URL))
+	} else {
+		logging.Debugf("HTTPClient: Creating Resty client without proxy")
+	}
+
 	transport, err := NewTransport(proxyProfile)
 	if err != nil {
 		return nil, err

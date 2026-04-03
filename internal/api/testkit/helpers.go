@@ -52,6 +52,24 @@ func (m *MockScraperWithResults) IsEnabled() bool {
 	return m.enabled
 }
 
+func (m *MockScraperWithResults) Config() *config.ScraperSettings {
+	return &config.ScraperSettings{}
+}
+
+func (m *MockScraperWithResults) Close() error {
+	return nil
+}
+
+// NewMockScraperWithResults creates a new mock scraper with predefined results
+func NewMockScraperWithResults(name string, enabled bool, result *models.ScraperResult, err error) *MockScraperWithResults {
+	return &MockScraperWithResults{
+		name:    name,
+		enabled: enabled,
+		result:  result,
+		err:     err,
+	}
+}
+
 // NewMockMovieRepo creates a test movie repository with in-memory database.
 func NewMockMovieRepo() *database.MovieRepository {
 	cfg := &config.Config{

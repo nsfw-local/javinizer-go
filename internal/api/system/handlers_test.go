@@ -15,6 +15,21 @@ import (
 	"github.com/javinizer/javinizer-go/internal/version"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	// Import scrapers to trigger init() registration of options
+	_ "github.com/javinizer/javinizer-go/internal/scraper/aventertainment"
+	_ "github.com/javinizer/javinizer-go/internal/scraper/caribbeancom"
+	_ "github.com/javinizer/javinizer-go/internal/scraper/dlgetchu"
+	_ "github.com/javinizer/javinizer-go/internal/scraper/dmm"
+	_ "github.com/javinizer/javinizer-go/internal/scraper/fc2"
+	_ "github.com/javinizer/javinizer-go/internal/scraper/jav321"
+	_ "github.com/javinizer/javinizer-go/internal/scraper/javbus"
+	_ "github.com/javinizer/javinizer-go/internal/scraper/javdb"
+	_ "github.com/javinizer/javinizer-go/internal/scraper/javlibrary"
+	_ "github.com/javinizer/javinizer-go/internal/scraper/libredmm"
+	_ "github.com/javinizer/javinizer-go/internal/scraper/mgstage"
+	_ "github.com/javinizer/javinizer-go/internal/scraper/r18dev"
+	_ "github.com/javinizer/javinizer-go/internal/scraper/tokyohot"
 )
 
 func init() {
@@ -215,16 +230,15 @@ func TestGetAvailableScrapers(t *testing.T) {
 				assert.Equal(t, "dmm", resp.Scrapers[0].Name)
 				assert.Equal(t, "DMM/Fanza", resp.Scrapers[0].DisplayName)
 				assert.True(t, resp.Scrapers[0].Enabled)
-				assert.Len(t, resp.Scrapers[0].Options, 8)
+				assert.Len(t, resp.Scrapers[0].Options, 7)
 
 				// Verify options exist
 				optionKeys := make(map[string]bool)
 				for _, opt := range resp.Scrapers[0].Options {
 					optionKeys[opt.Key] = true
 				}
+				assert.True(t, optionKeys["use_browser"])
 				assert.True(t, optionKeys["scrape_actress"])
-				assert.True(t, optionKeys["enable_browser"])
-				assert.True(t, optionKeys["browser_timeout"])
 				assert.True(t, optionKeys["user_agent"])
 				assert.True(t, optionKeys["proxy.enabled"])
 				assert.True(t, optionKeys["proxy.profile"])
@@ -522,11 +536,8 @@ func TestTestProxy(t *testing.T) {
 			TargetURL: "https://javdb.com",
 			Proxy:     config.ProxyConfig{},
 			FlareSolverr: config.FlareSolverrConfig{
-				Enabled:    true,
-				URL:        fs.URL,
-				Timeout:    30,
-				MaxRetries: 0,
-				SessionTTL: 300,
+				Enabled: true,
+				URL:     fs.URL,
 			},
 		}
 		body, err := json.Marshal(reqBody)
@@ -780,7 +791,7 @@ func TestGetAvailableScrapers_OptionsValidation(t *testing.T) {
 
 	require.Len(t, response.Scrapers, 1)
 	scraper := response.Scrapers[0]
-	require.Len(t, scraper.Options, 8)
+	require.Len(t, scraper.Options, 7)
 
 	// Test scrape_actress option
 	var scrapeActressOpt *ScraperOption
@@ -794,21 +805,17 @@ func TestGetAvailableScrapers_OptionsValidation(t *testing.T) {
 	assert.Equal(t, "boolean", scrapeActressOpt.Type)
 	assert.Contains(t, scrapeActressOpt.Description, "actress")
 
-	// Test browser_timeout option
-	var timeoutOpt *ScraperOption
+	// Test use_browser option
+	var useBrowserOpt *ScraperOption
 	for i := range scraper.Options {
-		if scraper.Options[i].Key == "browser_timeout" {
-			timeoutOpt = &scraper.Options[i]
+		if scraper.Options[i].Key == "use_browser" {
+			useBrowserOpt = &scraper.Options[i]
 			break
 		}
 	}
-	require.NotNil(t, timeoutOpt)
-	assert.Equal(t, "number", timeoutOpt.Type)
-	assert.NotNil(t, timeoutOpt.Min)
-	assert.Equal(t, 5, *timeoutOpt.Min)
-	assert.NotNil(t, timeoutOpt.Max)
-	assert.Equal(t, 120, *timeoutOpt.Max)
-	assert.Equal(t, "seconds", timeoutOpt.Unit)
+	require.NotNil(t, useBrowserOpt)
+	assert.Equal(t, "boolean", useBrowserOpt.Type)
+	assert.Contains(t, useBrowserOpt.Description, "browser")
 }
 
 // TestHealthCheck_WithDisabledScrapers tests health check with disabled scrapers

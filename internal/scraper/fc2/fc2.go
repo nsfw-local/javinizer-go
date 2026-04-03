@@ -634,17 +634,15 @@ func (s *Scraper) updateLastRequestTime() {
 }
 
 func init() {
-	scraper.RegisterScraper("fc2", func(settings config.ScraperSettings, db *database.DB, globalProxy *config.ProxyConfig, globalFlareSolverr config.FlareSolverrConfig) (models.Scraper, error) {
-		return New(settings, globalProxy, globalFlareSolverr), nil
+	scraper.RegisterScraper("fc2", func(settings config.ScraperSettings, db *database.DB, globalConfig *config.ScrapersConfig) (models.Scraper, error) {
+		return New(settings, &globalConfig.Proxy, globalConfig.FlareSolverr), nil
 	})
 	// Register default settings and priority
 	scraper.RegisterScraperDefaults("fc2", scraper.DefaultSettings{
 		Settings: config.ScraperSettings{
 			Enabled:   false,
 			RateLimit: 1000,
-			Extra: map[string]any{
-				"base_url": "https://adult.contents.fc2.com",
-			},
+			BaseURL:   "https://adult.contents.fc2.com",
 		},
 		Priority: 35,
 	})

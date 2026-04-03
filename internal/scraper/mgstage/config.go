@@ -49,18 +49,14 @@ func init() {
 		if downloadProxy != nil {
 			downloadProxyVal = downloadProxy.(*config.ProxyConfig)
 		}
-		// Use type assertion to access MGStage-specific fields
-		if mgstageCfg, ok := cfg.(*MGStageConfig); ok {
-			return &config.ScraperSettings{
-				Enabled:       c.IsEnabled(),
-				RateLimit:     c.GetRequestDelay(),
-				Extra:         map[string]any{},
-				Proxy:         proxyVal,
-				DownloadProxy: downloadProxyVal,
-				FlareSolverr:  mgstageCfg.FlareSolverr,
-			}
+		// ScraperSettings no longer needs type assertion since FlareSolverr was removed
+		_ = cfg // cfg is not used directly anymore
+		return &config.ScraperSettings{
+			Enabled:       c.IsEnabled(),
+			RateLimit:     c.GetRequestDelay(),
+			Proxy:         proxyVal,
+			DownloadProxy: downloadProxyVal,
 		}
-		return nil
 	})
 }
 
@@ -101,21 +97,6 @@ func (c *MGStageConfig) ValidateConfig(sc *config.ScraperSettings) error {
 	// Validate timeout
 	if sc.Timeout < 0 {
 		return fmt.Errorf("mgstage: timeout must be non-negative, got %d", sc.Timeout)
-	}
-	// MGStage doesn't typically use FlareSolverr, but validate if enabled
-	if sc.FlareSolverr.Enabled {
-		if sc.FlareSolverr.URL == "" {
-			return fmt.Errorf("mgstage.flaresolverr.url is required when flaresolverr is enabled")
-		}
-		if sc.FlareSolverr.Timeout < 1 || sc.FlareSolverr.Timeout > 300 {
-			return fmt.Errorf("mgstage.flaresolverr.timeout must be between 1 and 300")
-		}
-		if sc.FlareSolverr.MaxRetries < 0 || sc.FlareSolverr.MaxRetries > 10 {
-			return fmt.Errorf("mgstage.flaresolverr.max_retries must be between 0 and 10")
-		}
-		if sc.FlareSolverr.SessionTTL < 60 || sc.FlareSolverr.SessionTTL > 3600 {
-			return fmt.Errorf("mgstage.flaresolverr.session_ttl must be between 60 and 3600")
-		}
 	}
 	return nil
 }

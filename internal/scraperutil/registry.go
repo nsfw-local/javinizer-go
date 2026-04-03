@@ -1,5 +1,15 @@
 package scraperutil
 
+// ScraperOptionsProvider holds a scraper's UI metadata for the API.
+// Uses any to break import cycle - API layer handles type assertion to contracts.ScraperOption.
+type ScraperOptionsProvider struct {
+	DisplayName string // Human-readable name (e.g., "DMM/Fanza")
+	Options     []any  // All configurable options for this scraper (API type-asserts to contracts.ScraperOption)
+}
+
+// scraperOptionsRegistry holds registered scraper options (name -> provider)
+var scraperOptionsRegistry = make(map[string]ScraperOptionsProvider)
+
 // ValidatorFunc is a function that validates a scraper config.
 // Uses any to break the import cycle between config and scraper packages.
 // The validator function should type-assert the any to *config.ScraperSettings internally.
@@ -82,6 +92,21 @@ func ResetConfigFactories() {
 	configFactoryRegistry = make(map[string]ConfigFactory)
 }
 
+// RegisterScraperOptions registers a scraper's display name and options.
+// Called from each scraper package's init() function to self-register UI metadata.
+// This enables plug-and-play scrapers - no central switch statement needed.
+func RegisterScraperOptions(name string, provider ScraperOptionsProvider) {
+	scraperOptionsRegistry[name] = provider
+}
+
+// GetScraperOptions retrieves a scraper's options provider.
+// Used by the API to dynamically fetch scraper metadata.
+// Returns (provider, exists) where exists is false if scraper not registered.
+func GetScraperOptions(name string) (ScraperOptionsProvider, bool) {
+	provider, exists := scraperOptionsRegistry[name]
+	return provider, exists
+}
+
 // FlattenFunc converts a scraper-specific flat config to unified *config.ScraperSettings.
 // Uses any to break the import cycle between scraperutil and config packages.
 // The function type-asserts the any to the scraper's concrete config type internally.
@@ -144,9 +169,11 @@ func GetPriorities() []string {
 	}
 
 	// Simple bubble sort (list is small, typically 13 scrapers)
+	// Sort by priority (descending), then by name (ascending) for stability
 	for i := 0; i < len(pairs); i++ {
 		for j := i + 1; j < len(pairs); j++ {
-			if pairs[j].priority > pairs[i].priority {
+			if pairs[j].priority > pairs[i].priority ||
+				(pairs[j].priority == pairs[i].priority && pairs[j].name < pairs[i].name) {
 				pairs[i], pairs[j] = pairs[j], pairs[i]
 			}
 		}

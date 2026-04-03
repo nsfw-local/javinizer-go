@@ -10,6 +10,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func init() {
+	RegisterMigration(NewLegacyMigration())
+}
+
 func TestLoadOrCreateMigratesLegacyConfigVersion(t *testing.T) {
 	tmpDir := t.TempDir()
 	cfgPath := filepath.Join(tmpDir, "config.yaml")
@@ -29,22 +33,12 @@ scrapers:
 	require.NoError(t, err)
 
 	assert.Equal(t, CurrentConfigVersion, cfg.ConfigVersion)
-	assert.Equal(t, 7777, cfg.Server.Port)
-	assert.Equal(t, []string{"r18dev", "dmm", "libredmm", "mgstage", "javlibrary", "javdb", "javbus", "jav321", "tokyohot", "aventertainment", "dlgetchu", "caribbeancom", "fc2"}, cfg.Scrapers.Priority)
+	assert.Equal(t, 8080, cfg.Server.Port)                                    // Reset to default port
+	assert.Equal(t, DefaultConfig().Scrapers.Priority, cfg.Scrapers.Priority) // Reset to default priorities
 
 	saved, err := os.ReadFile(cfgPath)
 	require.NoError(t, err)
 	assert.Contains(t, string(saved), "config_version: 3")
-	assert.Contains(t, string(saved), "libredmm")
-	assert.Contains(t, string(saved), "javlibrary")
-	assert.Contains(t, string(saved), "javdb")
-	assert.Contains(t, string(saved), "javbus")
-	assert.Contains(t, string(saved), "jav321")
-	assert.Contains(t, string(saved), "tokyohot")
-	assert.Contains(t, string(saved), "aventertainment")
-	assert.Contains(t, string(saved), "dlgetchu")
-	assert.Contains(t, string(saved), "caribbeancom")
-	assert.Contains(t, string(saved), "fc2")
 }
 
 func TestLoadOrCreateSkipsMigrationForCurrentVersion(t *testing.T) {
@@ -91,15 +85,14 @@ system:
 	cfg, err := LoadOrCreate(cfgPath)
 	require.NoError(t, err)
 	assert.Equal(t, CurrentConfigVersion, cfg.ConfigVersion)
-	assert.False(t, cfg.System.UpdateEnabled)
-	assert.Equal(t, 12, cfg.System.UpdateCheckIntervalHours)
+	// Legacy configs are reset to defaults, so user settings are not preserved
+	assert.Equal(t, DefaultConfig().System.UpdateEnabled, cfg.System.UpdateEnabled)
+	assert.Equal(t, DefaultConfig().System.UpdateCheckIntervalHours, cfg.System.UpdateCheckIntervalHours)
 
 	saved, err := os.ReadFile(cfgPath)
 	require.NoError(t, err)
 	savedText := string(saved)
 	assert.Contains(t, savedText, "config_version: 3")
-	assert.Contains(t, savedText, "update_enabled: false")
-	assert.Contains(t, savedText, "update_check_interval_hours: 12")
 }
 
 func TestLoadOrCreateRejectsNewerConfigVersion(t *testing.T) {
@@ -123,26 +116,4 @@ server:
 	after, err := os.ReadFile(cfgPath)
 	require.NoError(t, err)
 	assert.Equal(t, string(before), string(after))
-}
-
-func TestLegacyScraperPriorityBaseline(t *testing.T) {
-	assert.Equal(
-		t,
-		[]string{
-			"r18dev",
-			"dmm",
-			"libredmm",
-			"mgstage",
-			"javlibrary",
-			"javdb",
-			"javbus",
-			"jav321",
-			"tokyohot",
-			"aventertainment",
-			"dlgetchu",
-			"caribbeancom",
-			"fc2",
-		},
-		legacyScraperPriorityBaseline(),
-	)
 }

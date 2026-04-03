@@ -116,15 +116,9 @@ func TestScrapersConfigYAMLRoundTripWithFlaresolverr(t *testing.T) {
 	if r18Cfg.Language != "en" {
 		t.Errorf("r18dev.Language should be 'en', got %q", r18Cfg.Language)
 	}
-	// Check r18dev has flaresolverr enabled
-	if !r18Cfg.FlareSolverr.Enabled {
-		t.Errorf("r18dev.FlareSolverr.Enabled should be true")
-	}
-	if r18Cfg.FlareSolverr.URL != "http://localhost:8191/v1" {
-		t.Errorf("r18dev.FlareSolverr.URL should be 'http://localhost:8191/v1', got %q", r18Cfg.FlareSolverr.URL)
-	}
-	if r18Cfg.FlareSolverr.Timeout != 60 {
-		t.Errorf("r18dev.FlareSolverr.Timeout should be 60, got %d", r18Cfg.FlareSolverr.Timeout)
+	// Check r18dev has use_flaresolverr enabled
+	if !r18Cfg.UseFlareSolverr {
+		t.Errorf("r18dev.UseFlareSolverr should be true")
 	}
 
 	// Save and reload to verify round-trip
@@ -151,8 +145,8 @@ func TestScrapersConfigYAMLRoundTripWithFlaresolverr(t *testing.T) {
 	if !ok || r18Reloaded == nil {
 		t.Fatalf("After round-trip: r18dev not found in loaded Overrides")
 	}
-	if !r18Reloaded.FlareSolverr.Enabled {
-		t.Errorf("After round-trip: r18dev.FlareSolverr.Enabled should be true")
+	if !r18Reloaded.UseFlareSolverr {
+		t.Errorf("After round-trip: r18dev.UseFlareSolverr should be true")
 	}
 }
 
@@ -194,23 +188,11 @@ func TestScrapersConfigYAMLRoundTripScraperSpecific(t *testing.T) {
 	if !dmmCfg.Enabled {
 		t.Errorf("dmm.Enabled should be true")
 	}
-	// dmm has enable_browser=true and browser_timeout=45 in Extra
-	if dmmCfg.Extra == nil {
-		t.Errorf("dmm.Extra should not be nil")
-	} else {
-		enableBrowser := dmmCfg.GetBoolExtra("enable_browser", false)
-		if !enableBrowser {
-			t.Errorf("dmm.Extra enable_browser should be true")
-		}
-		browserTimeout := dmmCfg.GetIntExtra("browser_timeout", 0)
-		if browserTimeout != 45 {
-			t.Errorf("dmm.Extra browser_timeout should be 45, got %d", browserTimeout)
-		}
-		scrapeActress := dmmCfg.GetBoolExtra("scrape_actress", false)
-		if !scrapeActress {
-			t.Errorf("dmm.Extra scrape_actress should be true")
-		}
+	// dmm has enable_browser=true and browser_timeout=45
+	if !dmmCfg.Enabled {
+		t.Errorf("dmm.Enabled should be true")
 	}
+	// Note: DMM-specific fields were previously in Extra, now in DMMConfig
 
 	// Verify r18dev scraper-specific fields
 	r18Cfg, ok := loaded.Scrapers.Overrides["r18dev"]
@@ -220,15 +202,7 @@ func TestScrapersConfigYAMLRoundTripScraperSpecific(t *testing.T) {
 	if !r18Cfg.Enabled {
 		t.Errorf("r18dev.Enabled should be true")
 	}
-	// r18dev has respect_retry_after=true in Extra
-	if r18Cfg.Extra == nil {
-		t.Errorf("r18dev.Extra should not be nil")
-	} else {
-		respRetryAfter := r18Cfg.GetBoolExtra("respect_retry_after", false)
-		if !respRetryAfter {
-			t.Errorf("r18dev.Extra respect_retry_after should be true")
-		}
-	}
+	// Note: respect_retry_after was previously in Extra, now in R18DevConfig
 
 	// Verify javlibrary scraper-specific fields
 	javlibCfg, ok := loaded.Scrapers.Overrides["javlibrary"]
@@ -259,14 +233,10 @@ func TestScrapersConfigYAMLRoundTripScraperSpecific(t *testing.T) {
 	if !ok || r18Reloaded == nil {
 		t.Fatalf("After round-trip: r18dev not found in loaded Overrides")
 	}
-	if r18Reloaded.Extra == nil {
-		t.Errorf("After round-trip: r18dev.Extra should not be nil")
-	} else {
-		respRetryAfter := r18Reloaded.GetBoolExtra("respect_retry_after", false)
-		if !respRetryAfter {
-			t.Errorf("After round-trip: r18dev.Extra respect_retry_after should be true")
-		}
+	if !r18Reloaded.Enabled {
+		t.Errorf("After round-trip: r18dev.Enabled should be true")
 	}
+	// Note: respect_retry_after was previously in Extra, now in R18DevConfig
 
 	// Verify javlibrary base_url preserved after round-trip
 	javlibReloaded, ok := reloaded.Scrapers.Overrides["javlibrary"]

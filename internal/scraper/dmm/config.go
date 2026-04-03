@@ -10,16 +10,16 @@ import (
 // Config holds DMM/Fanza scraper configuration.
 // YAML tags are defined here for unmarshaling via config.ScrapersConfig.
 type DMMConfig struct {
-	Enabled        bool                `yaml:"enabled" json:"enabled"`
-	ScrapeActress  bool                `yaml:"scrape_actress" json:"scrape_actress"`
-	EnableBrowser  bool                `yaml:"enable_browser" json:"enable_browser"`
-	BrowserTimeout int                 `yaml:"browser_timeout" json:"browser_timeout"`
-	RequestDelay   int                 `yaml:"request_delay" json:"request_delay"`
-	MaxRetries     int                 `yaml:"max_retries" json:"max_retries"`
-	UserAgent      string              `yaml:"user_agent" json:"user_agent"`
-	Proxy          *config.ProxyConfig `yaml:"proxy,omitempty" json:"proxy,omitempty"`
-	DownloadProxy  *config.ProxyConfig `yaml:"download_proxy,omitempty" json:"download_proxy,omitempty"`
-	Priority       int                 `yaml:"priority" json:"priority"` // Scraper's priority (higher = higher priority)
+	Enabled       bool                `yaml:"enabled" json:"enabled"`
+	RequestDelay  int                 `yaml:"request_delay" json:"request_delay"`
+	MaxRetries    int                 `yaml:"max_retries" json:"max_retries"`
+	UserAgent     string              `yaml:"user_agent" json:"user_agent"`
+	Proxy         *config.ProxyConfig `yaml:"proxy,omitempty" json:"proxy,omitempty"`
+	DownloadProxy *config.ProxyConfig `yaml:"download_proxy,omitempty" json:"download_proxy,omitempty"`
+	Priority      int                 `yaml:"priority" json:"priority"` // Scraper's priority (higher = higher priority)
+	// NEW: Per-scraper browser and scrape_actress settings
+	UseBrowser    bool `yaml:"use_browser" json:"use_browser"`
+	ScrapeActress bool `yaml:"scrape_actress" json:"scrape_actress"`
 }
 
 func init() {
@@ -38,34 +38,25 @@ func init() {
 	})
 	// TASK 3: Register flatten function for registry-based type conversion
 	scraperutil.RegisterFlattenFunc("dmm", func(cfg any) any {
-		c, ok := cfg.(scraperutil.ScraperConfigInterface)
+		dmmCfg, ok := cfg.(*DMMConfig)
 		if !ok {
 			return nil
 		}
-		proxy := c.GetProxy()
-		downloadProxy := c.GetDownloadProxy()
-		var proxyVal, downloadProxyVal *config.ProxyConfig
-		if proxy != nil {
-			proxyVal = proxy.(*config.ProxyConfig)
+
+		settings := &config.ScraperSettings{
+			Enabled:       dmmCfg.IsEnabled(),
+			RateLimit:     dmmCfg.GetRequestDelay(),
+			Proxy:         dmmCfg.Proxy,
+			DownloadProxy: dmmCfg.DownloadProxy,
+			UseBrowser:    dmmCfg.UseBrowser,
 		}
-		if downloadProxy != nil {
-			downloadProxyVal = downloadProxy.(*config.ProxyConfig)
+
+		// ScrapeActress is a pointer in ScraperSettings, so set it only if enabled
+		if dmmCfg.ScrapeActress {
+			settings.ScrapeActress = &dmmCfg.ScrapeActress
 		}
-		// Use type assertion to access DMM-specific fields not in ScraperConfigInterface
-		if dmmCfg, ok := cfg.(*DMMConfig); ok {
-			return &config.ScraperSettings{
-				Enabled:   c.IsEnabled(),
-				RateLimit: c.GetRequestDelay(),
-				Extra: map[string]any{
-					"scrape_actress":  dmmCfg.ScrapeActress,
-					"enable_browser":  dmmCfg.EnableBrowser,
-					"browser_timeout": dmmCfg.BrowserTimeout,
-				},
-				Proxy:         proxyVal,
-				DownloadProxy: downloadProxyVal,
-			}
-		}
-		return nil
+
+		return settings
 	})
 }
 
@@ -107,12 +98,6 @@ func (c *DMMConfig) ValidateConfig(sc *config.ScraperSettings) error {
 	if sc.Timeout < 0 {
 		return fmt.Errorf("dmm: timeout must be non-negative, got %d", sc.Timeout)
 	}
-	// Validate browser timeout if browser is enabled
-	if sc.GetBoolExtra("enable_browser", false) {
-		browserTimeout := sc.GetIntExtra("browser_timeout", 30)
-		if browserTimeout < 1 {
-			return fmt.Errorf("dmm: browser_timeout must be at least 1 second")
-		}
-	}
+	// Note: Browser and scrape_actress settings are now global, not scraper-specific
 	return nil
 }

@@ -11,10 +11,9 @@ import (
 
 // NewHTTPClient creates an HTTP client and FlareSolverr for the javlibrary scraper.
 // HTTP-01, HTTP-03: Per-scraper HTTP client and FlareSolverr ownership.
-// The bool parameter (useFlareSolverr) indicates whether to enable FlareSolverr
-// based on scraperCfg.UseFlareSolverr from the javlibrary config.
+// Checks cfg.UseFlareSolverr to determine whether to enable FlareSolverr.
 // Returns client, flaresolverr, and error.
-func NewHTTPClient(cfg *config.ScraperSettings, globalProxy *config.ProxyConfig, globalFlareSolverr config.FlareSolverrConfig, useFlareSolverr bool) (*resty.Client, *httpclient.FlareSolverr, error) {
+func NewHTTPClient(cfg *config.ScraperSettings, globalProxy *config.ProxyConfig, globalFlareSolverr config.FlareSolverrConfig) (*resty.Client, *httpclient.FlareSolverr, error) {
 	// Handle nil globalProxy to avoid dereference panic
 	globalProxyVal := config.ProxyConfig{}
 	if globalProxy != nil {
@@ -35,14 +34,14 @@ func NewHTTPClient(cfg *config.ScraperSettings, globalProxy *config.ProxyConfig,
 		retryCount = 3
 	}
 
-	// When useFlareSolverr is true (passed from javlibrary.go based on
-	// scraperCfg.UseFlareSolverr), the FlareSolverr client will be initialized.
+	// When cfg.UseFlareSolverr is true and global FlareSolverr is enabled,
+	// the FlareSolverr client will be initialized.
 	// Proxy profile is used directly by NewRestyClientWithFlareSolverr via buildFlareSolverrRequestProxy.
 	var client *resty.Client
 	var fs *httpclient.FlareSolverr
 	var err error
 
-	if useFlareSolverr {
+	if cfg.UseFlareSolverr && globalFlareSolverr.Enabled {
 		// Use global proxy profile if scraper-specific proxy URL is empty but global proxy has one
 		proxyForFS := proxyCfg
 		if proxyCfg.URL == "" {
@@ -55,7 +54,7 @@ func NewHTTPClient(cfg *config.ScraperSettings, globalProxy *config.ProxyConfig,
 		// Pass FlareSolverr config separately since it's no longer embedded in ProxyConfig
 		client, fs, err = httpclient.NewRestyClientWithFlareSolverr(
 			proxyForFS,
-			cfg.FlareSolverr,
+			globalFlareSolverr,
 			timeout,
 			retryCount,
 		)

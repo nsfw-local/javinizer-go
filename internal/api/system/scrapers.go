@@ -141,8 +141,3 @@ func proxyProfileChoices(cfg *config.Config) []ScraperChoice {
 
 	return choices
 }
-
-// ptrInt returns a pointer to an int value
-func ptrInt(v int) *int {
-	return &v
-}

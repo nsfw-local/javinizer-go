@@ -54,22 +54,27 @@ func init() {
 		if downloadProxy != nil {
 			downloadProxyVal = downloadProxy.(*config.ProxyConfig)
 		}
-		// Use type assertion to access AVEntertainment-specific fields
-		if avCfg, ok := cfg.(*AVEntertainmentConfig); ok {
-			return &config.ScraperSettings{
-				Enabled:   c.IsEnabled(),
-				Language:  "",
-				RateLimit: c.GetRequestDelay(),
-				Extra: map[string]any{
-					"base_url":             "https://www.aventertainments.com",
-					"scrape_bonus_screens": false,
-				},
-				Proxy:         proxyVal,
-				DownloadProxy: downloadProxyVal,
-				FlareSolverr:  avCfg.FlareSolverr,
-			}
+		// Type assert to access AVEntertainment-specific fields
+		aventCfg, ok := cfg.(*AVEntertainmentConfig)
+		if !ok {
+			return nil
 		}
-		return nil
+
+		// Build Extra map with scraper-specific fields
+		extra := make(map[string]any)
+		if aventCfg.ScrapeBonusScreens {
+			extra["scrape_bonus_screens"] = aventCfg.ScrapeBonusScreens
+		}
+
+		return &config.ScraperSettings{
+			Enabled:       c.IsEnabled(),
+			Language:      "",
+			RateLimit:     c.GetRequestDelay(),
+			BaseURL:       "https://www.aventertainments.com",
+			Proxy:         proxyVal,
+			DownloadProxy: downloadProxyVal,
+			Extra:         extra,
+		}
 	})
 }
 
@@ -121,21 +126,6 @@ func (c *AVEntertainmentConfig) ValidateConfig(sc *config.ScraperSettings) error
 	// Validate base URL if set
 	if err := configutil.ValidateHTTPBaseURL("aventertainment.base_url", sc.BaseURL); err != nil {
 		return err
-	}
-	// Validate FlareSolverr config if enabled
-	if sc.FlareSolverr.Enabled {
-		if sc.FlareSolverr.URL == "" {
-			return fmt.Errorf("aventertainment.flaresolverr.url is required when flaresolverr is enabled")
-		}
-		if sc.FlareSolverr.Timeout < 1 || sc.FlareSolverr.Timeout > 300 {
-			return fmt.Errorf("aventertainment.flaresolverr.timeout must be between 1 and 300")
-		}
-		if sc.FlareSolverr.MaxRetries < 0 || sc.FlareSolverr.MaxRetries > 10 {
-			return fmt.Errorf("aventertainment.flaresolverr.max_retries must be between 0 and 10")
-		}
-		if sc.FlareSolverr.SessionTTL < 60 || sc.FlareSolverr.SessionTTL > 3600 {
-			return fmt.Errorf("aventertainment.flaresolverr.session_ttl must be between 60 and 3600")
-		}
 	}
 	return nil
 }

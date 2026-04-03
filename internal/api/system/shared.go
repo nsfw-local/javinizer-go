@@ -1,3 +1,3 @@
 package system
 
-const defaultProxyTestURL = "https://javdb.com"
+const defaultProxyTestURL = "https://httpbin.org/ip"

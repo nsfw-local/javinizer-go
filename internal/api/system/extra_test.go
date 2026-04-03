@@ -11,10 +11,26 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
+	"github.com/javinizer/javinizer-go/internal/api/core"
 	"github.com/javinizer/javinizer-go/internal/config"
 	"github.com/javinizer/javinizer-go/internal/models"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	// Import scrapers to trigger init() registration of options
+	_ "github.com/javinizer/javinizer-go/internal/scraper/aventertainment"
+	_ "github.com/javinizer/javinizer-go/internal/scraper/caribbeancom"
+	_ "github.com/javinizer/javinizer-go/internal/scraper/dlgetchu"
+	_ "github.com/javinizer/javinizer-go/internal/scraper/dmm"
+	_ "github.com/javinizer/javinizer-go/internal/scraper/fc2"
+	_ "github.com/javinizer/javinizer-go/internal/scraper/jav321"
+	_ "github.com/javinizer/javinizer-go/internal/scraper/javbus"
+	_ "github.com/javinizer/javinizer-go/internal/scraper/javdb"
+	_ "github.com/javinizer/javinizer-go/internal/scraper/javlibrary"
+	_ "github.com/javinizer/javinizer-go/internal/scraper/libredmm"
+	_ "github.com/javinizer/javinizer-go/internal/scraper/mgstage"
+	_ "github.com/javinizer/javinizer-go/internal/scraper/r18dev"
+	_ "github.com/javinizer/javinizer-go/internal/scraper/tokyohot"
 )
 
 func TestGetAvailableScrapers_AdditionalOptionSets(t *testing.T) {
@@ -735,4 +751,194 @@ func TestUpdateConfig_PersistsSuccessfulReload(t *testing.T) {
 	savedBytes, err := os.ReadFile(tempConfigFile)
 	require.NoError(t, err)
 	assert.Contains(t, string(savedBytes), "127.0.0.1")
+}
+
+// Proxy verification token tests
+func TestUpdateConfig_ProxyVerification(t *testing.T) {
+	t.Run("save without token fails when proxy changed", func(t *testing.T) {
+		tempConfigFile := filepath.Join(t.TempDir(), "config.yaml")
+		deps := createTestDeps(t, config.DefaultConfig(), tempConfigFile)
+		// Initialize token store for this test
+		deps.TokenStore = core.NewTokenStore()
+
+		router := gin.New()
+		router.PUT("/config", updateConfig(deps))
+
+		// Change proxy settings without providing a token
+		cfg := *config.DefaultConfig()
+		cfg.Scrapers.Proxy.Enabled = true
+		cfg.Scrapers.Proxy.DefaultProfile = "test"
+		cfg.Scrapers.Proxy.Profiles = map[string]config.ProxyProfile{
+			"test": {URL: "http://proxy.example:8080"},
+		}
+
+		body, err := json.Marshal(UpdateConfigRequest{Config: cfg})
+		require.NoError(t, err)
+
+		req := httptest.NewRequest(http.MethodPut, "/config", bytes.NewBuffer(body))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, req)
+
+		require.Equal(t, http.StatusBadRequest, w.Code)
+		assert.Contains(t, w.Body.String(), "proxy settings changed but no test verification token provided")
+	})
+
+	t.Run("save with valid token succeeds when proxy changed", func(t *testing.T) {
+		tempConfigFile := filepath.Join(t.TempDir(), "config.yaml")
+		deps := createTestDeps(t, config.DefaultConfig(), tempConfigFile)
+		// Initialize token store
+		deps.TokenStore = core.NewTokenStore()
+
+		router := gin.New()
+		router.PUT("/config", updateConfig(deps))
+
+		// Create new proxy config
+		newProxy := config.ProxyConfig{
+			Enabled:        true,
+			DefaultProfile: "test",
+			Profiles: map[string]config.ProxyProfile{
+				"test": {URL: "http://proxy.example:8080"},
+			},
+		}
+
+		// Create a valid token for the new proxy config
+		vt := deps.TokenStore.Create("global", core.HashProxyConfig(newProxy))
+
+		// Build the full config with the new proxy settings
+		cfg := *config.DefaultConfig()
+		cfg.Scrapers.Proxy = newProxy
+
+		reqBody := UpdateConfigRequest{
+			Config: cfg,
+			ProxyVerificationTokens: map[string]string{
+				"global": vt.Token,
+			},
+		}
+
+		body, err := json.Marshal(reqBody)
+		require.NoError(t, err)
+
+		req := httptest.NewRequest(http.MethodPut, "/config", bytes.NewBuffer(body))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, req)
+
+		require.Equal(t, http.StatusOK, w.Code)
+		assert.Contains(t, w.Body.String(), "Configuration saved and reloaded successfully")
+	})
+
+	t.Run("save with invalid token fails", func(t *testing.T) {
+		tempConfigFile := filepath.Join(t.TempDir(), "config.yaml")
+		deps := createTestDeps(t, config.DefaultConfig(), tempConfigFile)
+		// Initialize token store
+		deps.TokenStore = core.NewTokenStore()
+
+		router := gin.New()
+		router.PUT("/config", updateConfig(deps))
+
+		// Change proxy settings with an invalid token
+		cfg := *config.DefaultConfig()
+		cfg.Scrapers.Proxy.Enabled = true
+		cfg.Scrapers.Proxy.DefaultProfile = "test"
+		cfg.Scrapers.Proxy.Profiles = map[string]config.ProxyProfile{
+			"test": {URL: "http://proxy.example:8080"},
+		}
+
+		reqBody := UpdateConfigRequest{
+			Config: cfg,
+			ProxyVerificationTokens: map[string]string{
+				"global": "invalid_token",
+			},
+		}
+
+		body, err := json.Marshal(reqBody)
+		require.NoError(t, err)
+
+		req := httptest.NewRequest(http.MethodPut, "/config", bytes.NewBuffer(body))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, req)
+
+		require.Equal(t, http.StatusBadRequest, w.Code)
+		assert.Contains(t, w.Body.String(), "proxy verification token is invalid or expired")
+	})
+
+	t.Run("save without token succeeds when proxy unchanged", func(t *testing.T) {
+		tempConfigFile := filepath.Join(t.TempDir(), "config.yaml")
+		// Start with proxy already configured
+		initialCfg := config.DefaultConfig()
+		initialCfg.Scrapers.Proxy.Enabled = true
+		initialCfg.Scrapers.Proxy.DefaultProfile = "test"
+		initialCfg.Scrapers.Proxy.Profiles = map[string]config.ProxyProfile{
+			"test": {URL: "http://proxy.example:8080"},
+		}
+
+		deps := createTestDeps(t, initialCfg, tempConfigFile)
+		deps.SetConfig(initialCfg)
+		// Initialize token store
+		deps.TokenStore = core.NewTokenStore()
+
+		router := gin.New()
+		router.PUT("/config", updateConfig(deps))
+
+		// Change only server settings, keep proxy the same
+		cfg := *initialCfg
+		cfg.Server.Host = "192.168.1.1"
+
+		body, err := json.Marshal(UpdateConfigRequest{Config: cfg})
+		require.NoError(t, err)
+
+		req := httptest.NewRequest(http.MethodPut, "/config", bytes.NewBuffer(body))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, req)
+
+		require.Equal(t, http.StatusOK, w.Code)
+		assert.Contains(t, w.Body.String(), "Configuration saved and reloaded successfully")
+	})
+
+	t.Run("save with expired token fails", func(t *testing.T) {
+		tempConfigFile := filepath.Join(t.TempDir(), "config.yaml")
+		deps := createTestDeps(t, config.DefaultConfig(), tempConfigFile)
+		// Initialize token store
+		deps.TokenStore = core.NewTokenStore()
+
+		router := gin.New()
+		router.PUT("/config", updateConfig(deps))
+
+		// Create new proxy config
+		newProxy := config.ProxyConfig{
+			Enabled:        true,
+			DefaultProfile: "test",
+			Profiles: map[string]config.ProxyProfile{
+				"test": {URL: "http://proxy.example:8080"},
+			},
+		}
+
+		// Create a token with wrong config hash (simulates token for different config)
+		wrongHashToken := deps.TokenStore.Create("global", "wrong_hash")
+
+		// Build the full config with the new proxy settings
+		cfg := *config.DefaultConfig()
+		cfg.Scrapers.Proxy = newProxy
+
+		reqBody := UpdateConfigRequest{
+			Config: cfg,
+			ProxyVerificationTokens: map[string]string{
+				"global": wrongHashToken.Token, // Token exists but for different config hash
+			},
+		}
+
+		body, err := json.Marshal(reqBody)
+		require.NoError(t, err)
+
+		req := httptest.NewRequest(http.MethodPut, "/config", bytes.NewBuffer(body))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, req)
+
+		require.Equal(t, http.StatusBadRequest, w.Code)
+		assert.Contains(t, w.Body.String(), "proxy verification token is invalid or expired")
+	})
 }

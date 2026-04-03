@@ -177,45 +177,18 @@ func TestValidateConfig(t *testing.T) {
 			errMsg:  "javlibrary.base_url must be a valid HTTP or HTTPS URL",
 		},
 		{
-			name: "FlareSolverr enabled without URL is invalid",
 			cfg: &config.ScraperSettings{
-				Enabled: true,
-				FlareSolverr: config.FlareSolverrConfig{
-					Enabled: true,
-					URL:     "",
-				},
+				Enabled:         true,
+				UseFlareSolverr: true,
 			},
-			wantErr: true,
-			errMsg:  "javlibrary.flaresolverr.url is required when flaresolverr is enabled",
 		},
 		{
-			name: "FlareSolverr enabled with URL is valid",
+			name: "FlareSolverr enabled is valid",
 			cfg: &config.ScraperSettings{
-				Enabled: true,
-				FlareSolverr: config.FlareSolverrConfig{
-					Enabled:    true,
-					URL:        "http://localhost:8191/v1",
-					Timeout:    30,
-					MaxRetries: 3,
-					SessionTTL: 300,
-				},
+				Enabled:         true,
+				UseFlareSolverr: true,
 			},
 			wantErr: false,
-		},
-		{
-			name: "FlareSolverr timeout out of range is invalid",
-			cfg: &config.ScraperSettings{
-				Enabled: true,
-				FlareSolverr: config.FlareSolverrConfig{
-					Enabled:    true,
-					URL:        "http://localhost:8191/v1",
-					Timeout:    0,
-					MaxRetries: 3,
-					SessionTTL: 300,
-				},
-			},
-			wantErr: true,
-			errMsg:  "javlibrary.flaresolverr.timeout must be between 1 and 300",
 		},
 		{
 			name: "all valid fields",

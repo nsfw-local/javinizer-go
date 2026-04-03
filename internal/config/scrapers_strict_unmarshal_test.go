@@ -90,10 +90,8 @@ scrapers:
 	if !ok || got == nil {
 		t.Fatalf("expected scraper %q in overrides", scraperName)
 	}
-	if got.Extra == nil {
-		t.Fatalf("expected extra map for scraper %q", scraperName)
+	if !got.Enabled {
+		t.Fatalf("expected scraper %q to be enabled", scraperName)
 	}
-	if v, ok := got.Extra["customflag"].(bool); !ok || !v {
-		t.Fatalf("expected customflag=true in extra, got: %#v", got.Extra["customflag"])
-	}
+	// Note: Extra field has been removed; custom fields now handled via concrete types
 }

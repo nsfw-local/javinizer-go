@@ -41,6 +41,7 @@ type ServerDependencies struct {
 	JobQueue    *worker.JobQueue
 	Auth        AuthProvider
 	Runtime     *RuntimeState
+	TokenStore  *TokenStore
 }
 
 // EnsureRuntime initializes runtime state when absent.

@@ -7,6 +7,7 @@ import (
 	"github.com/go-resty/resty/v2"
 	"github.com/javinizer/javinizer-go/internal/config"
 	"github.com/javinizer/javinizer-go/internal/httpclient"
+	"github.com/javinizer/javinizer-go/internal/logging"
 )
 
 // NewHTTPClient creates an HTTP client for the DMM scraper.
@@ -47,6 +48,12 @@ func NewHTTPClient(cfg *config.ScraperSettings, globalProxy *config.ProxyConfig,
 	client.SetHeader("Connection", "keep-alive")
 	client.SetHeader("Upgrade-Insecure-Requests", "1")
 	client.SetHeader("Cookie", "age_check_done=1; cklg=ja")
+
+	logging.Debugf("DMM: HTTP client created with proxy=%v, timeout=%v, retryCount=%d",
+		proxyCfg != nil && proxyCfg.URL != "", timeout, retryCount)
+	if proxyCfg != nil && proxyCfg.URL != "" {
+		logging.Debugf("DMM: Proxy URL: %s", httpclient.SanitizeProxyURL(proxyCfg.URL))
+	}
 
 	return client, proxyCfg, nil
 }

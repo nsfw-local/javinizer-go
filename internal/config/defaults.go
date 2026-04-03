@@ -4,6 +4,31 @@ import (
 	"github.com/javinizer/javinizer-go/internal/scraperutil"
 )
 
+var defaultScraperPriority = []string{
+	"dmm", "r18dev", "libredmm", "mgstage", "javlibrary",
+	"javdb", "javbus", "jav321", "tokyohot", "aventertainment",
+	"dlgetchu", "caribbeancom", "fc2",
+}
+
+func getScraperPriorities() []string {
+	priorities := scraperutil.GetPriorities()
+	if len(priorities) > 0 {
+		return priorities
+	}
+	return defaultScraperPriority
+}
+
+func getFirstScraperPriority() string {
+	priorities := scraperutil.GetPriorities()
+	if len(priorities) > 0 {
+		return priorities[0]
+	}
+	if len(defaultScraperPriority) > 0 {
+		return defaultScraperPriority[0]
+	}
+	return ""
+}
+
 // buildDefaultsFromRegistry constructs scraper defaults from registered scrapers.
 // This eliminates hardcoded scraper names from config.go.
 // Uses scraperutil to avoid import cycle (config -> scraperutil, scraper -> scraperutil).
@@ -47,16 +72,34 @@ func DefaultConfig() *Config {
 		},
 		Scrapers: ScrapersConfig{
 			UserAgent:             DefaultUserAgent,
-			Referer:               "https://www.dmm.co.jp/",                                                                                                                                      // Referer header for CDN compatibility (required by DMM/R18 CDN)
-			TimeoutSeconds:        30,                                                                                                                                                            // HTTP client timeout
-			RequestTimeoutSeconds: 60,                                                                                                                                                            // Overall request timeout
-			Priority:              []string{"dmm", "r18dev", "libredmm", "mgstage", "javlibrary", "javdb", "javbus", "jav321", "tokyohot", "aventertainment", "dlgetchu", "caribbeancom", "fc2"}, // Global scraper execution order
+			Referer:               "https://www.dmm.co.jp/", // Referer header for CDN compatibility (required by DMM/R18 CDN)
+			TimeoutSeconds:        30,                       // HTTP client timeout
+			RequestTimeoutSeconds: 60,                       // Overall request timeout
+			Priority:              getScraperPriorities(),   // Global scraper execution order
 			FlareSolverr: FlareSolverrConfig{
 				Enabled:    false,
 				URL:        "http://localhost:8191/v1",
 				Timeout:    30,
 				MaxRetries: 3,
 				SessionTTL: 300,
+			},
+			// NEW: Global scrape_actress default (opt-out behavior)
+			ScrapeActress: true,
+			// NEW: Global Browser configuration
+			Browser: BrowserConfig{
+				Enabled:      false, // Opt-in
+				BinaryPath:   "",    // Auto-discovered if empty
+				Timeout:      30,
+				MaxRetries:   3,
+				Headless:     true,
+				StealthMode:  true,
+				WindowWidth:  1920,
+				WindowHeight: 1080,
+				SlowMo:       0,
+				BlockImages:  true,
+				BlockCSS:     false,
+				UserAgent:    "",
+				DebugVisible: false,
 			},
 			Proxy: ProxyConfig{
 				Enabled:        false,
@@ -135,7 +178,7 @@ func DefaultConfig() *Config {
 				IncludeStreamDetails: false,
 				IncludeFanart:        true,
 				IncludeTrailer:       true,
-				RatingSource:         "r18dev",
+				RatingSource:         getFirstScraperPriority(),
 			},
 		},
 		Matching: MatchingConfig{

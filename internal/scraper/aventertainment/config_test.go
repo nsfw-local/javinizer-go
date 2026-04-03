@@ -170,28 +170,10 @@ func TestValidateConfig(t *testing.T) {
 			errMsg:  "aventertainment.base_url must be a valid HTTP or HTTPS URL",
 		},
 		{
-			name: "FlareSolverr enabled without URL is invalid",
+			name: "FlareSolverr enabled is valid",
 			cfg: &config.ScraperSettings{
-				Enabled: true,
-				FlareSolverr: config.FlareSolverrConfig{
-					Enabled: true,
-					URL:     "",
-				},
-			},
-			wantErr: true,
-			errMsg:  "aventertainment.flaresolverr.url is required when flaresolverr is enabled",
-		},
-		{
-			name: "FlareSolverr enabled with URL is valid",
-			cfg: &config.ScraperSettings{
-				Enabled: true,
-				FlareSolverr: config.FlareSolverrConfig{
-					Enabled:    true,
-					URL:        "http://localhost:8191/v1",
-					Timeout:    30,
-					MaxRetries: 3,
-					SessionTTL: 300,
-				},
+				Enabled:         true,
+				UseFlareSolverr: true,
 			},
 			wantErr: false,
 		},

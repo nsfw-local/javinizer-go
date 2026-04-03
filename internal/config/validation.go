@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"net/url"
+	"os"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -96,15 +97,12 @@ func validateProxyProfileRef(path string, proxyCfg *ProxyConfig, profiles map[st
 		return err
 	}
 
-	if proxyCfg.Enabled && proxyCfg.Profile == "" {
-		return fmt.Errorf("%s.profile is required when %s.enabled is true", path, path)
-	}
-	if proxyCfg.Profile == "" {
-		return nil
-	}
-
-	if _, ok := profiles[proxyCfg.Profile]; !ok {
-		return fmt.Errorf("%s.profile references unknown profile %q", path, proxyCfg.Profile)
+	// enabled=true with empty profile means "inherit" mode - valid, no profile needed
+	// enabled=true with non-empty profile means "specific" mode - profile is required
+	if proxyCfg.Enabled && proxyCfg.Profile != "" {
+		if _, ok := profiles[proxyCfg.Profile]; !ok {
+			return fmt.Errorf("%s.profile references unknown profile %q", path, proxyCfg.Profile)
+		}
 	}
 	return nil
 }
@@ -169,5 +167,41 @@ func validateFlareSolverrConfig(path string, cfg FlareSolverrConfig) error {
 	if cfg.SessionTTL < 60 || cfg.SessionTTL > 3600 {
 		return fmt.Errorf("%s.session_ttl must be between 60 and 3600", path)
 	}
+	return nil
+}
+
+// validateBrowserConfig validates Browser configuration
+func validateBrowserConfig(path string, cfg BrowserConfig) error {
+	if !cfg.Enabled {
+		return nil // Disabled is valid
+	}
+
+	if cfg.Timeout < 1 || cfg.Timeout > 300 {
+		return fmt.Errorf("%s.timeout must be between 1 and 300 seconds", path)
+	}
+
+	if cfg.MaxRetries < 0 || cfg.MaxRetries > 10 {
+		return fmt.Errorf("%s.max_retries must be between 0 and 10", path)
+	}
+
+	if cfg.WindowWidth < 640 || cfg.WindowWidth > 3840 {
+		return fmt.Errorf("%s.window_width must be between 640 and 3840", path)
+	}
+
+	if cfg.WindowHeight < 480 || cfg.WindowHeight > 2160 {
+		return fmt.Errorf("%s.window_height must be between 480 and 2160", path)
+	}
+
+	if cfg.SlowMo < 0 || cfg.SlowMo > 5000 {
+		return fmt.Errorf("%s.slow_mo must be between 0 and 5000", path)
+	}
+
+	// If binary_path is set, validate it exists
+	if cfg.BinaryPath != "" {
+		if _, err := os.Stat(cfg.BinaryPath); err != nil {
+			return fmt.Errorf("%s.binary_path does not exist: %s", path, cfg.BinaryPath)
+		}
+	}
+
 	return nil
 }

@@ -239,11 +239,6 @@ func (c *Config) Validate() error {
 				return err
 			}
 		}
-
-		// Generic FlareSolverr validation using sc.FlareSolverr (HTTP-03)
-		if err := validateFlareSolverrConfig("scrapers."+name+".flaresolverr", sc.FlareSolverr); err != nil {
-			return err
-		}
 	}
 
 	// Validate proxy profiles (global + per-scraper)
@@ -253,6 +248,11 @@ func (c *Config) Validate() error {
 
 	// Validate FlareSolverr config (global)
 	if err := validateFlareSolverrConfig("scrapers.flaresolverr", c.Scrapers.FlareSolverr); err != nil {
+		return err
+	}
+
+	// NEW: Validate Browser config (global)
+	if err := validateBrowserConfig("scrapers.browser", c.Scrapers.Browser); err != nil {
 		return err
 	}
 

@@ -652,17 +652,15 @@ func isHTTPURL(v string) bool {
 }
 
 func init() {
-	scraper.RegisterScraper("tokyohot", func(settings config.ScraperSettings, db *database.DB, globalProxy *config.ProxyConfig, globalFlareSolverr config.FlareSolverrConfig) (models.Scraper, error) {
-		return New(settings, globalProxy, globalFlareSolverr), nil
+	scraper.RegisterScraper("tokyohot", func(settings config.ScraperSettings, db *database.DB, globalConfig *config.ScrapersConfig) (models.Scraper, error) {
+		return New(settings, &globalConfig.Proxy, globalConfig.FlareSolverr), nil
 	})
 	// Register default settings and priority
 	scraper.RegisterScraperDefaults("tokyohot", scraper.DefaultSettings{
 		Settings: config.ScraperSettings{
 			Enabled:   false,
 			RateLimit: 1000,
-			Extra: map[string]any{
-				"base_url": "https://www.tokyo-hot.com",
-			},
+			BaseURL:   "https://www.tokyo-hot.com",
 		},
 		Priority: 50,
 	})

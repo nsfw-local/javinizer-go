@@ -8,6 +8,7 @@ import (
 
 	"github.com/javinizer/javinizer-go/cmd/javinizer/commands/actress"
 	"github.com/javinizer/javinizer-go/cmd/javinizer/commands/api"
+	configcmd "github.com/javinizer/javinizer-go/cmd/javinizer/commands/config"
 	"github.com/javinizer/javinizer-go/cmd/javinizer/commands/genre"
 	"github.com/javinizer/javinizer-go/cmd/javinizer/commands/history"
 	"github.com/javinizer/javinizer-go/cmd/javinizer/commands/info"
@@ -19,6 +20,7 @@ import (
 	"github.com/javinizer/javinizer-go/cmd/javinizer/commands/update"
 	versioncmd "github.com/javinizer/javinizer-go/cmd/javinizer/commands/version"
 	"github.com/javinizer/javinizer-go/internal/config"
+	_ "github.com/javinizer/javinizer-go/internal/config/migrations"
 	"github.com/javinizer/javinizer-go/internal/logging"
 	"github.com/javinizer/javinizer-go/internal/version"
 	"github.com/spf13/cobra"
@@ -57,6 +59,7 @@ func init() {
 	rootCmd.AddCommand(
 		actress.NewCommand(),
 		api.NewCommand(),
+		configcmd.NewCommand(),
 		genre.NewCommand(),
 		history.NewCommand(),
 		info.NewCommand(),

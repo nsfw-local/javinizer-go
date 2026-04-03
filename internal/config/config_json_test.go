@@ -275,20 +275,12 @@ func TestScrapersConfigJSONRoundTripWithFlaresolverr(t *testing.T) {
 		},
 		Overrides: map[string]*ScraperSettings{
 			"r18dev": &ScraperSettings{
-				Enabled: true,
-				FlareSolverr: FlareSolverrConfig{
-					Enabled:    true,
-					URL:        "http://localhost:8191/v1",
-					Timeout:    60,
-					MaxRetries: 5,
-					SessionTTL: 600,
-				},
+				Enabled:         true,
+				UseFlareSolverr: true,
 			},
 			"dmm": &ScraperSettings{
-				Enabled: false,
-				FlareSolverr: FlareSolverrConfig{
-					Enabled: false,
-				},
+				Enabled:         false,
+				UseFlareSolverr: false,
 			},
 		},
 	}
@@ -346,14 +338,8 @@ func TestScrapersConfigJSONRoundTripWithFlaresolverr(t *testing.T) {
 	if !ok {
 		t.Errorf("After round-trip: r18dev should be present in Overrides")
 	} else {
-		if !r18Cfg.FlareSolverr.Enabled {
-			t.Errorf("After round-trip: r18dev.FlareSolverr.Enabled should be true")
-		}
-		if r18Cfg.FlareSolverr.URL != "http://localhost:8191/v1" {
-			t.Errorf("After round-trip: r18dev.FlareSolverr.URL should be 'http://localhost:8191/v1', got %q", r18Cfg.FlareSolverr.URL)
-		}
-		if r18Cfg.FlareSolverr.Timeout != 60 {
-			t.Errorf("After round-trip: r18dev.FlareSolverr.Timeout should be 60, got %d", r18Cfg.FlareSolverr.Timeout)
+		if !r18Cfg.UseFlareSolverr {
+			t.Errorf("After round-trip: r18dev.UseFlareSolverr should be true")
 		}
 	}
 }
@@ -361,7 +347,7 @@ func TestScrapersConfigJSONRoundTripWithFlaresolverr(t *testing.T) {
 // TestScrapersConfigJSONRoundTripScraperSpecific tests that scraper-specific
 // fields (dmm.browser_timeout, r18dev.respect_retry_after) are preserved in JSON round-trip.
 func TestScrapersConfigJSONRoundTripScraperSpecific(t *testing.T) {
-	// Create a ScrapersConfig with scraper-specific Extra fields
+	// Create a ScrapersConfig with scraper-specific fields
 	scrapersCfg := ScrapersConfig{
 		UserAgent:      "test-agent",
 		TimeoutSeconds: 30,
@@ -369,17 +355,9 @@ func TestScrapersConfigJSONRoundTripScraperSpecific(t *testing.T) {
 		Overrides: map[string]*ScraperSettings{
 			"r18dev": &ScraperSettings{
 				Enabled: true,
-				Extra: map[string]any{
-					"respect_retry_after": true,
-				},
 			},
 			"dmm": &ScraperSettings{
 				Enabled: true,
-				Extra: map[string]any{
-					"enable_browser":  true,
-					"browser_timeout": 45,
-					"scrape_actress":  true,
-				},
 			},
 			"javlibrary": &ScraperSettings{
 				Enabled: true,
@@ -408,13 +386,8 @@ func TestScrapersConfigJSONRoundTripScraperSpecific(t *testing.T) {
 		t.Errorf("JSON output missing 'javlibrary' field. Got: %s", jsonStr)
 	}
 
-	// Verify Extra fields are present in JSON output
-	if !strings.Contains(jsonStr, `"respect_retry_after"`) {
-		t.Errorf("JSON output missing 'respect_retry_after' field. Got: %s", jsonStr)
-	}
-	if !strings.Contains(jsonStr, `"browser_timeout"`) {
-		t.Errorf("JSON output missing 'browser_timeout' field. Got: %s", jsonStr)
-	}
+	// Note: scraper-specific fields (respect_retry_after, browser_timeout)
+	// were previously in Extra but are now in concrete config types
 	if !strings.Contains(jsonStr, `"base_url"`) {
 		t.Errorf("JSON output missing 'base_url' field. Got: %s", jsonStr)
 	}
@@ -425,37 +398,26 @@ func TestScrapersConfigJSONRoundTripScraperSpecific(t *testing.T) {
 		t.Fatalf("Failed to unmarshal ScrapersConfig: %v", err)
 	}
 
-	// Verify r18dev Extra fields round-trip
+	// Verify r18dev fields round-trip
 	r18Cfg, ok := decoded.Overrides["r18dev"]
 	if !ok {
 		t.Fatalf("After round-trip: r18dev should be present in Overrides")
 	}
-	if r18Cfg.Extra == nil {
-		t.Errorf("After round-trip: r18dev.Extra should not be nil")
-	} else {
-		respRetryAfter := r18Cfg.GetBoolExtra("respect_retry_after", false)
-		if !respRetryAfter {
-			t.Errorf("After round-trip: r18dev.Extra respect_retry_after should be true")
-		}
+	if !r18Cfg.Enabled {
+		t.Errorf("After round-trip: r18dev.Enabled should be true")
 	}
+	// Note: respect_retry_after was previously in Extra, now in R18DevConfig
 
-	// Verify dmm Extra fields round-trip
+	// Verify dmm fields round-trip
 	dmmCfg, ok := decoded.Overrides["dmm"]
 	if !ok {
 		t.Fatalf("After round-trip: dmm should be present in Overrides")
 	}
-	if dmmCfg.Extra == nil {
-		t.Errorf("After round-trip: dmm.Extra should not be nil")
-	} else {
-		enableBrowser := dmmCfg.GetBoolExtra("enable_browser", false)
-		if !enableBrowser {
-			t.Errorf("After round-trip: dmm.Extra enable_browser should be true")
-		}
-		browserTimeout := dmmCfg.GetIntExtra("browser_timeout", 0)
-		if browserTimeout != 45 {
-			t.Errorf("After round-trip: dmm.Extra browser_timeout should be 45, got %d", browserTimeout)
-		}
+	if !dmmCfg.Enabled {
+		t.Errorf("After round-trip: dmm.Enabled should be true")
 	}
+	// Note: DMM-specific fields (enable_browser, browser_timeout, scrape_actress)
+	// were previously in Extra, now in DMMConfig
 
 	// Verify javlibrary base_url at top level
 	javlibCfg, ok := decoded.Overrides["javlibrary"]

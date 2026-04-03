@@ -33,14 +33,9 @@ scrapers:
         rate_limit: 1500
         retry_count: 0
         user_agent: ""
+        use_flaresolverr: true
         extra:
             respect_retry_after: true
-        flaresolverr:
-            enabled: true
-            url: "http://localhost:8191/v1"
-            timeout: 60
-            max_retries: 5
-            session_ttl: 600
     dmm:
         enabled: true
         scrape_actress: true
@@ -51,13 +46,8 @@ scrapers:
         rate_limit: 0
         retry_count: 0
         user_agent: ""
+        use_flaresolverr: false
         extra:
             browser_timeout: 30
             enable_browser: true
             scrape_actress: true
-        flaresolverr:
-            enabled: false
-            url: ""
-            timeout: 0
-            max_retries: 0
-            session_ttl: 0

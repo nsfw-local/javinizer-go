@@ -48,7 +48,7 @@ func TestExtractDescriptionNewSite(t *testing.T) {
 			settings := config.ScraperSettings{
 				Enabled: true,
 			}
-			scraper := New(settings, nil, &config.ProxyConfig{}, config.FlareSolverrConfig{})
+			scraper := New(settings, createTestGlobalConfig(&config.ProxyConfig{}, config.FlareSolverrConfig{}, false, false), nil)
 
 			doc, err := parseHTMLString(tt.html)
 			require.NoError(t, err)
@@ -135,7 +135,7 @@ func TestExtractCoverURLNewSite(t *testing.T) {
 			settings := config.ScraperSettings{
 				Enabled: true,
 			}
-			scraper := New(settings, nil, &config.ProxyConfig{}, config.FlareSolverrConfig{})
+			scraper := New(settings, createTestGlobalConfig(&config.ProxyConfig{}, config.FlareSolverrConfig{}, false, false), nil)
 
 			doc, err := parseHTMLString(tt.html)
 			require.NoError(t, err)
@@ -191,7 +191,7 @@ func TestExtractScreenshotsNewSite(t *testing.T) {
 			settings := config.ScraperSettings{
 				Enabled: true,
 			}
-			scraper := New(settings, nil, &config.ProxyConfig{}, config.FlareSolverrConfig{})
+			scraper := New(settings, createTestGlobalConfig(&config.ProxyConfig{}, config.FlareSolverrConfig{}, false, false), nil)
 
 			doc, err := parseHTMLString(tt.html)
 			require.NoError(t, err)
@@ -232,7 +232,7 @@ func TestExtractSeriesNewSite(t *testing.T) {
 			settings := config.ScraperSettings{
 				Enabled: true,
 			}
-			scraper := New(settings, nil, &config.ProxyConfig{}, config.FlareSolverrConfig{})
+			scraper := New(settings, createTestGlobalConfig(&config.ProxyConfig{}, config.FlareSolverrConfig{}, false, false), nil)
 
 			doc, err := parseHTMLString(tt.html)
 			require.NoError(t, err)
@@ -267,7 +267,7 @@ func TestExtractMakerNewSite(t *testing.T) {
 			settings := config.ScraperSettings{
 				Enabled: true,
 			}
-			scraper := New(settings, nil, &config.ProxyConfig{}, config.FlareSolverrConfig{})
+			scraper := New(settings, createTestGlobalConfig(&config.ProxyConfig{}, config.FlareSolverrConfig{}, false, false), nil)
 
 			doc, err := parseHTMLString(tt.html)
 			require.NoError(t, err)
@@ -311,7 +311,7 @@ func TestExtractRatingNewSite(t *testing.T) {
 			settings := config.ScraperSettings{
 				Enabled: true,
 			}
-			scraper := New(settings, nil, &config.ProxyConfig{}, config.FlareSolverrConfig{})
+			scraper := New(settings, createTestGlobalConfig(&config.ProxyConfig{}, config.FlareSolverrConfig{}, false, false), nil)
 
 			doc, err := parseHTMLString(tt.html)
 			require.NoError(t, err)
@@ -570,7 +570,7 @@ func TestExtractTrailerURLNewSite(t *testing.T) {
 			settings := config.ScraperSettings{
 				Enabled: true,
 			}
-			scraper := New(settings, nil, &config.ProxyConfig{}, config.FlareSolverrConfig{})
+			scraper := New(settings, createTestGlobalConfig(&config.ProxyConfig{}, config.FlareSolverrConfig{}, false, false), nil)
 
 			doc, err := parseHTMLString(tt.html)
 			require.NoError(t, err)

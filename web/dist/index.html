@@ -1,16 +1,36 @@
 <!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <title>Javinizer</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <style>
-      body { font-family: system-ui, sans-serif; margin: 2rem; }
-      .placeholder { color: #666; }
-    </style>
-  </head>
-  <body>
-    <h1>Javinizer</h1>
-    <p class="placeholder">Web UI placeholder. Run `make web-build` to build the full frontend.</p>
-  </body>
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		
+		<link rel="modulepreload" href="/_app/immutable/entry/start.BGEPzlKv.js">
+		<link rel="modulepreload" href="/_app/immutable/chunks/BAuaXErT.js">
+		<link rel="modulepreload" href="/_app/immutable/chunks/Co9fJwE_.js">
+		<link rel="modulepreload" href="/_app/immutable/entry/app.DLlEwGys.js">
+		<link rel="modulepreload" href="/_app/immutable/chunks/CqOZrxpI.js">
+		<link rel="modulepreload" href="/_app/immutable/chunks/Cvq3a1NX.js">
+		<link rel="modulepreload" href="/_app/immutable/chunks/CnSkp_GN.js">
+		<link rel="modulepreload" href="/_app/immutable/chunks/BhSfBLfu.js">
+	</head>
+	<body data-sveltekit-preload-data="hover">
+		<div style="display: contents">
+			<script>
+				{
+					__sveltekit_16tsl17 = {
+						base: ""
+					};
+
+					const element = document.currentScript.parentElement;
+
+					Promise.all([
+						import("/_app/immutable/entry/start.BGEPzlKv.js"),
+						import("/_app/immutable/entry/app.DLlEwGys.js")
+					]).then(([kit, app]) => {
+						kit.start(app, element);
+					});
+				}
+			</script>
+		</div>
+	</body>
 </html>

@@ -53,21 +53,16 @@ func init() {
 		if downloadProxy != nil {
 			downloadProxyVal = downloadProxy.(*config.ProxyConfig)
 		}
-		// Use type assertion to access Caribbeancom-specific fields
-		if caribbeancomCfg, ok := cfg.(*CaribbeancomConfig); ok {
-			return &config.ScraperSettings{
-				Enabled:   c.IsEnabled(),
-				Language:  "",
-				RateLimit: c.GetRequestDelay(),
-				Extra: map[string]any{
-					"base_url": "https://www.caribbeancom.com",
-				},
-				Proxy:         proxyVal,
-				DownloadProxy: downloadProxyVal,
-				FlareSolverr:  caribbeancomCfg.FlareSolverr,
-			}
+		// ScraperSettings no longer needs type assertion since FlareSolverr was removed
+		_ = cfg // cfg is not used directly anymore
+		return &config.ScraperSettings{
+			Enabled:       c.IsEnabled(),
+			Language:      "",
+			RateLimit:     c.GetRequestDelay(),
+			BaseURL:       "https://www.caribbeancom.com",
+			Proxy:         proxyVal,
+			DownloadProxy: downloadProxyVal,
 		}
-		return nil
 	})
 }
 
@@ -119,21 +114,6 @@ func (c *CaribbeancomConfig) ValidateConfig(sc *config.ScraperSettings) error {
 	// Validate base URL if set
 	if err := configutil.ValidateHTTPBaseURL("caribbeancom.base_url", sc.BaseURL); err != nil {
 		return err
-	}
-	// Validate FlareSolverr config if enabled
-	if sc.FlareSolverr.Enabled {
-		if sc.FlareSolverr.URL == "" {
-			return fmt.Errorf("caribbeancom.flaresolverr.url is required when flaresolverr is enabled")
-		}
-		if sc.FlareSolverr.Timeout < 1 || sc.FlareSolverr.Timeout > 300 {
-			return fmt.Errorf("caribbeancom.flaresolverr.timeout must be between 1 and 300")
-		}
-		if sc.FlareSolverr.MaxRetries < 0 || sc.FlareSolverr.MaxRetries > 10 {
-			return fmt.Errorf("caribbeancom.flaresolverr.max_retries must be between 0 and 10")
-		}
-		if sc.FlareSolverr.SessionTTL < 60 || sc.FlareSolverr.SessionTTL > 3600 {
-			return fmt.Errorf("caribbeancom.flaresolverr.session_ttl must be between 60 and 3600")
-		}
 	}
 	return nil
 }

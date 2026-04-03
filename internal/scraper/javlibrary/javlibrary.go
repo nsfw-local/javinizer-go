@@ -34,32 +34,20 @@ type Scraper struct {
 
 // New creates a new JavLibrary scraper.
 func New(settings config.ScraperSettings, globalProxy *config.ProxyConfig, globalFlareSolverr config.FlareSolverrConfig) *Scraper {
-	// Build FlareSolverrConfig for NewHTTPClient.
-	// When scraper-specific flaresolverr is set (settings.FlareSolverr.Enabled), use it.
-	// Otherwise, fall back to globalFlareSolverr parameter.
-	flaresolverrConfig := config.FlareSolverrConfig{}
-	if settings.FlareSolverr.Enabled {
-		// Use scraper-specific FlareSolverr config
-		flaresolverrConfig = settings.FlareSolverr
-	} else if globalFlareSolverr.Enabled {
-		// Fall back to global FlareSolverr from registry
-		flaresolverrConfig = globalFlareSolverr
-	}
-
 	// Build ScraperConfig for NewHTTPClient (HTTP-01 pattern)
 	configForHTTP := &config.ScraperSettings{
-		Enabled:       settings.Enabled,
-		Language:      settings.Language,
-		RateLimit:     settings.RateLimit,
-		Timeout:       30, // default, will be overridden if ScraperConfig has it
-		RetryCount:    3,  // default
-		UserAgent:     settings.UserAgent,
-		Proxy:         settings.Proxy,
-		DownloadProxy: settings.DownloadProxy,
-		FlareSolverr:  flaresolverrConfig,
+		Enabled:         settings.Enabled,
+		Language:        settings.Language,
+		RateLimit:       settings.RateLimit,
+		Timeout:         30, // default, will be overridden if ScraperConfig has it
+		RetryCount:      3,  // default
+		UserAgent:       settings.UserAgent,
+		Proxy:           settings.Proxy,
+		DownloadProxy:   settings.DownloadProxy,
+		UseFlareSolverr: settings.UseFlareSolverr, // Pass the FlareSolverr flag
 	}
 
-	client, flaresolverr, err := NewHTTPClient(configForHTTP, globalProxy, globalFlareSolverr, flaresolverrConfig.Enabled)
+	client, flaresolverr, err := NewHTTPClient(configForHTTP, globalProxy, globalFlareSolverr)
 	// Resolve proxy to check if it's actually being used
 	resolvedProxy := config.ResolveScraperProxy(*globalProxy, settings.Proxy)
 	usingProxy := err == nil && globalProxy != nil && globalProxy.Enabled && strings.TrimSpace(resolvedProxy.URL) != ""
@@ -780,8 +768,8 @@ func (s *Scraper) ValidateConfig(cfg *config.ScraperSettings) error {
 }
 
 func init() {
-	scraper.RegisterScraper("javlibrary", func(settings config.ScraperSettings, db *database.DB, globalProxy *config.ProxyConfig, globalFlareSolverr config.FlareSolverrConfig) (models.Scraper, error) {
-		return New(settings, globalProxy, globalFlareSolverr), nil
+	scraper.RegisterScraper("javlibrary", func(settings config.ScraperSettings, db *database.DB, globalConfig *config.ScrapersConfig) (models.Scraper, error) {
+		return New(settings, &globalConfig.Proxy, globalConfig.FlareSolverr), nil
 	})
 	// Register default settings and priority
 	scraper.RegisterScraperDefaults("javlibrary", scraper.DefaultSettings{

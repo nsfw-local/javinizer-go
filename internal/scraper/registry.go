@@ -40,7 +40,7 @@ func NewDefaultScraperRegistry(cfg *config.Config, db *database.DB) (*models.Scr
 			logging.Warnf("No configuration found for %s scraper, skipping", name)
 			continue
 		}
-		scraper, err := constructor(*settings, db, &cfg.Scrapers.Proxy, cfg.Scrapers.FlareSolverr)
+		scraper, err := constructor(*settings, db, &cfg.Scrapers)
 		if err != nil {
 			logging.Warnf("Failed to initialize %s scraper: %v", name, err)
 			continue

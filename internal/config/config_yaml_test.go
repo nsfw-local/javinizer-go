@@ -83,8 +83,8 @@ func TestConfigYAMLScraperFlareSolverr(t *testing.T) {
 			t.Errorf("Scraper %q config is nil", scraper)
 			continue
 		}
-		// FlareSolverr should be present (even if disabled)
-		t.Logf("%s: FlareSolverr.Enabled=%v", scraper, scraperCfg.FlareSolverr.Enabled)
+		// UseFlareSolverr should be accessible
+		t.Logf("%s: UseFlareSolverr=%v", scraper, scraperCfg.UseFlareSolverr)
 	}
 }
 
@@ -113,11 +113,11 @@ func TestGeneratedConfigLoadable(t *testing.T) {
 		}
 	}
 
-	// Verify FlareSolverr is accessible for all scrapers
+	// Verify UseFlareSolverr is accessible for all scrapers
 	for name, scraperCfg := range cfg.Scrapers.Overrides {
 		if scraperCfg != nil {
-			_ = scraperCfg.FlareSolverr // Just verify it's accessible
-			t.Logf("%s: FlareSolverr=%+v", name, scraperCfg.FlareSolverr)
+			_ = scraperCfg.UseFlareSolverr // Just verify it's accessible
+			t.Logf("%s: UseFlareSolverr=%v", name, scraperCfg.UseFlareSolverr)
 		}
 	}
 

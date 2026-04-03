@@ -50,26 +50,20 @@ var (
 
 // Scraper implements the DMM/Fanza scraper
 type Scraper struct {
-	client         *resty.Client
-	enabled        bool
-	scrapeActress  bool
-	enableBrowser  bool
-	browserTimeout int
-	contentIDRepo  *database.ContentIDMappingRepository
-	proxyProfile   *config.ProxyProfile // Store effective proxy profile for browser operations
-	proxyOverride  *config.ProxyConfig
-	downloadProxy  *config.ProxyConfig
-	settings       config.ScraperSettings // stores the full settings for Config() method
+	client        *resty.Client
+	enabled       bool
+	scrapeActress bool
+	useBrowser    bool
+	browserConfig config.BrowserConfig // Reference to global browser config
+	contentIDRepo *database.ContentIDMappingRepository
+	proxyProfile  *config.ProxyProfile // Store effective proxy profile for browser operations
+	proxyOverride *config.ProxyConfig
+	downloadProxy *config.ProxyConfig
+	settings      config.ScraperSettings // stores the full settings for Config() method
 }
 
 // New creates a new DMM scraper
-func New(settings config.ScraperSettings, contentIDRepo *database.ContentIDMappingRepository, globalProxy *config.ProxyConfig, globalFlareSolverr config.FlareSolverrConfig) *Scraper {
-	// HTTP-03: FlareSolverr inherits global settings; per-scraper can only override if global is enabled
-	flareSolverrCfg := globalFlareSolverr
-	if globalFlareSolverr.Enabled && settings.FlareSolverr.Enabled {
-		flareSolverrCfg.Enabled = true
-	}
-
+func New(settings config.ScraperSettings, globalConfig *config.ScrapersConfig, contentIDRepo *database.ContentIDMappingRepository) *Scraper {
 	// Construct ScraperConfig from ScraperSettings for HTTP client creation
 	scraperCfg := &config.ScraperSettings{
 		Enabled:       settings.Enabled,
@@ -79,18 +73,17 @@ func New(settings config.ScraperSettings, contentIDRepo *database.ContentIDMappi
 		UserAgent:     settings.UserAgent,
 		Proxy:         settings.Proxy,
 		DownloadProxy: settings.DownloadProxy,
-		FlareSolverr:  flareSolverrCfg,
 	}
 
 	// Create HTTP client via per-scraper NewHTTPClient (HTTP-01)
-	client, proxyProfile, err := NewHTTPClient(scraperCfg, globalProxy, globalFlareSolverr)
+	client, proxyProfile, err := NewHTTPClient(scraperCfg, &globalConfig.Proxy, globalConfig.FlareSolverr)
 	if err != nil {
 		// NewHTTPClient already logged and fell back; client is non-nil
 		logging.Debugf("DMM: Using fallback HTTP client: %v", err)
 	}
 
 	// Log proxy usage if enabled
-	proxyEnabled := globalProxy != nil && globalProxy.Enabled
+	proxyEnabled := globalConfig.Proxy.Enabled
 	if settings.Proxy != nil && settings.Proxy.Enabled {
 		proxyEnabled = true
 	}
@@ -99,16 +92,16 @@ func New(settings config.ScraperSettings, contentIDRepo *database.ContentIDMappi
 	}
 
 	return &Scraper{
-		client:         client,
-		enabled:        settings.Enabled,
-		scrapeActress:  settings.GetBoolExtra("scrape_actress", false),
-		enableBrowser:  settings.GetBoolExtra("enable_browser", false),
-		browserTimeout: settings.GetIntExtra("browser_timeout", 30),
-		contentIDRepo:  contentIDRepo,
-		proxyProfile:   proxyProfile, // Store effective proxy profile for browser operations
-		proxyOverride:  settings.Proxy,
-		downloadProxy:  settings.DownloadProxy,
-		settings:       settings,
+		client:        client,
+		enabled:       settings.Enabled,
+		scrapeActress: settings.ShouldScrapeActress(globalConfig.ScrapeActress),
+		useBrowser:    settings.ShouldUseBrowser(globalConfig.Browser.Enabled),
+		browserConfig: globalConfig.Browser,
+		contentIDRepo: contentIDRepo,
+		proxyProfile:  proxyProfile, // Store effective proxy profile for browser operations
+		proxyOverride: settings.Proxy,
+		downloadProxy: settings.DownloadProxy,
+		settings:      settings,
 	}
 }
 
@@ -312,20 +305,40 @@ func (s *Scraper) GetURL(id string) (string, error) {
 	for _, searchQuery := range uniqueQueries {
 		searchURLFormatted := fmt.Sprintf(searchURL, searchQuery)
 		logging.Debugf("DMM: Trying search query: %s", searchQuery)
+		logging.Debugf("DMM: Search URL: %s", searchURLFormatted)
+		logging.Debugf("DMM: About to make HTTP GET request to: %s", searchURLFormatted)
+		logging.Debugf("DMM: HTTP client transport proxy setting: %v", s.client.GetClient().Transport != nil)
 
 		resp, err := s.client.R().Get(searchURLFormatted)
 		if err != nil || resp.StatusCode() != 200 {
-			logging.Debugf("DMM: Search failed for query '%s'", searchQuery)
+			logging.Debugf("DMM: Search failed for query '%s': status=%d, err=%v", searchQuery, resp.StatusCode(), err)
 			continue
 		}
 
-		doc, err := goquery.NewDocumentFromReader(strings.NewReader(resp.String()))
+		respBody := resp.String()
+		logging.Debugf("DMM: Search response size: %d bytes", len(respBody))
+
+		// Debug: Show first 500 chars of response to see what page we're getting
+		if len(respBody) > 0 {
+			snippet := respBody
+			if len(snippet) > 500 {
+				snippet = snippet[:500]
+			}
+			logging.Debugf("DMM: Response snippet: %s", snippet)
+		}
+
+		doc, err := goquery.NewDocumentFromReader(strings.NewReader(respBody))
 		if err != nil {
 			logging.Debugf("DMM: Failed to parse search results for query '%s'", searchQuery)
 			continue
 		}
 
+		// Count total links on the page for debugging
+		linkCount := doc.Find("a").Length()
+		logging.Debugf("DMM: Total links found on search page: %d", linkCount)
+
 		candidates := s.extractCandidateURLs(doc, contentID)
+		logging.Debugf("DMM: Found %d candidates from search query '%s'", len(candidates), searchQuery)
 		allCandidates = append(allCandidates, candidates...)
 	}
 
@@ -415,11 +428,11 @@ func (s *Scraper) Search(id string) (*models.ScraperResult, error) {
 	var doc *goquery.Document
 
 	// Check if this is a video.dmm.co.jp URL and browser mode is enabled
-	if strings.Contains(url, "video.dmm.co.jp") && s.enableBrowser {
+	if strings.Contains(url, "video.dmm.co.jp") && s.useBrowser {
 		logging.Debug("DMM: Using browser mode for video.dmm.co.jp page")
 
 		// Use browser to fetch JavaScript-rendered content
-		bodyHTML, err := FetchWithBrowser(url, s.browserTimeout, s.proxyProfile)
+		bodyHTML, err := FetchWithBrowser(url, s.browserConfig.Timeout, s.proxyProfile)
 		if err != nil {
 			return nil, fmt.Errorf("browser fetch failed: %w", err)
 		}
@@ -1396,19 +1409,14 @@ func (s *Scraper) extractTrailerURL(doc *goquery.Document, sourceURL string) str
 }
 
 func init() {
-	scraper.RegisterScraper("dmm", func(settings config.ScraperSettings, db *database.DB, globalProxy *config.ProxyConfig, globalFlareSolverr config.FlareSolverrConfig) (models.Scraper, error) {
+	scraper.RegisterScraper("dmm", func(settings config.ScraperSettings, db *database.DB, globalConfig *config.ScrapersConfig) (models.Scraper, error) {
 		contentIDRepo := database.NewContentIDMappingRepository(db)
-		return New(settings, contentIDRepo, globalProxy, globalFlareSolverr), nil
+		return New(settings, globalConfig, contentIDRepo), nil
 	})
 	// Register default settings and priority
 	scraper.RegisterScraperDefaults("dmm", scraper.DefaultSettings{
 		Settings: config.ScraperSettings{
 			Enabled: false,
-			Extra: map[string]any{
-				"scrape_actress":  true,
-				"enable_browser":  true,
-				"browser_timeout": 30,
-			},
 		},
 		Priority: 90,
 	})

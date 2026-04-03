@@ -47,19 +47,37 @@ scrapers:
     # Overall request timeout in seconds (default: 60)
     request_timeout_seconds: 60
     priority:
-        - dmm
         - r18dev
         - libredmm
-        - mgstage
+        - dmm
         - javlibrary
         - javdb
         - javbus
         - jav321
+        - mgstage
         - tokyohot
         - aventertainment
-        - dlgetchu
         - caribbeancom
+        - dlgetchu
         - fc2
+    # NEW: Global scrape_actress default (opt-out behavior)
+    scrape_actress: true
+
+    # NEW: Global Browser configuration
+    browser:
+        enabled: false                    # Master kill-switch (enable per-scraper below)
+        binary_path: ""                   # Auto-discovered if empty
+        timeout: 30                       # Operation timeout (seconds)
+        max_retries: 3                    # Retry attempts
+        headless: true                    # Run headless (hide browser window)
+        stealth_mode: true                # Anti-detection measures
+        window_width: 1920               # Viewport width
+        window_height: 1080              # Viewport height
+        slow_mo: 0                       # Slow motion (ms, for debugging)
+        block_images: true               # Block images for speed
+        block_css: false                 # Block CSS (may break some sites)
+        user_agent: ""                   # Override UA (empty = use scraper's)
+        debug_visible: false             # Show browser window for debugging
     # Global FlareSolverr config for Cloudflare bypass.
     # Per-scraper override: set flaresolverr at scraper level (e.g., scrapers.r18dev.flaresolverr).
     flaresolverr:
@@ -95,9 +113,13 @@ scrapers:
         respect_retry_after: true    # Respect Retry-After header from server
     dmm:
         enabled: true
-        scrape_actress: false
-        enable_browser: true      # Enable browser automation for JavaScript-rendered pages
-        browser_timeout: 30       # Timeout in seconds for browser operations
+        use_browser: true                # Enable browser for DMM streaming pages
+        # scrape_actress: null          # Optional: inherit from global (true)
+        # Or override: scrape_actress: false
+        request_delay: 0
+        max_retries: 0
+        user_agent: ""
+        use_flaresolverr: false
     libredmm:
         enabled: true
         request_delay: 500
@@ -112,15 +134,22 @@ scrapers:
         # Frontend scraper options:
         # language: en, ja, cn, tw
         # request_delay: milliseconds between requests
-        language: en
+        language: ja  # Default Japanese
         request_delay: 1000
         base_url: "http://www.javlibrary.com"
-        cf_clearance: ""
-        cf_bm: ""
+        cookies:
+            cf_clearance: ""
+            cf_bm: ""
         user_agent: ""
-        # Use proxy profile for FlareSolverr (Cloudflare bypass)
+        # Proxy configuration:
+        # - enabled: true + profile: name  → Use specific profile
+        # - enabled: true (no profile)     → Inherit global default
+        # - enabled: false or omitted      → Direct (no proxy)
+        # Note: Global scrapers.proxy.enabled must be true for proxy to work.
         proxy:
-            profile: main
+            enabled: false
+            # profile: main  # Set enabled: true and uncomment to use proxy
+        use_flaresolverr: false  # Enable to use global FlareSolverr for Cloudflare bypass
     # JavDB: configure flaresolverr at scrapers.flaresolverr or per-scraper
     javdb:
         enabled: false
@@ -130,12 +159,14 @@ scrapers:
         # proxy:
         #   enabled: true
         #   profile: main
+        use_flaresolverr: false  # Enable to use global FlareSolverr for Cloudflare bypass
     javbus:
         enabled: false
         language: ja
         request_delay: 1000
         base_url: "https://www.javbus.com"
         # age=verified, dv=1, existmag=mag cookies are applied automatically by scraper.
+        use_flaresolverr: false  # Enable to use global FlareSolverr for Cloudflare bypass
     jav321:
         enabled: false
         request_delay: 1000

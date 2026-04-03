@@ -79,7 +79,6 @@ func TestGetURL_WithBaseURL(t *testing.T) {
 		Enabled:   true,
 		Language:  "ja",
 		RateLimit: 0,
-		Extra:     map[string]any{},
 	}
 	// Test with base URL that doesn't have trailing slash
 	settings.BaseURL = "https://www.caribbeancom.com"

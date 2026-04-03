@@ -285,7 +285,7 @@ func TestSaveAndLoadOrCreateBranches(t *testing.T) {
 		assert.Contains(t, err.Error(), "failed to save default config")
 	})
 
-	t.Run("LoadOrCreate wraps save migrated errors", func(t *testing.T) {
+	t.Run("LoadOrCreate wraps migration errors", func(t *testing.T) {
 		dir := filepath.Join(t.TempDir(), "readonly")
 		require.NoError(t, os.MkdirAll(dir, 0o755))
 		path := filepath.Join(dir, "config.yaml")
@@ -296,7 +296,7 @@ func TestSaveAndLoadOrCreateBranches(t *testing.T) {
 
 		_, err := LoadOrCreate(path)
 		require.Error(t, err)
-		assert.Contains(t, err.Error(), "failed to save migrated config")
+		assert.Contains(t, err.Error(), "migration failed")
 	})
 
 	t.Run("LoadOrCreate applies init defaults env only on first create", func(t *testing.T) {

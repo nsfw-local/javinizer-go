@@ -1,11 +1,19 @@
 <script lang="ts">
-	import { RefreshCw, X } from 'lucide-svelte';
+	import { RefreshCw, X, Check, AlertTriangle } from 'lucide-svelte';
 	import Button from '$lib/components/ui/Button.svelte';
 	import SettingsSection from '$lib/components/settings/SettingsSection.svelte';
 	import SettingsSubsection from '$lib/components/settings/SettingsSubsection.svelte';
 	import FormNumberInput from '$lib/components/settings/FormNumberInput.svelte';
 	import FormTextInput from '$lib/components/settings/FormTextInput.svelte';
 	import FormToggle from '$lib/components/settings/FormToggle.svelte';
+
+	// TestResult interface matching parent +page.svelte
+	interface TestResult {
+		success: boolean;
+		timestamp: number;
+		message?: string;
+		configSnapshot?: string; // JSON snapshot of config at test time for dirty detection
+	}
 
 	interface Props {
 		config: any;
@@ -16,6 +24,15 @@
 		savingProfile: Record<string, boolean>;
 		loading: boolean;
 		saving: boolean;
+		// Test state props
+		profileTestResults: Record<string, TestResult>;
+		globalProxyTestResult: TestResult | null;
+		globalFlareSolverrTestResult: TestResult | null;
+		canSaveProfile: (name: string) => boolean;
+		isTestExpired: (result: TestResult | null | undefined) => boolean;
+		invalidateGlobalProxyTest: () => void;
+		invalidateGlobalFlareSolverrTest: () => void;
+		// Existing props
 		getProxyProfileNames: () => string[];
 		addProxyProfile: () => void;
 		renameProxyProfile: (oldName: string, rawNewName: string) => void;
@@ -35,6 +52,15 @@
 		savingProfile,
 		loading,
 		saving,
+		// Test state props
+		profileTestResults,
+		globalProxyTestResult,
+		globalFlareSolverrTestResult,
+		canSaveProfile,
+		isTestExpired,
+		invalidateGlobalProxyTest,
+		invalidateGlobalFlareSolverrTest,
+		// Existing props
 		getProxyProfileNames,
 		addProxyProfile,
 		renameProxyProfile,
@@ -57,6 +83,7 @@
 			onchange={(val) => {
 				if (!config.scrapers.proxy) config.scrapers.proxy = {};
 				config.scrapers.proxy.enabled = val;
+				invalidateGlobalProxyTest();
 			}}
 		/>
 
@@ -70,6 +97,7 @@
 					onchange={(e) => {
 						if (!config.scrapers.proxy) config.scrapers.proxy = {};
 						config.scrapers.proxy.default_profile = e.currentTarget.value;
+						invalidateGlobalProxyTest();
 					}}
 				>
 					{#each getProxyProfileNames() as profileName}
@@ -97,6 +125,9 @@
 				<div class="space-y-3">
 					{#each getProxyProfileNames() as profileName}
 						{@const profile = config.scrapers.proxy?.profiles?.[profileName]}
+						{@const testResult = profileTestResults[profileName]}
+						{@const saveEnabled = canSaveProfile(profileName)}
+						{@const hasUrl = (profile?.url ?? '').trim() !== ''}
 						<div class="rounded-md border p-3 space-y-2">
 							<div class="flex items-center gap-2">
 								<input
@@ -145,27 +176,46 @@
 									variant="outline"
 									size="sm"
 									onclick={() => saveProxyProfile(profileName)}
-									disabled={savingProfile[profileName] || loading || saving}
+									disabled={!saveEnabled || savingProfile[profileName] || loading || saving}
+									title={!testResult
+										? 'Test the profile before saving'
+										: !testResult.success
+											? 'Fix proxy settings and test again'
+											: isTestExpired(testResult)
+												? 'Test has expired, run test again'
+												: 'Save verified proxy profile'}
 								>
-									{#snippet children()}{savingProfile[profileName] ? 'Saving...' : 'Save Profile'}{/snippet}
+									{#snippet children()}
+										{#if saveEnabled}
+											<Check class="h-4 w-4 mr-2 text-green-500" />
+										{/if}
+										{savingProfile[profileName] ? 'Saving...' : 'Save Profile'}
+									{/snippet}
 								</Button>
+
 								<Button
 									variant="outline"
 									size="sm"
 									onclick={() => runNamedProxyProfileTest(profileName)}
-									disabled={
-										testingProfile[profileName] ||
-										savingProfile[profileName] ||
-										loading ||
-										saving ||
-										!(profile?.url ?? '').trim()
-									}
+									disabled={testingProfile[profileName] || savingProfile[profileName] || loading || saving || !hasUrl}
 								>
 									{#snippet children()}
 										<RefreshCw class={`h-4 w-4 mr-2 ${testingProfile[profileName] ? 'animate-spin' : ''}`} />
 										{testingProfile[profileName] ? 'Testing...' : 'Test Profile'}
 									{/snippet}
 								</Button>
+
+								{#if testResult}
+									<span class="text-xs {testResult.success ? 'text-green-600' : 'text-red-600'}">
+										{#if testResult.success}
+											✓ Verified
+										{:else}
+											✗ Failed
+										{/if}
+									</span>
+								{:else}
+									<span class="text-xs text-muted-foreground">Test required before save</span>
+								{/if}
 							</div>
 						</div>
 					{/each}
@@ -173,18 +223,25 @@
 			</div>
 
 			<div class="pt-2">
-				<Button
-					variant="outline"
-					size="sm"
-					onclick={() => runProxyTest('direct')}
-					disabled={testingProxy || loading || saving}
-				>
-					{#snippet children()}
-						<RefreshCw class={`h-4 w-4 mr-2 ${testingProxy ? 'animate-spin' : ''}`} />
-						{testingProxy ? 'Testing Proxy...' : 'Test Scraper Proxy'}
-					{/snippet}
-				</Button>
+				<p class="text-xs text-muted-foreground">
+					Global proxy validation uses the default profile test. Run <span class="font-medium">Test Profile</span> on the current default profile.
+				</p>
+				{#if globalProxyTestResult}
+					<p class="text-xs mt-1 {globalProxyTestResult.success ? 'text-green-600' : 'text-red-600'}">
+						{#if globalProxyTestResult.success}
+							✓ Global proxy verified
+						{:else}
+							✗ Global proxy test failed
+						{/if}
+					</p>
+				{/if}
 			</div>
+
+			{#if globalProxyTestResult && !globalProxyTestResult.success}
+				<p class="text-xs text-red-600 mt-2">
+					Fix proxy settings and test again before saving configuration.
+				</p>
+			{/if}
 		</fieldset>
 	</SettingsSubsection>
 
@@ -196,6 +253,7 @@
 			onchange={(val) => {
 				if (!config.scrapers.flaresolverr) config.scrapers.flaresolverr = {};
 				config.scrapers.flaresolverr.enabled = val;
+				invalidateGlobalFlareSolverrTest();
 			}}
 		/>
 
@@ -208,6 +266,7 @@
 				onchange={(val) => {
 					if (!config.scrapers.flaresolverr) config.scrapers.flaresolverr = {};
 					config.scrapers.flaresolverr.url = val;
+					invalidateGlobalFlareSolverrTest();
 				}}
 			/>
 
@@ -221,6 +280,7 @@
 				onchange={(val) => {
 					if (!config.scrapers.flaresolverr) config.scrapers.flaresolverr = {};
 					config.scrapers.flaresolverr.timeout = val;
+					invalidateGlobalFlareSolverrTest();
 				}}
 			/>
 
@@ -233,6 +293,7 @@
 				onchange={(val) => {
 					if (!config.scrapers.flaresolverr) config.scrapers.flaresolverr = {};
 					config.scrapers.flaresolverr.max_retries = val;
+					invalidateGlobalFlareSolverrTest();
 				}}
 			/>
 
@@ -246,10 +307,11 @@
 				onchange={(val) => {
 					if (!config.scrapers.flaresolverr) config.scrapers.flaresolverr = {};
 					config.scrapers.flaresolverr.session_ttl = val;
+					invalidateGlobalFlareSolverrTest();
 				}}
 			/>
 
-			<div class="pt-2">
+			<div class="pt-2 flex items-center gap-2">
 				<Button
 					variant="outline"
 					size="sm"
@@ -261,7 +323,23 @@
 						{testingFlareSolverr ? 'Testing FlareSolverr...' : 'Test FlareSolverr'}
 					{/snippet}
 				</Button>
+
+				{#if globalFlareSolverrTestResult}
+					<span class="text-xs {globalFlareSolverrTestResult.success ? 'text-green-600' : 'text-red-600'}">
+						{#if globalFlareSolverrTestResult.success}
+							✓ FlareSolverr working
+						{:else}
+							✗ Test failed
+						{/if}
+					</span>
+				{/if}
 			</div>
+
+			{#if globalFlareSolverrTestResult && !globalFlareSolverrTestResult.success}
+				<p class="text-xs text-red-600 mt-2">
+					Fix FlareSolverr settings and test again before saving configuration.
+				</p>
+			{/if}
 		</fieldset>
 	</SettingsSubsection>
 </SettingsSection>

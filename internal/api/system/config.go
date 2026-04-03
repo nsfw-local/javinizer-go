@@ -41,7 +41,7 @@ func getConfig(deps *ServerDependencies) gin.HandlerFunc {
 // @Tags system
 // @Accept json
 // @Produce json
-// @Param config body config.Config true "Full configuration object"
+// @Param config body UpdateConfigRequest true "Full configuration object with optional proxy verification tokens"
 // @Success 200 {object} map[string]interface{} "message: Configuration saved and reloaded successfully"
 // @Failure 400 {object} ErrorResponse
 // @Failure 500 {object} ErrorResponse
@@ -53,11 +53,14 @@ func updateConfig(deps *ServerDependencies) gin.HandlerFunc {
 		defer core.ConfigUpdateMutex.Unlock()
 
 		// Parse incoming config
-		var newConfig config.Config
-		if err := c.ShouldBindJSON(&newConfig); err != nil {
+		var req UpdateConfigRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
 			c.JSON(400, ErrorResponse{Error: "Invalid configuration format"})
 			return
 		}
+
+		// Extract config from request
+		newConfig := req.Config
 
 		// Run full config preparation pipeline before save/reload.
 		if _, err := config.Prepare(&newConfig); err != nil {
@@ -65,6 +68,10 @@ func updateConfig(deps *ServerDependencies) gin.HandlerFunc {
 			return
 		}
 		if err := validateTranslationSaveConfig(&newConfig); err != nil {
+			c.JSON(400, ErrorResponse{Error: "Invalid configuration: " + err.Error()})
+			return
+		}
+		if err := validateProxySaveConfig(deps, &newConfig, req.ProxyVerificationTokens); err != nil {
 			c.JSON(400, ErrorResponse{Error: "Invalid configuration: " + err.Error()})
 			return
 		}
@@ -182,4 +189,74 @@ func validateTranslationSaveConfig(cfg *config.Config) error {
 	}
 
 	return nil
+}
+
+// validateProxySaveConfig validates that proxy settings were tested before saving
+// Returns error if proxy config changed but no valid verification token provided
+func validateProxySaveConfig(deps *ServerDependencies, newCfg *config.Config, tokens map[string]string) error {
+	if deps.TokenStore == nil {
+		// Token store not initialized, skip verification (for testing or legacy mode)
+		return nil
+	}
+
+	oldCfg := deps.GetConfig()
+	if oldCfg == nil {
+		return nil
+	}
+
+	// Check if global proxy settings changed
+	newGlobalHash := core.HashProxyConfig(newCfg.Scrapers.Proxy)
+
+	// Check if global proxy enabled status or URL changed (meaningful changes)
+	globalChanged := oldCfg.Scrapers.Proxy.Enabled != newCfg.Scrapers.Proxy.Enabled ||
+		oldCfg.Scrapers.Proxy.DefaultProfile != newCfg.Scrapers.Proxy.DefaultProfile ||
+		!proxyProfilesEqual(oldCfg.Scrapers.Proxy.Profiles, newCfg.Scrapers.Proxy.Profiles)
+
+	if globalChanged {
+		// If no token provided for global scope, reject
+		token, ok := tokens["global"]
+		if !ok || token == "" {
+			return fmt.Errorf("proxy settings changed but no test verification token provided - please test proxy before saving")
+		}
+
+		// Validate token
+		if !deps.TokenStore.Validate(token, "global", newGlobalHash) {
+			return fmt.Errorf("proxy verification token is invalid or expired - please test proxy again")
+		}
+	}
+
+	// Check if FlareSolverr settings changed
+	newFlareSolverrHash := core.HashProxyConfig(newCfg.Scrapers.FlareSolverr)
+
+	flareSolverrChanged := oldCfg.Scrapers.FlareSolverr.Enabled != newCfg.Scrapers.FlareSolverr.Enabled ||
+		oldCfg.Scrapers.FlareSolverr.URL != newCfg.Scrapers.FlareSolverr.URL ||
+		oldCfg.Scrapers.FlareSolverr.Timeout != newCfg.Scrapers.FlareSolverr.Timeout
+
+	if flareSolverrChanged {
+		// If no token provided for flaresolverr scope, reject
+		token, ok := tokens["flaresolverr"]
+		if !ok || token == "" {
+			return fmt.Errorf("flaresolverr settings changed but no test verification token provided - please test flaresolverr before saving")
+		}
+
+		// Validate token
+		if !deps.TokenStore.Validate(token, "flaresolverr", newFlareSolverrHash) {
+			return fmt.Errorf("flaresolverr verification token is invalid or expired - please test flaresolverr again")
+		}
+	}
+
+	return nil
+}
+
+// proxyProfilesEqual compares two proxy profile maps for equality
+func proxyProfilesEqual(a, b map[string]config.ProxyProfile) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for k, v := range a {
+		if other, ok := b[k]; !ok || other != v {
+			return false
+		}
+	}
+	return true
 }

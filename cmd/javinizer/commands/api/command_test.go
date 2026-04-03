@@ -507,6 +507,27 @@ func TestRun_JobQueue(t *testing.T) {
 	assert.Empty(t, jobs, "should start with no jobs")
 }
 
+// TestRun_TokenStoreInitialized verifies that the TokenStore is initialized
+// for proxy verification. This is a regression guard for the critical fix
+// that ensures backend-enforced test-before-save for proxy configuration.
+// See: Proxy System Prevention Plan - Task 2
+func TestRun_TokenStoreInitialized(t *testing.T) {
+	if testing.Short() {
+		t.Skip("integration test")
+	}
+
+	configPath, _ := setupTagTestDB(t)
+
+	cmd := api.NewCommand()
+	deps, err := api.Run(cmd, configPath, "", 0)
+	require.NoError(t, err)
+	require.NotNil(t, deps)
+	defer func() { _ = deps.DB.Close() }()
+
+	assert.NotNil(t, deps.TokenStore, "TokenStore must be initialized for proxy verification")
+	assert.NotNil(t, deps.TokenStore, "TokenStore is required for backend save enforcement")
+}
+
 // TestRun_ErrorConfigNotFound verifies error when config doesn't exist
 func TestRun_ErrorConfigNotFound(t *testing.T) {
 	if testing.Short() {

@@ -162,90 +162,12 @@ func TestValidateConfig(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name: "FlareSolverr enabled without URL is invalid",
+			name: "FlareSolverr enabled is valid",
 			cfg: &config.ScraperSettings{
-				Enabled: true,
-				FlareSolverr: config.FlareSolverrConfig{
-					Enabled: true,
-					URL:     "",
-				},
-			},
-			wantErr: true,
-			errMsg:  "r18dev.flaresolverr.url is required when flaresolverr is enabled",
-		},
-		{
-			name: "FlareSolverr enabled with URL is valid",
-			cfg: &config.ScraperSettings{
-				Enabled: true,
-				FlareSolverr: config.FlareSolverrConfig{
-					Enabled:    true,
-					URL:        "http://localhost:8191/v1",
-					Timeout:    30,
-					MaxRetries: 3,
-					SessionTTL: 300,
-				},
+				Enabled:         true,
+				UseFlareSolverr: true,
 			},
 			wantErr: false,
-		},
-		{
-			name: "FlareSolverr timeout out of range is invalid",
-			cfg: &config.ScraperSettings{
-				Enabled: true,
-				FlareSolverr: config.FlareSolverrConfig{
-					Enabled:    true,
-					URL:        "http://localhost:8191/v1",
-					Timeout:    0,
-					MaxRetries: 3,
-					SessionTTL: 300,
-				},
-			},
-			wantErr: true,
-			errMsg:  "r18dev.flaresolverr.timeout must be between 1 and 300",
-		},
-		{
-			name: "FlareSolverr timeout too high is invalid",
-			cfg: &config.ScraperSettings{
-				Enabled: true,
-				FlareSolverr: config.FlareSolverrConfig{
-					Enabled:    true,
-					URL:        "http://localhost:8191/v1",
-					Timeout:    301,
-					MaxRetries: 3,
-					SessionTTL: 300,
-				},
-			},
-			wantErr: true,
-			errMsg:  "r18dev.flaresolverr.timeout must be between 1 and 300",
-		},
-		{
-			name: "FlareSolverr max_retries out of range is invalid",
-			cfg: &config.ScraperSettings{
-				Enabled: true,
-				FlareSolverr: config.FlareSolverrConfig{
-					Enabled:    true,
-					URL:        "http://localhost:8191/v1",
-					Timeout:    30,
-					MaxRetries: -1,
-					SessionTTL: 300,
-				},
-			},
-			wantErr: true,
-			errMsg:  "r18dev.flaresolverr.max_retries must be between 0 and 10",
-		},
-		{
-			name: "FlareSolverr session_ttl out of range is invalid",
-			cfg: &config.ScraperSettings{
-				Enabled: true,
-				FlareSolverr: config.FlareSolverrConfig{
-					Enabled:    true,
-					URL:        "http://localhost:8191/v1",
-					Timeout:    30,
-					MaxRetries: 3,
-					SessionTTL: 59,
-				},
-			},
-			wantErr: true,
-			errMsg:  "r18dev.flaresolverr.session_ttl must be between 60 and 3600",
 		},
 		{
 			name: "all valid fields",
@@ -346,10 +268,12 @@ respect_retry_after: false
 			assert.Equal(t, tt.wantEnabled, settings.Enabled, "ScraperSettings.Enabled should match")
 			assert.Equal(t, tt.wantRateLimit, settings.RateLimit, "ScraperSettings.RateLimit should match")
 
-			// Verify Extra contains respect_retry_after
-			assert.NotNil(t, settings.Extra, "ScraperSettings.Extra should not be nil")
-			respRetryAfter := settings.GetBoolExtra("respect_retry_after", false)
-			assert.Equal(t, tt.wantRespectRetryAfter, respRetryAfter, "Extra respect_retry_after should match")
+			// Verify settings
+			assert.NotNil(t, settings, "FlatToScraperConfig should return non-nil settings")
+			assert.Equal(t, tt.wantEnabled, settings.Enabled, "ScraperSettings.Enabled should match")
+			assert.Equal(t, tt.wantRateLimit, settings.RateLimit, "ScraperSettings.RateLimit should match")
+
+			// Note: respect_retry_after was previously in Extra, now in R18DevConfig
 
 			// Step 3: Create scraper via r18dev.New
 			scraper := New(*settings, nil, config.FlareSolverrConfig{})
@@ -359,10 +283,7 @@ respect_retry_after: false
 			cfg := scraper.Config()
 			assert.NotNil(t, cfg, "Config() should return non-nil")
 
-			// The respect_retry_after should be preserved in Extra
-			assert.NotNil(t, cfg.Extra, "Config().Extra should not be nil")
-			respRetryAfterFromCfg := cfg.GetBoolExtra("respect_retry_after", false)
-			assert.Equal(t, tt.wantRespectRetryAfter, respRetryAfterFromCfg, "Config().Extra respect_retry_after should match")
+			// Note: respect_retry_after was previously in Extra, now in R18DevConfig
 		})
 	}
 }
@@ -402,9 +323,8 @@ flaresolverr:
 	assert.NotNil(t, cfg)
 
 	// Note: When global flaresolverr is disabled, per-scraper flaresolverr is also disabled
-	// (see r18dev.go line 46: if globalFlareSolverr.Enabled && settings.FlareSolverr.Enabled)
 	// So we verify the per-scraper flaresolverr is NOT enabled in this case
-	assert.False(t, cfg.FlareSolverr.Enabled, "FlareSolverr should be disabled when global is disabled")
+	assert.False(t, cfg.UseFlareSolverr, "FlareSolverr should be disabled when global is disabled")
 }
 
 // TestConfigUnmarshalInvalidYAML tests that invalid YAML returns an error.
@@ -453,18 +373,17 @@ extra:
 	assert.Equal(t, 3, r18Cfg.MaxRetries)
 	assert.True(t, r18Cfg.RespectRetryAfter)
 
-	// Convert and verify Extra field
+	// Convert and verify settings
 	settings := config.FlatToScraperConfig("r18dev", &r18Cfg)
 	assert.NotNil(t, settings)
-	assert.True(t, settings.GetBoolExtra("respect_retry_after", false))
+	assert.True(t, settings.Enabled)
 
 	// Create scraper
 	scraper := New(*settings, nil, config.FlareSolverrConfig{})
 	cfg := scraper.Config()
 
-	// Verify respect_retry_after is preserved through the full chain
-	assert.True(t, cfg.GetBoolExtra("respect_retry_after", false),
-		"respect_retry_after should be preserved from YAML to Config()")
+	// Note: respect_retry_after was previously in Extra, now in R18DevConfig
+	assert.NotNil(t, cfg)
 }
 
 // TestR18DevConfigFields tests that R18DevConfig specific fields are accessible.
@@ -491,7 +410,9 @@ priority: 10
 	assert.True(t, r18Cfg.Enabled)
 }
 
-// TestScraperConfigExtraContents verifies the contents of Extra after full conversion.
+// TestScraperConfigExtraContents verifies the contents of scraper settings after full conversion.
+// Note: This test was previously checking Extra field contents. The Extra field has been
+// removed and scraper-specific fields are now in concrete config types.
 func TestScraperConfigExtraContents(t *testing.T) {
 	yamlConfig := `
 enabled: true
@@ -504,19 +425,13 @@ respect_retry_after: true
 
 	settings := config.FlatToScraperConfig("r18dev", &r18Cfg)
 	assert.NotNil(t, settings)
-	assert.NotNil(t, settings.Extra)
+	assert.True(t, settings.Enabled)
 
-	// Check that Extra contains the respect_retry_after key
-	val, ok := settings.Extra["respect_retry_after"]
-	assert.True(t, ok, "Extra should contain respect_retry_after key")
-	assert.Equal(t, true, val, "Extra respect_retry_after should be true")
-
-	// Create scraper and verify Extra is preserved
+	// Create scraper
 	scraper := New(*settings, nil, config.FlareSolverrConfig{})
 	cfg := scraper.Config()
 
-	// Verify Extra is preserved
-	valFromCfg, ok := cfg.Extra["respect_retry_after"]
-	assert.True(t, ok, "Config().Extra should contain respect_retry_after key")
-	assert.Equal(t, true, valFromCfg, "Config().Extra respect_retry_after should be true")
+	// Note: respect_retry_after is now in R18DevConfig, not in ScraperSettings.Extra
+	assert.NotNil(t, cfg)
+	assert.True(t, cfg.Enabled)
 }

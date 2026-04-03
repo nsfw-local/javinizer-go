@@ -16,7 +16,6 @@ func testSettings(enabled bool) config.ScraperSettings {
 		Enabled:   enabled,
 		RateLimit: 0,
 		UserAgent: "Test Agent",
-		Extra:     map[string]any{},
 	}
 }
 

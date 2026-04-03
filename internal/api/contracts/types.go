@@ -84,6 +84,7 @@ type ScraperOption struct {
 	Label       string          `json:"label" example:"Scrape Actress Information"`
 	Description string          `json:"description" example:"Enable detailed actress data scraping from DMM (may be slower)"`
 	Type        string          `json:"type" example:"boolean"` // boolean, string, number, select
+	Default     interface{}     `json:"default,omitempty"`      // Default value for this option
 	Min         *int            `json:"min,omitempty" example:"5"`
 	Max         *int            `json:"max,omitempty" example:"120"`
 	Unit        string          `json:"unit,omitempty" example:"seconds"`
@@ -119,17 +120,25 @@ type ProxyTestRequest struct {
 
 // ProxyTestResponse represents proxy connectivity test results.
 type ProxyTestResponse struct {
-	Success         bool   `json:"success"`
-	Mode            string `json:"mode"`
-	TargetURL       string `json:"target_url"`
-	StatusCode      int    `json:"status_code,omitempty"`
-	DurationMS      int64  `json:"duration_ms"`
-	Message         string `json:"message"`
-	ProxyURL        string `json:"proxy_url,omitempty"`        // Redacted proxy URL
-	FlareSolverrURL string `json:"flaresolverr_url,omitempty"` // FlareSolverr endpoint used
+	Success           bool   `json:"success"`
+	Mode              string `json:"mode"`
+	TargetURL         string `json:"target_url"`
+	StatusCode        int    `json:"status_code,omitempty"`
+	DurationMS        int64  `json:"duration_ms"`
+	Message           string `json:"message"`
+	ProxyURL          string `json:"proxy_url,omitempty"`          // Redacted proxy URL
+	FlareSolverrURL   string `json:"flaresolverr_url,omitempty"`   // FlareSolverr endpoint used
+	VerificationToken string `json:"verification_token,omitempty"` // Token for save authorization
+	TokenExpiresAt    int64  `json:"token_expires_at,omitempty"`   // Unix timestamp when token expires
 }
 
-// TranslationModelsRequest represents a request to fetch available translation models.
+// UpdateConfigRequest represents a configuration update request with proxy verification.
+// The proxy_verification_tokens map contains tokens keyed by scope ("global", "flaresolverr", or "profile:{name}")
+// that prove the proxy settings were tested before saving.
+type UpdateConfigRequest struct {
+	config.Config
+	ProxyVerificationTokens map[string]string `json:"proxy_verification_tokens,omitempty"`
+}
 type TranslationModelsRequest struct {
 	Provider string `json:"provider" binding:"required"` // openai (OpenAI-compatible only for now)
 	BaseURL  string `json:"base_url" binding:"required"` // API base URL (e.g., https://api.openai.com/v1)

@@ -120,28 +120,18 @@ func TestValidateConfig(t *testing.T) {
 			errMsg:  "fc2.base_url must be a valid HTTP or HTTPS URL",
 		},
 		{
-			name: "FlareSolverr enabled without URL is invalid",
+			name: "FlareSolverr enabled without name",
 			cfg: &config.ScraperSettings{
-				Enabled: true,
-				FlareSolverr: config.FlareSolverrConfig{
-					Enabled: true,
-					URL:     "",
-				},
+				Enabled:         true,
+				UseFlareSolverr: true,
 			},
-			wantErr: true,
-			errMsg:  "fc2.flaresolverr.url is required when flaresolverr is enabled",
+			wantErr: false,
 		},
 		{
-			name: "FlareSolverr enabled with URL is valid",
+			name: "FlareSolverr enabled is valid",
 			cfg: &config.ScraperSettings{
-				Enabled: true,
-				FlareSolverr: config.FlareSolverrConfig{
-					Enabled:    true,
-					URL:        "http://localhost:8191/v1",
-					Timeout:    30,
-					MaxRetries: 3,
-					SessionTTL: 300,
-				},
+				Enabled:         true,
+				UseFlareSolverr: true,
 			},
 			wantErr: false,
 		},

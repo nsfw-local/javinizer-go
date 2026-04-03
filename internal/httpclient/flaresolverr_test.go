@@ -455,7 +455,8 @@ func TestDefaultConfig_JavLibrary(t *testing.T) {
 	assert.Equal(t, "en", jl.Language)
 	assert.Equal(t, 1000, jl.RateLimit)
 	assert.Equal(t, "http://www.javlibrary.com", jl.BaseURL)
-	assert.False(t, jl.GetBoolExtra("use_flaresolverr", false))
+	// Note: use_flaresolverr was previously in Extra, now UseFlareSolverr is a direct field
+	assert.False(t, jl.UseFlareSolverr)
 }
 
 func TestCookieConversion(t *testing.T) {

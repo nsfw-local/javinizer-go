@@ -78,7 +78,8 @@
 				</div>
 			</div>
 			<p class="text-xs text-muted-foreground mb-3">
-				Per-scraper proxy routing is configured inside each scraper: Scraper profile, then global proxy fallback, otherwise direct when disabled.
+				Global proxy must be enabled for scraper proxy settings to take effect.
+				Each scraper can be set to Direct (bypass), Inherit (global default), or Specific (custom profile).
 			</p>
 			<div class="space-y-2">
 				{#each scrapers as scraper, index (scraper.name)}
@@ -132,7 +133,7 @@
 											<div>
 												<p class="text-sm font-medium">Proxy Routing</p>
 												<p class="text-xs text-muted-foreground mt-1">
-													Priority: scraper profile, then global proxy, else direct when disabled.
+													Global proxy must be enabled for these settings to apply.
 												</p>
 											</div>
 
@@ -150,12 +151,14 @@
 														<option value="specific">Use Scraper Profile</option>
 													</select>
 													<p class="text-xs text-muted-foreground mt-1">
-														{#if getScraperProxyMode(scraper.name) === 'direct'}
-															This scraper bypasses proxy for requests and downloads.
+														{#if !(config.scrapers?.proxy?.enabled ?? false)}
+															<span class="text-amber-600">⚠ Global proxy is disabled. This scraper will use Direct mode regardless of setting above.</span>
+														{:else if getScraperProxyMode(scraper.name) === 'direct'}
+															This scraper will bypass proxy and connect directly.
 														{:else if getScraperProxyMode(scraper.name) === 'inherit'}
-															Uses global proxy settings from Proxy Settings.
+															Uses global proxy default profile.
 														{:else}
-															Uses a scraper-specific proxy profile.
+															Uses the scraper-specific profile selected below.
 														{/if}
 													</p>
 												</div>
@@ -188,7 +191,7 @@
 										</div>
 									{/if}
 
-									{#each getRenderableScraperOptions(scraper) as option}
+									{#each getRenderableScraperOptions(scraper).filter(opt => opt.key !== 'use_browser' || scraper.name === 'dmm') as option}
 										{@const optionDisabled = isOptionDisabled(scraper.name, option.key)}
 										<div class="space-y-1">
 											{#if option.type === 'boolean'}

@@ -59,7 +59,7 @@ func TestErrorMessages_ContainScraperName(t *testing.T) {
 			settings := config.ScraperSettings{
 				Enabled: true,
 			}
-			scraper := New(settings, nil, &config.ProxyConfig{}, config.FlareSolverrConfig{}) // nil repo to trigger errors
+			scraper := New(settings, createTestGlobalConfig(&config.ProxyConfig{}, config.FlareSolverrConfig{}, false, false), nil) // nil repo to trigger errors
 
 			err := tt.triggerFunc(scraper)
 
@@ -79,7 +79,7 @@ func TestErrorMessages_NoSensitiveData(t *testing.T) {
 	settings := config.ScraperSettings{
 		Enabled: true,
 	}
-	scraper := New(settings, nil, &config.ProxyConfig{}, config.FlareSolverrConfig{})
+	scraper := New(settings, createTestGlobalConfig(&config.ProxyConfig{}, config.FlareSolverrConfig{}, false, false), nil)
 
 	// Trigger various errors and check none leak sensitive data
 	sensitivePatterns := []string{
@@ -152,7 +152,7 @@ func TestResolveContentID_ErrorCases(t *testing.T) {
 			}
 
 			repo := tt.setupRepo()
-			scraper := New(settings, repo, &config.ProxyConfig{}, config.FlareSolverrConfig{})
+			scraper := New(settings, createTestGlobalConfig(&config.ProxyConfig{}, config.FlareSolverrConfig{}, false, false), repo)
 
 			contentID, err := scraper.ResolveContentID(tt.movieID)
 
@@ -198,7 +198,7 @@ func TestGetURL_ErrorPropagation(t *testing.T) {
 				repo = database.NewContentIDMappingRepository(nil)
 			}
 
-			scraper := New(settings, repo, &config.ProxyConfig{}, config.FlareSolverrConfig{})
+			scraper := New(settings, createTestGlobalConfig(&config.ProxyConfig{}, config.FlareSolverrConfig{}, false, false), repo)
 
 			url, err := scraper.GetURL(tt.movieID)
 
@@ -232,7 +232,7 @@ func TestSearch_ErrorHandling(t *testing.T) {
 				settings := config.ScraperSettings{
 					Enabled: true,
 				}
-				scraper := New(settings, nil, &config.ProxyConfig{}, config.FlareSolverrConfig{}) // nil repo causes GetURL to fail
+				scraper := New(settings, createTestGlobalConfig(&config.ProxyConfig{}, config.FlareSolverrConfig{}, false, false), nil) // nil repo causes GetURL to fail
 				return scraper, func() {}
 			},
 			wantErr:     true,
@@ -266,7 +266,7 @@ func Benchmark_ErrorHandling(b *testing.B) {
 	settings := config.ScraperSettings{
 		Enabled: true,
 	}
-	scraper := New(settings, nil, &config.ProxyConfig{}, config.FlareSolverrConfig{})
+	scraper := New(settings, createTestGlobalConfig(&config.ProxyConfig{}, config.FlareSolverrConfig{}, false, false), nil)
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {

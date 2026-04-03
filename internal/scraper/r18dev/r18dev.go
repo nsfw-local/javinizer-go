@@ -27,27 +27,20 @@ const (
 
 // Scraper implements the R18.dev scraper
 type Scraper struct {
-	client                *resty.Client
-	enabled               bool
-	language              string
-	requestDelay          time.Duration
-	maxRetries            int
-	respectRetryAfter     bool
-	proxyOverride         *config.ProxyConfig
-	downloadProxy         *config.ProxyConfig
-	lastRequestTime       atomic.Value              // stores time.Time of last request for rate limiting
-	settings              config.ScraperSettings    // stores the full settings for Config() method
-	effectiveFlareSolverr config.FlareSolverrConfig // computed effective FlareSolverr config
+	client            *resty.Client
+	enabled           bool
+	language          string
+	requestDelay      time.Duration
+	maxRetries        int
+	respectRetryAfter bool
+	proxyOverride     *config.ProxyConfig
+	downloadProxy     *config.ProxyConfig
+	lastRequestTime   atomic.Value           // stores time.Time of last request for rate limiting
+	settings          config.ScraperSettings // stores the full settings for Config() method
 }
 
 // New creates a new R18.dev scraper
 func New(settings config.ScraperSettings, globalProxy *config.ProxyConfig, globalFlareSolverr config.FlareSolverrConfig) *Scraper {
-	// HTTP-03: FlareSolverr inherits global settings; per-scraper can only override if global is enabled
-	flareSolverrCfg := globalFlareSolverr
-	if globalFlareSolverr.Enabled && settings.FlareSolverr.Enabled {
-		flareSolverrCfg.Enabled = true
-	}
-
 	// Create scraper config for HTTP client ownership (HTTP-01)
 	scraperCfg := &config.ScraperSettings{
 		Enabled:       settings.Enabled,
@@ -57,7 +50,6 @@ func New(settings config.ScraperSettings, globalProxy *config.ProxyConfig, globa
 		UserAgent:     settings.UserAgent,
 		Proxy:         settings.Proxy,
 		DownloadProxy: settings.DownloadProxy,
-		FlareSolverr:  flareSolverrCfg,
 	}
 
 	// Create HTTP client via per-scraper NewHTTPClient (HTTP-01)
@@ -102,19 +94,18 @@ func New(settings config.ScraperSettings, globalProxy *config.ProxyConfig, globa
 		maxRetries = 3 // Default to 3 retries
 	}
 
-	respectRetryAfter := settings.GetBoolExtra("respect_retry_after", false)
+	respectRetryAfter := false // Note: Now in R18DevConfig, not accessible via ScraperSettings
 
 	scraper := &Scraper{
-		client:                client,
-		enabled:               settings.Enabled,
-		language:              language,
-		requestDelay:          requestDelay,
-		maxRetries:            maxRetries,
-		respectRetryAfter:     respectRetryAfter,
-		proxyOverride:         settings.Proxy,
-		downloadProxy:         settings.DownloadProxy,
-		settings:              settings,
-		effectiveFlareSolverr: flareSolverrCfg,
+		client:            client,
+		enabled:           settings.Enabled,
+		language:          language,
+		requestDelay:      requestDelay,
+		maxRetries:        maxRetries,
+		respectRetryAfter: respectRetryAfter,
+		proxyOverride:     settings.Proxy,
+		downloadProxy:     settings.DownloadProxy,
+		settings:          settings,
 	}
 
 	// Initialize lastRequestTime with zero time
@@ -139,9 +130,7 @@ func (s *Scraper) IsEnabled() bool {
 
 // Config returns the scraper's configuration
 func (s *Scraper) Config() *config.ScraperSettings {
-	cfg := s.settings.DeepCopy()
-	cfg.FlareSolverr = s.effectiveFlareSolverr
-	return cfg
+	return s.settings.DeepCopy()
 }
 
 // Close cleans up resources held by the scraper
@@ -753,8 +742,8 @@ type R18Response struct {
 }
 
 func init() {
-	scraper.RegisterScraper("r18dev", func(settings config.ScraperSettings, db *database.DB, globalProxy *config.ProxyConfig, globalFlareSolverr config.FlareSolverrConfig) (models.Scraper, error) {
-		return New(settings, globalProxy, globalFlareSolverr), nil
+	scraper.RegisterScraper("r18dev", func(settings config.ScraperSettings, db *database.DB, globalConfig *config.ScrapersConfig) (models.Scraper, error) {
+		return New(settings, &globalConfig.Proxy, globalConfig.FlareSolverr), nil
 	})
 	// Register default settings and priority
 	scraper.RegisterScraperDefaults("r18dev", scraper.DefaultSettings{

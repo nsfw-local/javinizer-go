@@ -65,14 +65,11 @@ func TestScraperIsEnabledMethod(t *testing.T) {
 func TestNewScraperWithConfig(t *testing.T) {
 	settings := config.ScraperSettings{
 		Enabled: true,
-		Extra: map[string]any{
-			"scrape_actress":  true,
-			"enable_browser":  false,
-			"browser_timeout": 30,
-		},
+		// Note: DMM-specific fields (scrape_actress, enable_browser, browser_timeout)
+		// were previously in Extra, now in DMMConfig
 	}
 
-	scraper := New(settings, nil, &config.ProxyConfig{}, config.FlareSolverrConfig{})
+	scraper := New(settings, createTestGlobalConfig(&config.ProxyConfig{}, config.FlareSolverrConfig{}, false, false), nil)
 
 	assert.NotNil(t, scraper, "New should return a non-nil scraper")
 	assert.Equal(t, "dmm", scraper.Name(), "Scraper should have correct name")
@@ -83,14 +80,10 @@ func TestNewScraperWithConfig(t *testing.T) {
 func TestNewScraperDisabledConfig(t *testing.T) {
 	settings := config.ScraperSettings{
 		Enabled: false,
-		Extra: map[string]any{
-			"scrape_actress":  true,
-			"enable_browser":  false,
-			"browser_timeout": 30,
-		},
+		// Note: DMM-specific fields moved to DMMConfig
 	}
 
-	scraper := New(settings, nil, &config.ProxyConfig{}, config.FlareSolverrConfig{})
+	scraper := New(settings, createTestGlobalConfig(&config.ProxyConfig{}, config.FlareSolverrConfig{}, false, false), nil)
 
 	assert.NotNil(t, scraper, "New should return a non-nil scraper")
 	assert.False(t, scraper.IsEnabled(), "Scraper should be disabled when config.Enabled=false")
@@ -146,11 +139,7 @@ func TestScraperNilSafety(t *testing.T) {
 func TestScraperFieldInitialization(t *testing.T) {
 	settings := config.ScraperSettings{
 		Enabled: true,
-		Extra: map[string]any{
-			"scrape_actress":  true,
-			"enable_browser":  true,
-			"browser_timeout": 45,
-		},
+		// Note: DMM-specific fields moved to DMMConfig
 		Proxy: &config.ProxyConfig{
 			Enabled: true,
 			Profile: "main",
@@ -165,14 +154,16 @@ func TestScraperFieldInitialization(t *testing.T) {
 		},
 	}
 
-	scraper := New(settings, nil, &globalProxy, config.FlareSolverrConfig{})
+	scraper := New(settings, createTestGlobalConfig(&globalProxy, config.FlareSolverrConfig{}, false, false), nil)
 
 	// Verify all fields are properly initialized
 	assert.NotNil(t, scraper.client, "HTTP client should be initialized")
 	assert.True(t, scraper.enabled, "enabled field should match config")
-	assert.True(t, scraper.scrapeActress, "scrapeActress field should match config")
-	assert.True(t, scraper.enableBrowser, "enableBrowser field should match config")
-	assert.Equal(t, 45, scraper.browserTimeout, "browserTimeout should match config")
+	// Note: DMM-specific fields (scrapeActress, useBrowser) use global config
+	// ScrapeActress defaults to false in test config, useBrowser defaults to false
+	assert.False(t, scraper.scrapeActress, "scrapeActress uses global default (false) from test config")
+	assert.False(t, scraper.useBrowser, "useBrowser uses global default (false) from test config")
+	assert.Equal(t, 30, scraper.browserConfig.Timeout, "browserConfig.Timeout uses default (30)")
 	// contentIDRepo is nil when nil is passed
 	assert.Nil(t, scraper.contentIDRepo, "contentIDRepo should be nil when nil is passed")
 	assert.NotNil(t, scraper.proxyProfile, "proxyProfile should be initialized")
@@ -182,15 +173,14 @@ func TestScraperFieldInitialization(t *testing.T) {
 func TestScraperConfigDefaults(t *testing.T) {
 	settings := config.ScraperSettings{
 		Enabled: true,
-		Extra:   make(map[string]any),
 	}
 
-	scraper := New(settings, nil, &config.ProxyConfig{}, config.FlareSolverrConfig{})
+	scraper := New(settings, createTestGlobalConfig(&config.ProxyConfig{}, config.FlareSolverrConfig{}, false, false), nil)
 
 	assert.NotNil(t, scraper, "New should return a non-nil scraper even with minimal config")
 	assert.NotNil(t, scraper.client, "HTTP client should always be initialized")
 	assert.False(t, scraper.scrapeActress, "scrapeActress should default to false")
-	assert.False(t, scraper.enableBrowser, "enableBrowser should default to false")
-	// BrowserTimeout uses DefaultConfig value (30)
-	assert.Equal(t, 30, scraper.browserTimeout, "browserTimeout should use DefaultConfig value")
+	assert.False(t, scraper.useBrowser, "useBrowser should default to false")
+	// BrowserConfig.Timeout uses default value (30)
+	assert.Equal(t, 30, scraper.browserConfig.Timeout, "browserConfig.Timeout should use default value")
 }

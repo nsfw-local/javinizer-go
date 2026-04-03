@@ -114,69 +114,6 @@ func ApplyScrapeFlagOverrides(cmd *cobra.Command, cfg *Config) {
 		cfg.Scrapers.NormalizeScraperConfigs()
 	}
 
-	// DMM scraper overrides via Extra map
-	if cmd.Flags().Changed("scrape-actress") || cmd.Flags().Changed("no-scrape-actress") {
-		dmm := cfg.Scrapers.Overrides["dmm"]
-		if dmm != nil && dmm.Extra != nil {
-			if cmd.Flags().Changed("scrape-actress") {
-				scrapeActress, _ := cmd.Flags().GetBool("scrape-actress")
-				dmm.Extra["scrape_actress"] = scrapeActress
-				logging.Debugf("CLI override: scrape_actress = %v", scrapeActress)
-			} else {
-				dmm.Extra["scrape_actress"] = false
-				logging.Debugf("CLI override: scrape_actress = false")
-			}
-		}
-	}
-
-	// Browser mode flags (new flags take precedence over deprecated ones)
-	if cmd.Flags().Changed("browser") || cmd.Flags().Changed("headless") {
-		dmm := cfg.Scrapers.Overrides["dmm"]
-		if dmm != nil {
-			if dmm.Extra == nil {
-				dmm.Extra = make(map[string]any)
-			}
-			if cmd.Flags().Changed("browser") {
-				browser, _ := cmd.Flags().GetBool("browser")
-				dmm.Extra["enable_browser"] = browser
-				logging.Debugf("CLI override: enable_browser = %v", browser)
-			} else {
-				headless, _ := cmd.Flags().GetBool("headless")
-				dmm.Extra["enable_browser"] = headless
-				logging.Debugf("CLI override: enable_browser = %v (via deprecated --headless)", headless)
-			}
-		}
-	}
-	if cmd.Flags().Changed("no-browser") || cmd.Flags().Changed("no-headless") {
-		dmm := cfg.Scrapers.Overrides["dmm"]
-		if dmm != nil {
-			if dmm.Extra == nil {
-				dmm.Extra = make(map[string]any)
-			}
-			dmm.Extra["enable_browser"] = false
-			logging.Debugf("CLI override: enable_browser = false")
-		}
-	}
-
-	if cmd.Flags().Changed("browser-timeout") || cmd.Flags().Changed("headless-timeout") {
-		dmm := cfg.Scrapers.Overrides["dmm"]
-		if dmm != nil {
-			if dmm.Extra == nil {
-				dmm.Extra = make(map[string]any)
-			}
-			var timeout int
-			if cmd.Flags().Changed("browser-timeout") {
-				timeout, _ = cmd.Flags().GetInt("browser-timeout")
-			} else {
-				timeout, _ = cmd.Flags().GetInt("headless-timeout")
-			}
-			if timeout > 0 {
-				dmm.Extra["browser_timeout"] = timeout
-				logging.Debugf("CLI override: browser_timeout = %d", timeout)
-			}
-		}
-	}
-
 	// Metadata configuration overrides
 	if cmd.Flags().Changed("actress-db") {
 		actressDB, _ := cmd.Flags().GetBool("actress-db")

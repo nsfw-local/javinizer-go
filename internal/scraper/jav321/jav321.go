@@ -665,8 +665,8 @@ func isHTTPURL(v string) bool {
 }
 
 func init() {
-	scraper.RegisterScraper("jav321", func(settings config.ScraperSettings, db *database.DB, globalProxy *config.ProxyConfig, globalFlareSolverr config.FlareSolverrConfig) (models.Scraper, error) {
-		return New(settings, globalProxy, globalFlareSolverr), nil
+	scraper.RegisterScraper("jav321", func(settings config.ScraperSettings, db *database.DB, globalConfig *config.ScrapersConfig) (models.Scraper, error) {
+		return New(settings, &globalConfig.Proxy, globalConfig.FlareSolverr), nil
 	})
 	// Register default settings and priority
 	scraper.RegisterScraperDefaults("jav321", scraper.DefaultSettings{

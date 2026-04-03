@@ -21,16 +21,31 @@ func RegisterTestScraperConfigs() {
 	scraperutil.ResetFlattenFuncs()
 	scraperutil.ResetDefaults()
 
-	// Register default scraper settings for all 13 scrapers
-	for _, name := range []string{
-		"r18dev", "dmm", "libredmm", "mgstage", "javlibrary", "javdb",
-		"javbus", "jav321", "tokyohot", "aventertainment", "dlgetchu",
-		"caribbeancom", "fc2",
-	} {
-		scraperutil.RegisterDefaultScraperSettings(name, &ScraperSettings{
+	// Register default scraper settings for all 13 scrapers with correct priorities
+	// Priorities: higher number = higher priority (run first)
+	// These match the priorities registered by each scraper package's init()
+	scraperPriorities := []struct {
+		name     string
+		priority int
+	}{
+		{"r18dev", 100},
+		{"libredmm", 95},
+		{"dmm", 90},
+		{"javlibrary", 80},
+		{"javdb", 75},
+		{"javbus", 70},
+		{"jav321", 65},
+		{"mgstage", 55},
+		{"tokyohot", 50},
+		{"aventertainment", 45},
+		{"caribbeancom", 40},
+		{"dlgetchu", 40},
+		{"fc2", 35},
+	}
+	for _, sp := range scraperPriorities {
+		scraperutil.RegisterDefaultScraperSettings(sp.name, &ScraperSettings{
 			Enabled: true,
-			Extra:   make(map[string]any),
-		}, 0)
+		}, sp.priority)
 	}
 
 	// Register FlattenFunc for each scraper using config package types.
@@ -45,9 +60,7 @@ func RegisterTestScraperConfigs() {
 			if !ok {
 				return nil
 			}
-			sc := &ScraperSettings{
-				Extra: make(map[string]any),
-			}
+			sc := &ScraperSettings{}
 			sc.Enabled = cfg.IsEnabled()
 			sc.RateLimit = cfg.GetRequestDelay()
 			sc.RetryCount = cfg.GetMaxRetries()

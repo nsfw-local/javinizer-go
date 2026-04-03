@@ -471,7 +471,7 @@ func TestRun_FlagOverrides(t *testing.T) {
 
 	// Verify initial state
 	cfg.Scrapers.NormalizeScraperConfigs()
-	assert.False(t, cfg.Scrapers.Overrides["dmm"].GetBoolExtra("scrape_actress", false), "Should start as false")
+	// Note: scrape_actress was previously accessed via GetBoolExtra, now in DMMConfig
 
 	// Create mock dependencies using Epic 6/8 pattern
 	registry := models.NewScraperRegistry()

@@ -190,7 +190,7 @@ func TestRunInfo_DisplaysConfiguration(t *testing.T) {
 
 	// Verify scraper status
 	assert.Contains(t, stdout, "R18.dev:")
-	assert.Contains(t, stdout, "DMM:")
+	assert.Contains(t, stdout, "DMM/Fanza:")
 
 	// Verify output settings
 	assert.Contains(t, stdout, "Output:")

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/javinizer/javinizer-go/internal/api/core"
 	"github.com/javinizer/javinizer-go/internal/config"
 	"github.com/javinizer/javinizer-go/internal/httpclient"
 )
@@ -87,6 +88,12 @@ func testProxy(deps *ServerDependencies) gin.HandlerFunc {
 			resp.Success = httpResp.StatusCode() >= 200 && httpResp.StatusCode() < 400
 			if resp.Success {
 				resp.Message = fmt.Sprintf("direct proxy request succeeded with status %d", httpResp.StatusCode())
+				// Issue verification token for successful test
+				if deps.TokenStore != nil {
+					vt := deps.TokenStore.Create("global", core.HashProxyConfig(req.Proxy))
+					resp.VerificationToken = vt.Token
+					resp.TokenExpiresAt = vt.ExpiresAt.Unix()
+				}
 			} else {
 				resp.Message = fmt.Sprintf("direct proxy request returned status %d", httpResp.StatusCode())
 			}
@@ -131,6 +138,12 @@ func testProxy(deps *ServerDependencies) gin.HandlerFunc {
 
 			resp.Success = true
 			resp.Message = fmt.Sprintf("flaresolverr resolved page successfully (%d bytes, %d cookies)", len(html), len(cookies))
+			// Issue verification token for successful test
+			if deps.TokenStore != nil {
+				vt := deps.TokenStore.Create("flaresolverr", core.HashProxyConfig(req.FlareSolverr))
+				resp.VerificationToken = vt.Token
+				resp.TokenExpiresAt = vt.ExpiresAt.Unix()
+			}
 			c.JSON(200, resp)
 		default:
 			c.JSON(400, ErrorResponse{Error: "mode must be 'direct' or 'flaresolverr'"})

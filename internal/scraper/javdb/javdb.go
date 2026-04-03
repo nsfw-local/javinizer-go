@@ -54,13 +54,7 @@ type Scraper struct {
 // New creates a new JavDB scraper.
 func New(settings config.ScraperSettings, globalProxy *config.ProxyConfig, globalFlareSolverr config.FlareSolverrConfig) *Scraper {
 	// Create scraper config for HTTP client ownership (HTTP-01)
-	// HTTP-03: FlareSolverr inherits global settings; per-scraper can only override if global is enabled
-	flareSolverrCfg := globalFlareSolverr
-	if globalFlareSolverr.Enabled && settings.FlareSolverr.Enabled {
-		// Per-scraper override only works when global is enabled
-		flareSolverrCfg.Enabled = true
-	}
-	avdbScraperCfg := &config.ScraperSettings{
+	javdbScraperCfg := &config.ScraperSettings{
 		Enabled:       settings.Enabled,
 		Timeout:       30, // default
 		RateLimit:     settings.RateLimit,
@@ -68,12 +62,10 @@ func New(settings config.ScraperSettings, globalProxy *config.ProxyConfig, globa
 		UserAgent:     settings.UserAgent,
 		Proxy:         settings.Proxy,
 		DownloadProxy: settings.DownloadProxy,
-		FlareSolverr:  flareSolverrCfg,
-		Extra:         make(map[string]any),
 	}
 
 	// Create HTTP client and FlareSolverr via per-scraper NewHTTPClient (HTTP-01, HTTP-03)
-	client, flaresolverr, err := NewHTTPClient(avdbScraperCfg, globalProxy, globalFlareSolverr)
+	client, flaresolverr, err := NewHTTPClient(javdbScraperCfg, globalProxy, globalFlareSolverr)
 	proxyEnabled := globalProxy.Enabled
 	if settings.Proxy != nil && settings.Proxy.Enabled {
 		proxyEnabled = true
@@ -107,8 +99,8 @@ func New(settings config.ScraperSettings, globalProxy *config.ProxyConfig, globa
 	if usingProxy {
 		logging.Infof("JavDB: Using proxy %s", httpclient.SanitizeProxyURL(proxyCfg.URL))
 	}
-	if settings.FlareSolverr.Enabled && flaresolverr == nil {
-		logging.Warn("JavDB: flaresolverr.enabled=true but no FlareSolverr client is configured")
+	if settings.UseFlareSolverr && flaresolverr == nil {
+		logging.Warn("JavDB: use_flaresolverr=true but no FlareSolverr client is configured")
 	}
 
 	return s
@@ -315,7 +307,7 @@ func (s *Scraper) fetchPage(targetURL string) (string, error) {
 		logging.Debugf("JavDB: Direct request returned status %d for %s", resp.StatusCode(), targetURL)
 	}
 
-	if s.settings.FlareSolverr.Enabled && s.flaresolverr != nil {
+	if s.settings.UseFlareSolverr && s.flaresolverr != nil {
 		logging.Debugf("JavDB: Resolving via FlareSolverr: %s", targetURL)
 		html, cookies, fsErr := s.flaresolverr.ResolveURL(targetURL)
 		if fsErr == nil {
@@ -1040,8 +1032,8 @@ func extractTrailerURL(doc *goquery.Document, baseURL string) string {
 }
 
 func init() {
-	scraper.RegisterScraper("javdb", func(settings config.ScraperSettings, db *database.DB, globalProxy *config.ProxyConfig, globalFlareSolverr config.FlareSolverrConfig) (models.Scraper, error) {
-		return New(settings, globalProxy, globalFlareSolverr), nil
+	scraper.RegisterScraper("javdb", func(settings config.ScraperSettings, db *database.DB, globalConfig *config.ScrapersConfig) (models.Scraper, error) {
+		return New(settings, &globalConfig.Proxy, globalConfig.FlareSolverr), nil
 	})
 	// Register default settings and priority
 	scraper.RegisterScraperDefaults("javdb", scraper.DefaultSettings{

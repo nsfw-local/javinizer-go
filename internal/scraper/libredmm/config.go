@@ -50,20 +50,15 @@ func init() {
 		if downloadProxy != nil {
 			downloadProxyVal = downloadProxy.(*config.ProxyConfig)
 		}
-		// Use type assertion to access LibreDMM-specific fields
-		if libredmmCfg, ok := cfg.(*LibreDMMConfig); ok {
-			return &config.ScraperSettings{
-				Enabled:   c.IsEnabled(),
-				RateLimit: c.GetRequestDelay(),
-				Extra: map[string]any{
-					"base_url": "https://www.libredmm.com",
-				},
-				Proxy:         proxyVal,
-				DownloadProxy: downloadProxyVal,
-				FlareSolverr:  libredmmCfg.FlareSolverr,
-			}
+		// ScraperSettings no longer needs type assertion since FlareSolverr was removed
+		_ = cfg // cfg is not used directly anymore
+		return &config.ScraperSettings{
+			Enabled:       c.IsEnabled(),
+			RateLimit:     c.GetRequestDelay(),
+			BaseURL:       "https://www.libredmm.com",
+			Proxy:         proxyVal,
+			DownloadProxy: downloadProxyVal,
 		}
-		return nil
 	})
 }
 

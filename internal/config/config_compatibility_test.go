@@ -15,83 +15,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-func TestAppendMissingStringsEdgeCases(t *testing.T) {
-	tests := []struct {
-		name        string
-		existing    []string
-		defaults    []string
-		want        []string
-		wantChanged bool
-	}{
-		{
-			name:        "empty existing and defaults",
-			existing:    []string{},
-			defaults:    []string{},
-			want:        []string{},
-			wantChanged: false,
-		},
-		{
-			name:        "preserves existing duplicates and appends missing defaults once",
-			existing:    []string{"dmm", "dmm"},
-			defaults:    []string{"dmm", "r18dev"},
-			want:        []string{"dmm", "dmm", "r18dev"},
-			wantChanged: true,
-		},
-		{
-			name:        "already contains all defaults",
-			existing:    []string{"r18dev", "dmm"},
-			defaults:    []string{"r18dev", "dmm"},
-			want:        []string{"r18dev", "dmm"},
-			wantChanged: false,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got, changed := appendMissingStrings(tt.existing, tt.defaults)
-			assert.Equal(t, tt.want, got)
-			assert.Equal(t, tt.wantChanged, changed)
-		})
-	}
-}
-
-func TestApplyCompatibilityRules_NilConfig(t *testing.T) {
-	changed, err := applyCompatibilityRules(nil)
-	require.NoError(t, err)
-	assert.False(t, changed)
-}
-
-func TestApplyCompatibilityRules_LegacyConfigGetsNormalized(t *testing.T) {
-	cfg := DefaultConfig()
-	cfg.ConfigVersion = 0
-	cfg.Scrapers.Priority = nil
-	cfg.System.UpdateCheckIntervalHours = 0
-
-	changed, err := applyCompatibilityRules(cfg)
-	require.NoError(t, err)
-	assert.True(t, changed)
-	assert.Equal(t, CurrentConfigVersion, cfg.ConfigVersion)
-	assert.Equal(t, legacyScraperPriorityBaseline(), cfg.Scrapers.Priority)
-	assert.Equal(t, 24, cfg.System.UpdateCheckIntervalHours)
-}
-
-func TestApplyCompatibilityRules_CurrentVersionNoChange(t *testing.T) {
-	cfg := DefaultConfig()
-	cfg.ConfigVersion = CurrentConfigVersion
-	cfg.Scrapers.Priority = []string{"dmm"}
-	cfg.System.UpdateCheckIntervalHours = 12
-
-	beforePriority := append([]string{}, cfg.Scrapers.Priority...)
-	beforeInterval := cfg.System.UpdateCheckIntervalHours
-
-	changed, err := applyCompatibilityRules(cfg)
-	require.NoError(t, err)
-	assert.False(t, changed)
-	assert.Equal(t, beforePriority, cfg.Scrapers.Priority)
-	assert.Equal(t, beforeInterval, cfg.System.UpdateCheckIntervalHours)
-}
-
-func TestApplyCompatibilityRules_NewerVersionReturnsErrorWithoutMutation(t *testing.T) {
+func TestPrepare_NewerVersionReturnsError(t *testing.T) {
 	cfg := DefaultConfig()
 	cfg.ConfigVersion = CurrentConfigVersion + 1
 	cfg.Scrapers.Priority = []string{"dmm"}
@@ -99,7 +23,7 @@ func TestApplyCompatibilityRules_NewerVersionReturnsErrorWithoutMutation(t *test
 	beforeVersion := cfg.ConfigVersion
 	beforePriority := append([]string{}, cfg.Scrapers.Priority...)
 
-	changed, err := applyCompatibilityRules(cfg)
+	changed, err := Prepare(cfg)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "newer than supported version")
 	assert.False(t, changed)
@@ -132,7 +56,7 @@ func TestNormalize_Idempotent(t *testing.T) {
 	assert.False(t, changed)
 }
 
-func TestPrepare_RunsCompatibilityNormalizeAndValidate(t *testing.T) {
+func TestPrepare_RunsNormalizeAndValidate(t *testing.T) {
 	cfg := DefaultConfig()
 	cfg.ConfigVersion = 0
 	cfg.Scrapers.Priority = []string{"dmm"}
@@ -142,11 +66,10 @@ func TestPrepare_RunsCompatibilityNormalizeAndValidate(t *testing.T) {
 	changed, err := Prepare(cfg)
 	require.NoError(t, err)
 	assert.True(t, changed)
-	assert.Equal(t, CurrentConfigVersion, cfg.ConfigVersion)
+	assert.Equal(t, 0, cfg.ConfigVersion) // Prepare no longer upgrades versions
 	assert.Equal(t, "sqlite", cfg.Database.Type)
 	assert.Equal(t, "https://www.dmm.co.jp/", cfg.Scrapers.Referer)
-	assert.Contains(t, cfg.Scrapers.Priority, "r18dev")
-	assert.Contains(t, cfg.Scrapers.Priority, "fc2")
+	assert.Equal(t, []string{"dmm"}, cfg.Scrapers.Priority) // Priority unchanged by Prepare
 }
 
 func TestValidate_DoesNotMutateConfig(t *testing.T) {

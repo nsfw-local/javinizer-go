@@ -144,7 +144,7 @@ func (s *Scraper) extractCandidateURLs(doc *goquery.Document, contentID string) 
 	}
 
 	// Only exclude video.dmm.co.jp if browser mode is disabled
-	if !s.enableBrowser {
+	if !s.useBrowser {
 		excludePatterns = append(excludePatterns, "video.dmm.co.jp") // New streaming platform uses JavaScript rendering
 		logging.Debug("DMM: Excluding video.dmm.co.jp URLs (browser mode disabled)")
 	} else {
@@ -168,6 +168,9 @@ func (s *Scraper) extractCandidateURLs(doc *goquery.Document, contentID string) 
 		baseID = contentIDLower // No prefix, use as-is
 	}
 
+	logging.Debugf("DMM: extractCandidateURLs looking for contentID=%s, baseID=%s", contentIDLower, baseID)
+	logging.Debugf("DMM: Browser mode enabled=%v, excludePatterns=%v", s.useBrowser, excludePatterns)
+
 	doc.Find("a").Each(func(i int, sel *goquery.Selection) {
 		href, exists := sel.Attr("href")
 		if !exists {
@@ -178,6 +181,8 @@ func (s *Scraper) extractCandidateURLs(doc *goquery.Document, contentID string) 
 		// DMM product pages can use different ID formats (e.g., sone860, 4sone860, tksone860)
 		// Use lowercase canonical forms for consistent matching
 		hrefLower := strings.ToLower(href)
+		logging.Debugf("DMM: Checking link href=%s, contains contentID=%v, contains baseID=%v",
+			hrefLower, strings.Contains(hrefLower, contentIDLower), strings.Contains(hrefLower, baseID))
 		containsID := strings.Contains(hrefLower, contentIDLower) || strings.Contains(hrefLower, baseID)
 		if !containsID {
 			return
@@ -197,7 +202,7 @@ func (s *Scraper) extractCandidateURLs(doc *goquery.Document, contentID string) 
 		excluded := false
 		for _, pattern := range excludePatterns {
 			if strings.Contains(fullURL, pattern) {
-				logging.Debugf("DMM: Skipping excluded URL type: %s", fullURL)
+				logging.Debugf("DMM: URL excluded by pattern '%s': %s", pattern, fullURL)
 				excluded = true
 				break
 			}
@@ -235,6 +240,7 @@ func (s *Scraper) extractCandidateURLs(doc *goquery.Document, contentID string) 
 		logging.Debugf("DMM: Found candidate URL (priority %d, ID: %s, len: %d): %s", priority, extractedID, idLen, fullURL)
 	})
 
+	logging.Debugf("DMM: Found %d candidate URLs total", len(candidates))
 	return candidates
 }
 

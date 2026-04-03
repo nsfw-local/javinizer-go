@@ -347,6 +347,7 @@ export interface ScraperOption {
 	label: string;
 	description: string;
 	type: string; // 'boolean', 'string', 'number', etc.
+	default?: any; // Default value for this option
 	min?: number; // For number type
 	max?: number; // For number type
 	unit?: string; // For number type (e.g., 'seconds', 'MB')
@@ -387,6 +388,8 @@ export interface ProxyTestResponse {
 	message: string;
 	proxy_url?: string;
 	flaresolverr_url?: string;
+	verification_token?: string;
+	token_expires_at?: number;
 }
 
 export interface TranslationModelsRequest {
@@ -397,6 +400,15 @@ export interface TranslationModelsRequest {
 
 export interface TranslationModelsResponse {
 	models: string[];
+}
+
+export interface TestResult {
+	success: boolean;
+	timestamp: number;
+	message?: string;
+	configSnapshot?: string;
+	verificationToken?: string;
+	tokenExpiresAt?: number;
 }
 
 // Config types

@@ -466,6 +466,12 @@ func (job *BatchJob) GetStatus() *BatchJob {
 		excluded[k] = v
 	}
 
+	// Deep copy the FileMatchInfo map
+	fileMatchInfo := make(map[string]FileMatchInfo, len(job.FileMatchInfo))
+	for k, v := range job.FileMatchInfo {
+		fileMatchInfo[k] = v
+	}
+
 	completedAt := job.CompletedAt
 	if completedAt != nil {
 		t := *completedAt
@@ -473,16 +479,17 @@ func (job *BatchJob) GetStatus() *BatchJob {
 	}
 
 	return &BatchJob{
-		ID:          job.ID,
-		Status:      job.Status,
-		TotalFiles:  job.TotalFiles,
-		Completed:   job.Completed,
-		Failed:      job.Failed,
-		Excluded:    excluded,
-		Files:       files,
-		Results:     results,
-		Progress:    job.Progress,
-		StartedAt:   job.StartedAt,
-		CompletedAt: completedAt,
+		ID:            job.ID,
+		Status:        job.Status,
+		TotalFiles:    job.TotalFiles,
+		Completed:     job.Completed,
+		Failed:        job.Failed,
+		Excluded:      excluded,
+		Files:         files,
+		Results:       results,
+		FileMatchInfo: fileMatchInfo,
+		Progress:      job.Progress,
+		StartedAt:     job.StartedAt,
+		CompletedAt:   completedAt,
 	}
 }

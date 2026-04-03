@@ -22,7 +22,7 @@ func TestRegisterScraper_DefaultSettingsRegistration(t *testing.T) {
 	scraperutil.ResetFlattenFuncs()
 
 	// Register a scraper constructor
-	RegisterScraper("settings-test", func(settings config.ScraperSettings, db *database.DB, proxy *config.ProxyConfig, globalFlareSolverr config.FlareSolverrConfig) (models.Scraper, error) {
+	RegisterScraper("settings-test", func(settings config.ScraperSettings, db *database.DB, globalConfig *config.ScrapersConfig) (models.Scraper, error) {
 		return &testScraper{name: "settings-test", enabled: settings.Enabled}, nil
 	})
 
@@ -35,7 +35,7 @@ func TestRegisterScraper_DefaultSettingsRegistration(t *testing.T) {
 	// Verify constructor is in the map and works correctly
 	constructors := GetScraperConstructors()
 	assert.Contains(t, constructors, "settings-test")
-	scraperInstance, err := constructors["settings-test"](config.ScraperSettings{Enabled: true}, nil, nil, config.FlareSolverrConfig{})
+	scraperInstance, err := constructors["settings-test"](config.ScraperSettings{Enabled: true}, nil, nil)
 	require.NoError(t, err)
 	assert.Equal(t, "settings-test", scraperInstance.Name())
 
@@ -60,18 +60,18 @@ func TestRegisterScraper_DuplicateNameOverwrites(t *testing.T) {
 	ResetDefaults()
 
 	// Register scraper "dup-test" with constructor A
-	RegisterScraper("dup-test", func(settings config.ScraperSettings, db *database.DB, proxy *config.ProxyConfig, globalFlareSolverr config.FlareSolverrConfig) (models.Scraper, error) {
+	RegisterScraper("dup-test", func(settings config.ScraperSettings, db *database.DB, globalConfig *config.ScrapersConfig) (models.Scraper, error) {
 		return &testScraper{name: "dup-test-constructor-A", enabled: settings.Enabled}, nil
 	})
 
 	// Register scraper "dup-test" again with constructor B (different function)
-	RegisterScraper("dup-test", func(settings config.ScraperSettings, db *database.DB, proxy *config.ProxyConfig, globalFlareSolverr config.FlareSolverrConfig) (models.Scraper, error) {
+	RegisterScraper("dup-test", func(settings config.ScraperSettings, db *database.DB, globalConfig *config.ScrapersConfig) (models.Scraper, error) {
 		return &testScraper{name: "dup-test-constructor-B", enabled: settings.Enabled}, nil
 	})
 
 	// Verify Create calls constructor B (latest registration wins)
 	settings := config.ScraperSettings{Enabled: true}
-	scraper, err := Create("dup-test", settings, nil, nil, config.FlareSolverrConfig{})
+	scraper, err := Create("dup-test", settings, nil, nil)
 
 	assert.NoError(t, err)
 	assert.NotNil(t, scraper)
@@ -112,7 +112,7 @@ func TestRegisterScraper_NilHandlerRejected(t *testing.T) {
 
 	// Verify Create returns error when trying to use nil constructor
 	settings := config.ScraperSettings{Enabled: true}
-	scraper, err := Create("nil-handler", settings, nil, nil, config.FlareSolverrConfig{})
+	scraper, err := Create("nil-handler", settings, nil, nil)
 
 	assert.Error(t, err)
 	assert.Nil(t, scraper)
@@ -133,12 +133,12 @@ func TestRegisterScraperDefaults_NilSettingsRejected(t *testing.T) {
 	assert.Contains(t, defaults, "empty-settings")
 
 	// Create with valid constructor but empty settings
-	RegisterScraper("empty-settings", func(settings config.ScraperSettings, db *database.DB, proxy *config.ProxyConfig, globalFlareSolverr config.FlareSolverrConfig) (models.Scraper, error) {
+	RegisterScraper("empty-settings", func(settings config.ScraperSettings, db *database.DB, globalConfig *config.ScrapersConfig) (models.Scraper, error) {
 		return &testScraper{name: "empty-settings", enabled: settings.Enabled}, nil
 	})
 
 	settings := config.ScraperSettings{Enabled: true}
-	scraper, err := Create("empty-settings", settings, nil, nil, config.FlareSolverrConfig{})
+	scraper, err := Create("empty-settings", settings, nil, nil)
 
 	assert.NoError(t, err)
 	assert.NotNil(t, scraper)
@@ -151,7 +151,7 @@ func TestCreate_DBBackedScraper(t *testing.T) {
 	scraperutil.ResetDefaults()
 
 	// Register a scraper that expects database access
-	RegisterScraper("db-scraper", func(settings config.ScraperSettings, db *database.DB, proxy *config.ProxyConfig, globalFlareSolverr config.FlareSolverrConfig) (models.Scraper, error) {
+	RegisterScraper("db-scraper", func(settings config.ScraperSettings, db *database.DB, globalConfig *config.ScrapersConfig) (models.Scraper, error) {
 		// Verify db is passed correctly
 		if db == nil {
 			return nil, assert.AnError
@@ -171,7 +171,7 @@ func TestCreate_DBBackedScraper(t *testing.T) {
 
 	// Create scraper with database
 	settings := config.ScraperSettings{Enabled: true}
-	scraper, err := Create("db-scraper", settings, db, nil, config.FlareSolverrConfig{})
+	scraper, err := Create("db-scraper", settings, db, nil)
 
 	assert.NoError(t, err)
 	assert.NotNil(t, scraper)
@@ -190,12 +190,12 @@ func TestCreate_KnownScraper(t *testing.T) {
 	ResetDefaults()
 
 	// Register a test scraper
-	RegisterScraper("test-scraper", func(settings config.ScraperSettings, db *database.DB, proxy *config.ProxyConfig, globalFlareSolverr config.FlareSolverrConfig) (models.Scraper, error) {
+	RegisterScraper("test-scraper", func(settings config.ScraperSettings, db *database.DB, globalConfig *config.ScrapersConfig) (models.Scraper, error) {
 		return &testScraper{name: "test-scraper", enabled: settings.Enabled}, nil
 	})
 
 	settings := config.ScraperSettings{Enabled: true}
-	scraper, err := Create("test-scraper", settings, nil, nil, config.FlareSolverrConfig{})
+	scraper, err := Create("test-scraper", settings, nil, nil)
 
 	assert.NoError(t, err)
 	assert.NotNil(t, scraper)
@@ -209,7 +209,7 @@ func TestCreate_UnknownScraper(t *testing.T) {
 	ResetDefaults()
 
 	settings := config.ScraperSettings{Enabled: true}
-	scraper, err := Create("unknown-scraper", settings, nil, nil, config.FlareSolverrConfig{})
+	scraper, err := Create("unknown-scraper", settings, nil, nil)
 
 	assert.Error(t, err)
 	assert.Nil(t, scraper)
@@ -223,12 +223,12 @@ func TestCreate_ConstructorError(t *testing.T) {
 	ResetDefaults()
 
 	// Register a scraper that returns an error
-	RegisterScraper("error-scraper", func(settings config.ScraperSettings, db *database.DB, proxy *config.ProxyConfig, globalFlareSolverr config.FlareSolverrConfig) (models.Scraper, error) {
+	RegisterScraper("error-scraper", func(settings config.ScraperSettings, db *database.DB, globalConfig *config.ScrapersConfig) (models.Scraper, error) {
 		return nil, assert.AnError
 	})
 
 	settings := config.ScraperSettings{Enabled: true}
-	scraper, err := Create("error-scraper", settings, nil, nil, config.FlareSolverrConfig{})
+	scraper, err := Create("error-scraper", settings, nil, nil)
 
 	assert.Error(t, err)
 	assert.Nil(t, scraper)

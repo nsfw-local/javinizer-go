@@ -12,17 +12,15 @@ import (
 // Config holds JavLibrary scraper configuration.
 // YAML tags are defined here for unmarshaling via config.ScrapersConfig.
 type JavLibraryConfig struct {
-	Enabled       bool                      `yaml:"enabled" json:"enabled"`
-	Language      string                    `yaml:"language" json:"language"`
-	RequestDelay  int                       `yaml:"request_delay" json:"request_delay"`
-	BaseURL       string                    `yaml:"base_url" json:"base_url"`
-	CfClearance   string                    `yaml:"cf_clearance" json:"cf_clearance"` // Cloudflare clearance cookie
-	CfBm          string                    `yaml:"cf_bm" json:"cf_bm"`               // Cloudflare BM cookie
-	UserAgent     string                    `yaml:"user_agent" json:"user_agent"`
-	Proxy         *config.ProxyConfig       `yaml:"proxy,omitempty" json:"proxy,omitempty"`
-	DownloadProxy *config.ProxyConfig       `yaml:"download_proxy,omitempty" json:"download_proxy,omitempty"`
-	Priority      int                       `yaml:"priority" json:"priority"`         // Scraper's priority (higher = higher priority)
-	FlareSolverr  config.FlareSolverrConfig `yaml:"flaresolverr" json:"flaresolverr"` // FlareSolverr config for Cloudflare bypass
+	Enabled       bool                `yaml:"enabled" json:"enabled"`
+	Language      string              `yaml:"language" json:"language"`
+	RequestDelay  int                 `yaml:"request_delay" json:"request_delay"`
+	BaseURL       string              `yaml:"base_url" json:"base_url"`
+	Cookies       map[string]string   `yaml:"cookies,omitempty" json:"cookies,omitempty"` // For cf_clearance, cf_bm, etc.
+	UserAgent     string              `yaml:"user_agent" json:"user_agent"`
+	Proxy         *config.ProxyConfig `yaml:"proxy,omitempty" json:"proxy,omitempty"`
+	DownloadProxy *config.ProxyConfig `yaml:"download_proxy,omitempty" json:"download_proxy,omitempty"`
+	Priority      int                 `yaml:"priority" json:"priority"` // Scraper's priority (higher = higher priority)
 }
 
 func init() {
@@ -57,17 +55,13 @@ func init() {
 		// Use type assertion to access JavLibrary-specific fields
 		if jlCfg, ok := cfg.(*JavLibraryConfig); ok {
 			return &config.ScraperSettings{
-				Enabled:   c.IsEnabled(),
-				Language:  jlCfg.Language,
-				RateLimit: c.GetRequestDelay(),
-				Extra: map[string]any{
-					"base_url":     jlCfg.BaseURL,
-					"cf_clearance": jlCfg.CfClearance,
-					"cf_bm":        jlCfg.CfBm,
-				},
+				Enabled:       c.IsEnabled(),
+				Language:      jlCfg.Language,
+				RateLimit:     c.GetRequestDelay(),
+				BaseURL:       jlCfg.BaseURL,
+				Cookies:       jlCfg.Cookies,
 				Proxy:         proxyVal,
 				DownloadProxy: downloadProxyVal,
-				FlareSolverr:  jlCfg.FlareSolverr,
 			}
 		}
 		return nil
@@ -124,21 +118,6 @@ func (c *JavLibraryConfig) ValidateConfig(sc *config.ScraperSettings) error {
 	// Validate base URL if set
 	if err := configutil.ValidateHTTPBaseURL("javlibrary.base_url", sc.BaseURL); err != nil {
 		return err
-	}
-	// Validate FlareSolverr config if enabled
-	if sc.FlareSolverr.Enabled {
-		if sc.FlareSolverr.URL == "" {
-			return fmt.Errorf("javlibrary.flaresolverr.url is required when flaresolverr is enabled")
-		}
-		if sc.FlareSolverr.Timeout < 1 || sc.FlareSolverr.Timeout > 300 {
-			return fmt.Errorf("javlibrary.flaresolverr.timeout must be between 1 and 300")
-		}
-		if sc.FlareSolverr.MaxRetries < 0 || sc.FlareSolverr.MaxRetries > 10 {
-			return fmt.Errorf("javlibrary.flaresolverr.max_retries must be between 0 and 10")
-		}
-		if sc.FlareSolverr.SessionTTL < 60 || sc.FlareSolverr.SessionTTL > 3600 {
-			return fmt.Errorf("javlibrary.flaresolverr.session_ttl must be between 60 and 3600")
-		}
 	}
 	return nil
 }

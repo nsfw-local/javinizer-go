@@ -516,6 +516,43 @@ func LoadOrCreate(path string) (*Config, error) {
 		return nil, err
 	}
 
+	// Check if migration is needed
+	if cfg.ConfigVersion < CurrentConfigVersion {
+		// Set migration context for backup creation
+		SetMigrationContext(MigrationContext{
+			ConfigPath: path,
+			DryRun:     false,
+		})
+
+		if cfg.ConfigVersion <= 2 {
+			fmt.Fprintf(os.Stderr, "\n⚠️  WARNING: Your config (version %d) is outdated.\n", cfg.ConfigVersion)
+			fmt.Fprintf(os.Stderr, "   A backup will be created at: %s.bak-<timestamp>\n", path)
+			fmt.Fprintf(os.Stderr, "   A fresh configuration will be generated from defaults.\n")
+			fmt.Fprintf(os.Stderr, "   Your previous settings will NOT be preserved.\n\n")
+			fmt.Fprintf(os.Stderr, "[Proceeding with migration...]\n")
+		}
+
+		// Run migration
+		if err := MigrateToCurrent(cfg); err != nil {
+			return nil, fmt.Errorf("migration failed: %w", err)
+		}
+
+		// Get backup path if created
+		ctx := GetMigrationContext()
+		if ctx.BackupPath != "" {
+			fmt.Fprintf(os.Stderr, "✓ Backup created: %s\n", ctx.BackupPath)
+		}
+		fmt.Fprintf(os.Stderr, "✓ Config migrated to version %d\n\n", cfg.ConfigVersion)
+
+		// Save migrated config
+		if err := Save(cfg, path); err != nil {
+			return nil, fmt.Errorf("failed to save migrated config: %w", err)
+		}
+
+		return cfg, nil
+	}
+
+	// Normal prepare for current version configs
 	changed, err := Prepare(cfg)
 	if err != nil {
 		return nil, err

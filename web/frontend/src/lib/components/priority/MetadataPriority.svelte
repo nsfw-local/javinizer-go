@@ -226,7 +226,6 @@
 </script>
 
 <div class="space-y-6">
-
 		<!-- Mode Toggle -->
 		<div class="flex items-start gap-4 p-4 bg-accent/30 rounded-lg">
 			<div class="flex-1">

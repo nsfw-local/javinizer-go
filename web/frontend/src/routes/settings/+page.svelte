@@ -21,6 +21,15 @@
 	import FileMatchingSettingsSection from '$lib/components/settings/sections/FileMatchingSettingsSection.svelte';
 	import LoggingSettingsSection from '$lib/components/settings/sections/LoggingSettingsSection.svelte';
 	import MediaInfoSettingsSection from '$lib/components/settings/sections/MediaInfoSettingsSection.svelte';
+	import BrowserSettingsSection from '$lib/components/settings/sections/BrowserSettingsSection.svelte';
+	import FormToggle from '$lib/components/settings/FormToggle.svelte';
+	import {
+		getScraperProxyMode as getScraperProxyModePure,
+		isProxyConfigDirty,
+		isTestValid,
+		type ScraperProxyMode,
+		type TestResult
+	} from '$lib/proxy/proxy-logic';
 
 	interface ScraperItem {
 		name: string;
@@ -42,6 +51,127 @@
 	let error = $state<string | null>(null);
 	let showConfirmModal = $state(false);
 	let scrapers = $state<ScraperItem[]>([]);
+
+	// Test result tracking for test-before-save workflow
+	let profileTestResults = $state<Record<string, TestResult>>({});
+	let globalProxyTestResult = $state<TestResult | null>(null);
+	let globalFlareSolverrTestResult = $state<TestResult | null>(null);
+
+	// Verification tokens from test endpoints (for server-side verification on save)
+	let verificationTokens = $state<Record<string, string>>({});
+
+	const TEST_VALIDITY_MS = 5 * 60 * 1000; // 5 minutes
+
+	// Baseline config snapshots for dirty state detection (set on load and after save)
+	let proxyConfigBaseline = $state<string>('');
+	let flaresolverrConfigBaseline = $state<string>('');
+
+	function updateProxyConfigBaseline(): void {
+		proxyConfigBaseline = JSON.stringify(config?.scrapers?.proxy);
+		flaresolverrConfigBaseline = JSON.stringify(config?.scrapers?.flaresolverr);
+	}
+
+	function checkProxyConfigDirty(): boolean {
+		const currentProxy = config?.scrapers?.proxy;
+		const currentFlaresolverr = config?.scrapers?.flaresolverr;
+		return isProxyConfigDirty(currentProxy, proxyConfigBaseline) ||
+			   isProxyConfigDirty(currentFlaresolverr, flaresolverrConfigBaseline);
+	}
+
+	function hasPendingProxyTests(): boolean {
+		// Check if any enabled proxy scope needs testing
+		const globalProxyEnabled = config?.scrapers?.proxy?.enabled ?? false;
+		const flaresolverrEnabled = config?.scrapers?.flaresolverr?.enabled ?? false;
+
+		if (!globalProxyEnabled && !flaresolverrEnabled && Object.keys(profileTestResults).length === 0) {
+			return false;
+		}
+
+		// Check if any enabled scope has no valid test
+		if (globalProxyEnabled && !canSaveGlobalProxy()) return true;
+		if (flaresolverrEnabled && !canSaveGlobalFlareSolverr()) return true;
+		for (const name of Object.keys(profileTestResults)) {
+			if (!canSaveProfile(name)) return true;
+		}
+
+		return false;
+	}
+
+	// Derived state for save button enablement
+	function canSaveProfile(profileName: string): boolean {
+		const result = profileTestResults[profileName];
+		const currentProfile = config?.scrapers?.proxy?.profiles?.[profileName];
+		return isTestValid(result, currentProfile, TEST_VALIDITY_MS);
+	}
+
+	function canSaveGlobalProxy(): boolean {
+		const currentProxy = config?.scrapers?.proxy;
+		return isTestValid(globalProxyTestResult, currentProxy, TEST_VALIDITY_MS);
+	}
+
+	function canSaveGlobalFlareSolverr(): boolean {
+		const currentFlaresolverr = config?.scrapers?.flaresolverr;
+		return isTestValid(globalFlareSolverrTestResult, currentFlaresolverr, TEST_VALIDITY_MS);
+	}
+
+	function isTestExpired(result: TestResult | null | undefined): boolean {
+		// A test is expired if it's not valid (null, failed, expired, or config changed)
+		return !isTestValid(result, undefined, TEST_VALIDITY_MS);
+	}
+
+	// Clear test result when profile config changes (invalidates test-before-save)
+	function invalidateProfileTest(profileName: string): void {
+		if (profileTestResults[profileName]) {
+			delete profileTestResults[profileName];
+		}
+	}
+
+	// Clear global proxy test result when global proxy config changes
+	function invalidateGlobalProxyTest(): void {
+		globalProxyTestResult = null;
+		delete verificationTokens['global'];
+	}
+
+	// Clear FlareSolverr test result when FlareSolverr config changes
+	function invalidateGlobalFlareSolverrTest(): void {
+		globalFlareSolverrTestResult = null;
+		delete verificationTokens['flaresolverr'];
+	}
+
+	function buildVerificationTokenPayload(): Record<string, string> {
+		const tokens: Record<string, string> = {};
+		if (verificationTokens['global']) tokens['global'] = verificationTokens['global'];
+		if (verificationTokens['flaresolverr']) tokens['flaresolverr'] = verificationTokens['flaresolverr'];
+		return tokens;
+	}
+
+	function hasUnsavedProxyChanges(): boolean {
+		return Object.keys(profileTestResults).length > 0 ||
+			   globalProxyTestResult !== null ||
+			   globalFlareSolverrTestResult !== null;
+	}
+
+	function canSafelySave(): boolean {
+		// If proxy config hasn't changed, no need to check tests
+		if (!checkProxyConfigDirty()) return true;
+
+		// Config is dirty - check if all enabled proxy scopes have valid tests
+		const globalProxyEnabled = config?.scrapers?.proxy?.enabled ?? false;
+		const flaresolverrEnabled = config?.scrapers?.flaresolverr?.enabled ?? false;
+
+		// Global proxy is enabled and dirty - must have valid test
+		if (globalProxyEnabled && !canSaveGlobalProxy()) return false;
+
+		// FlareSolverr is enabled and dirty - must have valid test
+		if (flaresolverrEnabled && !canSaveGlobalFlareSolverr()) return false;
+
+		// Check all profiles that have been tested (or need testing)
+		for (const name of Object.keys(profileTestResults)) {
+			if (!canSaveProfile(name)) return false;
+		}
+
+		return true;
+	}
 
 	const inputClass =
 		'w-full px-3 py-2 border rounded-md focus:ring-2 focus:ring-primary focus:border-primary transition-all bg-background';
@@ -164,13 +294,10 @@
 		}
 	}
 
-	type ScraperProxyMode = 'direct' | 'inherit' | 'specific';
-
 	function getScraperProxyMode(scraperName: string): ScraperProxyMode {
-		const proxyCfg = config?.scrapers?.[scraperName]?.proxy;
-		if (!proxyCfg?.enabled) return 'direct';
-		if ((proxyCfg.profile ?? '').trim() !== '') return 'specific';
-		return 'inherit';
+		const globalEnabled = config?.scrapers?.proxy?.enabled ?? false;
+		const override = config?.scrapers?.[scraperName]?.proxy;
+		return getScraperProxyModePure(globalEnabled, override);
 	}
 
 	function setScraperProxyMode(scraperName: string, mode: ScraperProxyMode): void {
@@ -181,18 +308,25 @@
 		}
 
 		const proxyCfg = config.scrapers[scraperName].proxy;
-		if (mode === 'direct') {
-			proxyCfg.enabled = false;
-		} else if (mode === 'inherit') {
-			proxyCfg.enabled = true;
-			proxyCfg.profile = '';
-		} else {
-			proxyCfg.enabled = true;
-			if (!(proxyCfg.profile ?? '').trim()) {
-				const defaultProfile = config.scrapers.proxy?.default_profile ?? '';
-				const firstProfile = getProxyProfileNames()[0] ?? '';
-				proxyCfg.profile = defaultProfile || firstProfile;
-			}
+
+		switch (mode) {
+			case 'direct':
+				proxyCfg.enabled = false;
+				proxyCfg.profile = '';
+				break;
+			case 'inherit':
+				proxyCfg.enabled = true;
+				proxyCfg.profile = '';  // Empty means inherit default
+				break;
+			case 'specific':
+				proxyCfg.enabled = true;
+				if (!(proxyCfg.profile ?? '').trim()) {
+					// Pick default or first available profile
+					const defaultProfile = config.scrapers.proxy?.default_profile ?? '';
+					const firstProfile = getProxyProfileNames()[0] ?? '';
+					proxyCfg.profile = defaultProfile || firstProfile;
+				}
+				break;
 		}
 
 		config = JSON.parse(JSON.stringify(config));
@@ -239,7 +373,20 @@
 				downloadProxy.use_main_proxy
 			);
 		}
-		return getNestedValue(config?.scrapers?.[scraperName], optionKey);
+		
+		// Find the scraper and option definition to check for default value
+		const scraper = scrapers.find(s => s.name === scraperName);
+		const option = scraper?.options?.find(o => o.key === optionKey);
+		
+		// ALL scraper options now at top level - no more extra map
+		const currentValue = getNestedValue(config?.scrapers?.[scraperName], optionKey);
+		
+		// Return default if no value set (undefined, null, or empty string)
+		if (currentValue === undefined || currentValue === null || currentValue === '') {
+			return option?.default ?? currentValue;
+		}
+		
+		return currentValue;
 	}
 
 	function getNestedValue(obj: any, path: string): any {
@@ -378,6 +525,17 @@
 		updateScraperProfileRefs(oldName, newName);
 		config.scrapers.proxy.profiles = { ...config.scrapers.proxy.profiles };
 		refreshLocalProxyProfileChoices();
+
+		// Transfer test result from old name to new name (with updated snapshot)
+		if (profileTestResults[oldName]) {
+			profileTestResults[newName] = {
+				...profileTestResults[oldName],
+				configSnapshot: JSON.stringify(profileData)
+			};
+			delete profileTestResults[oldName];
+		}
+
+		invalidateGlobalProxyTest(); // Global proxy config may have changed
 	}
 
 	function addProxyProfile(): void {
@@ -400,6 +558,7 @@
 		}
 		config.scrapers.proxy.profiles = { ...config.scrapers.proxy.profiles };
 		refreshLocalProxyProfileChoices();
+		invalidateGlobalProxyTest(); // New profile may become default
 	}
 
 	function removeProxyProfile(name: string): void {
@@ -413,11 +572,20 @@
 		}
 		config.scrapers.proxy.profiles = { ...config.scrapers.proxy.profiles };
 		refreshLocalProxyProfileChoices();
+
+		// Clean up test result for removed profile
+		if (profileTestResults[name]) {
+			delete profileTestResults[name];
+		}
+
+		invalidateGlobalProxyTest(); // Default profile may have changed
 	}
 
 	function setProxyProfileField(name: string, field: 'url' | 'username' | 'password', value: string): void {
 		if (!config?.scrapers?.proxy?.profiles?.[name]) return;
 		config.scrapers.proxy.profiles[name][field] = value;
+		invalidateProfileTest(name); // Clear test result since config changed
+		invalidateGlobalProxyTest(); // Global proxy may use this profile as default
 	}
 
 	async function saveProxyProfile(profileName: string): Promise<void> {
@@ -448,22 +616,66 @@
 			toastStore.error(`Profile "${profileName}" not found`, 5000);
 			return;
 		}
-		if (!profile.url) {
+		if (!profile.url?.trim()) {
 			toastStore.error(`Profile "${profileName}" needs a proxy URL before testing`, 5000);
 			return;
 		}
 
 		testingProfile[profileName] = true;
 		try {
+			const defaultProfileName = config?.scrapers?.proxy?.default_profile ?? '';
+			const shouldAlsoValidateGlobalProxy = (config?.scrapers?.proxy?.enabled ?? false) && profileName === defaultProfileName;
+
+			// Test with current unsaved form values
 			const result = await apiClient.testProxy({
 				mode: 'direct',
-				proxy: {
-					enabled: true,
-					url: profile.url,
-					username: profile.username ?? '',
-					password: profile.password ?? ''
-				}
+				proxy: shouldAlsoValidateGlobalProxy
+					? {
+							enabled: true,
+							profile: defaultProfileName,
+							profiles: config?.scrapers?.proxy?.profiles ?? {}
+						}
+					: {
+							enabled: true,
+							profile: '',
+							profiles: {
+								[profileName]: {
+									url: profile.url,
+									username: profile.username ?? '',
+									password: profile.password ?? ''
+								}
+							}
+						}
 			});
+
+			// Store test result for save button state (with config snapshot for dirty detection)
+			profileTestResults[profileName] = {
+				success: result.success,
+				timestamp: Date.now(),
+				message: result.message,
+				configSnapshot: JSON.stringify(profile)
+			};
+
+			// Testing the default profile also validates global proxy state for save gating.
+			if (shouldAlsoValidateGlobalProxy) {
+				globalProxyTestResult = {
+					success: result.success,
+					timestamp: Date.now(),
+					message: result.message,
+					configSnapshot: JSON.stringify(config?.scrapers?.proxy),
+					verificationToken: result.verification_token,
+					tokenExpiresAt: result.token_expires_at
+				};
+				if (result.verification_token) {
+					verificationTokens['global'] = result.verification_token;
+				} else if (!result.success) {
+					delete verificationTokens['global'];
+				}
+			} else if (result.success && result.verification_token && (config?.scrapers?.proxy?.enabled ?? false)) {
+				// For non-default profiles: also store global token when global proxy is enabled
+				// This allows saving profiles even when they're not the default
+				verificationTokens['global'] = result.verification_token;
+			}
 
 			if (result.success) {
 				toastStore.success(`Profile "${profileName}" test passed (${result.duration_ms}ms): ${result.message}`, 7000);
@@ -471,6 +683,7 @@
 				toastStore.error(`Profile "${profileName}" test failed (${result.duration_ms}ms): ${result.message}`, 7000);
 			}
 		} catch (e) {
+			profileTestResults[profileName] = { success: false, timestamp: Date.now() };
 			const msg = e instanceof Error ? e.message : 'Profile proxy test failed';
 			toastStore.error(msg, 7000);
 		} finally {
@@ -493,47 +706,6 @@
 				return option;
 			})
 		}));
-	}
-
-	function isZeroFlaresolverrConfig(fs: any): boolean {
-		if (!fs || typeof fs !== 'object') return true;
-		return !fs.enabled && !fs.url && !fs.timeout && !fs.max_retries && !fs.session_ttl;
-	}
-
-	function resolveGlobalProxyForTesting() {
-		if (!config?.scrapers?.proxy) return null;
-		const proxyConfig = JSON.parse(JSON.stringify(config.scrapers.proxy));
-		const profiles = proxyConfig.profiles ?? {};
-		const defaultProfile = proxyConfig.default_profile;
-		if (defaultProfile && profiles[defaultProfile]) {
-			const profile = profiles[defaultProfile];
-			if (profile.url) proxyConfig.url = profile.url;
-			if (profile.username !== undefined) proxyConfig.username = profile.username;
-			if (profile.password !== undefined) proxyConfig.password = profile.password;
-		}
-		// FlareSolverr is now at scrapers.flaresolverr (sibling of proxy, not inside it)
-		// If global flaresolverr is enabled, always create the config with defaults
-		// This ensures first-time enable works without requiring explicit URL save first
-		const globalFlareSolverr = config?.scrapers?.flaresolverr;
-		if (globalFlareSolverr?.enabled) {
-			proxyConfig.flaresolverr = {
-				enabled: true,
-				url: globalFlareSolverr?.url || 'http://localhost:8191/v1',
-				timeout: globalFlareSolverr?.timeout || 30,
-				max_retries: globalFlareSolverr?.max_retries || 3,
-				session_ttl: globalFlareSolverr?.session_ttl || 300
-			};
-		} else if (!isZeroFlaresolverrConfig(globalFlareSolverr)) {
-			// Only set flaresolverr config if it's not zero but somehow not enabled
-			proxyConfig.flaresolverr = {
-				enabled: globalFlareSolverr?.enabled ?? false,
-				url: globalFlareSolverr?.url || 'http://localhost:8191/v1',
-				timeout: globalFlareSolverr?.timeout ?? 30,
-				max_retries: globalFlareSolverr?.max_retries ?? 3,
-				session_ttl: globalFlareSolverr?.session_ttl ?? 300
-			};
-		}
-		return proxyConfig;
 	}
 
 	function isOptionDisabled(scraperName: string, optionKey: string): boolean {
@@ -567,7 +739,10 @@
 	function setOptionValue(scraperName: string, optionKey: string, value: any) {
 		if (!config?.scrapers) return;
 		if (!config.scrapers[scraperName]) config.scrapers[scraperName] = {};
+		
+		// All options go to top level - no more extra map
 		setNestedValue(config.scrapers[scraperName], optionKey, value);
+		
 		// Trigger reactivity by reassigning the config object with a deep clone
 		config = JSON.parse(JSON.stringify(config));
 	}
@@ -708,56 +883,68 @@
 		// Remove from all field-specific priorities
 		if (config.metadata?.priority) {
 			Object.keys(config.metadata.priority).forEach((fieldKey) => {
-				config.metadata.priority[fieldKey] = config.metadata.priority[fieldKey].filter(
-					(s: string) => s !== scraperName
-				);
-
-				// Clean up empty arrays
-				if (config.metadata.priority[fieldKey].length === 0) {
-					delete config.metadata.priority[fieldKey];
+				const fieldPriority = config.metadata.priority[fieldKey];
+				if (Array.isArray(fieldPriority)) {
+					config.metadata.priority[fieldKey] = fieldPriority.filter((s: string) => s !== scraperName);
 				}
 			});
 		}
-
-		// Trigger reactivity
-		config = { ...config };
 	}
 
-	onMount(async () => {
-		await loadConfig();
-	});
-
 	async function loadConfig() {
-		loading = true;
-		error = null;
 		try {
-			config = await apiClient.request('/api/v1/config');
+			const response = await apiClient.getConfig();
+			config = response;
 			ensureProxyProfilesInitialized();
 			ensureTranslationConfig();
 			stripLegacyDownloadProxyFields();
-			buildScraperList();
+			await buildScraperList();
+			updateProxyConfigBaseline(); // Set baseline after loading config
+			loading = false;
 		} catch (e) {
 			error = e instanceof Error ? e.message : 'Failed to load configuration';
-		} finally {
 			loading = false;
 		}
 	}
 
-	function promptSaveConfig() {
-		showConfirmModal = true;
-	}
+	async function handleSave() {
+		if (!config) return;
+		if (saving) return;
 
-	async function confirmSaveConfig() {
-		showConfirmModal = false;
+		// Check test-before-save requirements
+		if (!canSafelySave()) {
+			toastStore.error('Test all modified proxy profiles before saving', 5000);
+			return;
+		}
+
+		// Check for unsaved proxy test results that have expired
+		for (const [name, result] of Object.entries(profileTestResults)) {
+			if (isTestExpired(result)) {
+				toastStore.error(`Test for profile "${name}" has expired. Please test again before saving.`, 5000);
+				return;
+			}
+		}
+
 		saving = true;
 		error = null;
 		try {
-			stripLegacyDownloadProxyFields();
+			// Build payload with verification tokens
+			const payload = {
+				...config,
+				proxy_verification_tokens: buildVerificationTokenPayload()
+			};
+
 			await apiClient.request('/api/v1/config', {
 				method: 'PUT',
-				body: JSON.stringify(config)
+				body: JSON.stringify(payload)
 			});
-			toastStore.success('Configuration saved successfully!', 5000);
+			// Clear test results after successful save since they're now saved
+			profileTestResults = {};
+			globalProxyTestResult = null;
+			globalFlareSolverrTestResult = null;
+			verificationTokens = {}; // Clear tokens after successful save
+			updateProxyConfigBaseline(); // Update baseline after successful save
+			toastStore.success('Configuration saved successfully', 4000);
 		} catch (e) {
 			error = e instanceof Error ? e.message : 'Failed to save configuration';
 			toastStore.error(error, 5000);
@@ -766,42 +953,22 @@
 		}
 	}
 
-	function cancelSave() {
-		showConfirmModal = false;
-	}
-
-	async function fetchTranslationModels(): Promise<void> {
-		const baseURL = config?.metadata?.translation?.openai?.base_url?.trim?.() ?? '';
-		const apiKey = config?.metadata?.translation?.openai?.api_key?.trim?.() ?? '';
-		if (!baseURL) {
-			toastStore.error('Set OpenAI-compatible base URL before fetching models', 5000);
-			return;
-		}
-		if (!apiKey) {
-			toastStore.error('Set API key before fetching models', 5000);
-			return;
-		}
+	async function fetchTranslationModels() {
+		const provider = config?.metadata?.translation?.provider;
+		const baseUrl = config?.metadata?.translation?.[provider]?.base_url;
+		const apiKey = config?.metadata?.translation?.[provider]?.api_key;
 
 		fetchingTranslationModels = true;
 		try {
-			const response = await apiClient.getTranslationModels({
-				provider: 'openai',
-				base_url: baseURL,
-				api_key: apiKey
+			const data = await apiClient.request<{ models: string[] }>('/api/v1/translation/models', {
+				method: 'POST',
+				body: JSON.stringify({ provider, base_url: baseUrl, api_key: apiKey })
 			});
-			translationModelOptions = response.models || [];
-			if (translationModelOptions.length > 0) {
-				const current = config.metadata.translation.openai.model?.trim?.() ?? '';
-				if (!current || !translationModelOptions.includes(current)) {
-					config.metadata.translation.openai.model = translationModelOptions[0];
-				}
-				toastStore.success(`Loaded ${translationModelOptions.length} model(s)`, 4000);
-			} else {
-				toastStore.error('No models returned from provider', 5000);
-			}
+			translationModelOptions = data.models || [];
 		} catch (e) {
 			const msg = e instanceof Error ? e.message : 'Failed to fetch models';
 			toastStore.error(msg, 5000);
+			translationModelOptions = [];
 		} finally {
 			fetchingTranslationModels = false;
 		}
@@ -813,66 +980,128 @@
 			return;
 		}
 
-		const proxyConfig = resolveGlobalProxyForTesting();
-		if (!proxyConfig) {
-			toastStore.error('Scraper proxy configuration is missing', 5000);
-			return;
-		}
+		const proxyConfig = config.scrapers.proxy;
 
-		if (mode === 'direct' && (!proxyConfig.enabled || !proxyConfig.url)) {
-			toastStore.error('Enable scraper proxy and set proxy URL before testing', 5000);
-			return;
-		}
-		if (mode === 'flaresolverr') {
-			if (!proxyConfig.flaresolverr?.enabled) {
+		if (mode === 'direct') {
+			if (!proxyConfig.enabled) {
+				toastStore.error('Enable scraper proxy before testing', 5000);
+				return;
+			}
+
+			const defaultProfileName = proxyConfig.default_profile;
+			const defaultProfile = defaultProfileName ? proxyConfig.profiles?.[defaultProfileName] : null;
+
+			if (!defaultProfile?.url?.trim()) {
+				toastStore.error('Set default proxy profile URL before testing', 5000);
+				return;
+			}
+
+			testingProxy = true;
+			try {
+				const result = await apiClient.testProxy({
+					mode: 'direct',
+					proxy: {
+						enabled: true,
+						profile: defaultProfileName,
+						profiles: proxyConfig.profiles
+					}
+				});
+
+				globalProxyTestResult = {
+					success: result.success,
+					timestamp: Date.now(),
+					message: result.message,
+					configSnapshot: JSON.stringify(proxyConfig),
+					verificationToken: result.verification_token,
+					tokenExpiresAt: result.token_expires_at
+				};
+
+				// Store verification token for save
+				if (result.verification_token) {
+					verificationTokens['global'] = result.verification_token;
+				}
+
+				if (result.success) {
+					toastStore.success(`Proxy test passed (${result.duration_ms}ms): ${result.message}`, 7000);
+				} else {
+					toastStore.error(`Proxy test failed (${result.duration_ms}ms): ${result.message}`, 7000);
+				}
+			} catch (e) {
+				globalProxyTestResult = { success: false, timestamp: Date.now() };
+				const msg = e instanceof Error ? e.message : 'Proxy test failed';
+				toastStore.error(msg, 7000);
+			} finally {
+				testingProxy = false;
+			}
+		} else if (mode === 'flaresolverr') {
+			if (!config.scrapers.flaresolverr?.enabled) {
 				toastStore.error('Enable FlareSolverr before testing', 5000);
 				return;
 			}
-			if (!proxyConfig.flaresolverr?.url) {
+			if (!config.scrapers.flaresolverr?.url?.trim()) {
 				toastStore.error('Set FlareSolverr URL before testing', 5000);
 				return;
 			}
-		}
 
-		if (mode === 'direct') {
-			testingProxy = true;
-		} else {
+			const proxyForTest = config.scrapers.proxy?.enabled
+				? {
+						enabled: true,
+						profile: config.scrapers.proxy.default_profile || '',
+						profiles: config.scrapers.proxy.profiles || {}
+				  }
+				: { enabled: false };
+
 			testingFlareSolverr = true;
-		}
+			try {
+				const result = await apiClient.testProxy({
+					mode: 'flaresolverr',
+					target_url: 'https://www.cloudflare.com/cdn-cgi/trace',
+					proxy: proxyForTest,
+					flaresolverr: {
+						enabled: true,
+						url: config.scrapers.flaresolverr.url,
+						timeout: config.scrapers.flaresolverr.timeout ?? 30,
+						max_retries: config.scrapers.flaresolverr.max_retries ?? 3,
+						session_ttl: config.scrapers.flaresolverr.session_ttl ?? 300
+					}
+				});
 
-		try {
-			const result = await apiClient.testProxy({
-				mode,
-				proxy: {
-					enabled: proxyConfig.enabled,
-					url: proxyConfig.url,
-					username: proxyConfig.username,
-					password: proxyConfig.password
-				},
-				flaresolverr: proxyConfig.flaresolverr
-			});
+				globalFlareSolverrTestResult = {
+					success: result.success,
+					timestamp: Date.now(),
+					message: result.message,
+					configSnapshot: JSON.stringify(config.scrapers.flaresolverr),
+					verificationToken: result.verification_token,
+					tokenExpiresAt: result.token_expires_at
+				};
 
-			if (result.success) {
-				toastStore.success(`${mode === 'direct' ? 'Proxy' : 'FlareSolverr'} test passed (${result.duration_ms}ms): ${result.message}`, 7000);
-			} else {
-				toastStore.error(`${mode === 'direct' ? 'Proxy' : 'FlareSolverr'} test failed (${result.duration_ms}ms): ${result.message}`, 7000);
-			}
-		} catch (e) {
-			const msg = e instanceof Error ? e.message : 'Proxy test failed';
-			toastStore.error(msg, 7000);
-		} finally {
-			if (mode === 'direct') {
-				testingProxy = false;
-			} else {
+				// Store verification token for save
+				if (result.verification_token) {
+					verificationTokens['flaresolverr'] = result.verification_token;
+				}
+
+				if (result.success) {
+					toastStore.success(`FlareSolverr test passed (${result.duration_ms}ms): ${result.message}`, 7000);
+				} else {
+					toastStore.error(`FlareSolverr test failed (${result.duration_ms}ms): ${result.message}`, 7000);
+				}
+			} catch (e) {
+				globalFlareSolverrTestResult = { success: false, timestamp: Date.now() };
+				const msg = e instanceof Error ? e.message : 'FlareSolverr test failed';
+				toastStore.error(msg, 7000);
+			} finally {
 				testingFlareSolverr = false;
 			}
 		}
 	}
+
+	onMount(() => {
+		loadConfig();
+	});
 </script>
 
 <div class="container mx-auto px-4 py-8">
 	<div class="max-w-7xl mx-auto space-y-6">
-		<!-- Header -->
 		<div class="space-y-4">
 			<div class="flex items-center gap-3">
 				<a href="/browse">
@@ -896,7 +1125,7 @@
 						Reload
 					{/snippet}
 				</Button>
-				<Button onclick={promptSaveConfig} disabled={saving || loading}>
+				<Button onclick={handleSave} disabled={saving || loading}>
 					{#snippet children()}
 						<Save class="h-4 w-4 mr-2" />
 						{saving ? 'Saving...' : 'Save Changes'}
@@ -905,12 +1134,8 @@
 			</div>
 		</div>
 
-
-		<!-- Error Message -->
 		{#if error}
-			<div
-				class="bg-destructive/10 border-2 border-destructive text-destructive px-4 py-3 rounded-lg flex items-start gap-2"
-			>
+			<div class="bg-destructive/10 border-2 border-destructive text-destructive px-4 py-3 rounded-lg flex items-start gap-2">
 				<CircleAlert class="h-5 w-5 mt-0.5 shrink-0" />
 				<p>{error}</p>
 			</div>
@@ -922,7 +1147,7 @@
 				<p class="text-muted-foreground">Loading configuration...</p>
 			</Card>
 		{:else if config}
-			<ServerSettingsSection config={config} {inputClass} />
+			<ServerSettingsSection {config} {inputClass} />
 
 			<SettingsSection title="Scraper Defaults" description="Default settings applied to all scrapers unless overridden per-scraper" defaultExpanded={false}>
 				<div class="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -948,10 +1173,38 @@
 							class={inputClass}
 							placeholder="https://www.dmm.co.jp/"
 						/>
-						<p class="text-xs text-muted-foreground mt-1">Referer header for CDN compatibility (default: https://www.dmm.co.jp/)</p>
-					</div>
+					<p class="text-xs text-muted-foreground mt-1">Referer header for CDN compatibility (default: https://www.dmm.co.jp/)</p>
 				</div>
-			</SettingsSection>
+			</div>
+
+			<!-- Global scrape_actress toggle -->
+			<div class="pt-4 border-t mt-4">
+				<FormToggle
+					id="global-scrape-actress"
+					label="Scrape Actress Information (Global Default)"
+					description="Default setting for actress scraping across all scrapers. Individual scrapers can override this in their settings."
+					checked={config.scrapers?.scrape_actress ?? true}
+					onchange={(val) => {
+						if (!config.scrapers) config.scrapers = {};
+						config.scrapers.scrape_actress = val;
+					}}
+				/>
+			</div>
+		</SettingsSection>
+
+	<BrowserSettingsSection 
+		{config} 
+		{inputClass} 
+		onChange={(path, value) => {
+			try {
+				setNestedValue(config, path, value);
+				config = JSON.parse(JSON.stringify(config));  // Deep clone for proper reactivity
+			} catch (err) {
+				console.error('Config update failed:', path, err);
+				toastStore.error(`Failed to update setting: ${err instanceof Error ? err.message : String(err)}`);
+			}
+		}}
+	/>
 
 			<ScraperSettingsSection
 				{config}
@@ -1000,6 +1253,11 @@
 				{savingProfile}
 				{loading}
 				{saving}
+				{profileTestResults}
+				{globalProxyTestResult}
+				{globalFlareSolverrTestResult}
+				{canSaveProfile}
+				{isTestExpired}
 				{getProxyProfileNames}
 				{addProxyProfile}
 				{renameProxyProfile}
@@ -1008,6 +1266,8 @@
 				{saveProxyProfile}
 				{runNamedProxyProfileTest}
 				{runProxyTest}
+				{invalidateGlobalProxyTest}
+				{invalidateGlobalFlareSolverrTest}
 			/>
 			<PerformanceSettingsSection {config} {inputClass} />
 			<FileMatchingSettingsSection {config} {inputClass} />
@@ -1017,87 +1277,14 @@
 	</div>
 </div>
 
-<!-- Confirmation Modal -->
-{#if showConfirmModal}
-	<div class="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 animate-fade-in" use:portalToBody>
-		<Card class="w-full max-w-md animate-scale-in">
-			<div class="p-6 space-y-4">
-				<!-- Header -->
-				<div class="flex items-start justify-between">
-					<div class="flex items-center gap-3">
-						<div class="h-10 w-10 bg-primary/10 rounded-full flex items-center justify-center">
-							<CircleAlert class="h-5 w-5 text-primary" />
-						</div>
-						<div>
-							<h3 class="text-lg font-semibold">Save Configuration?</h3>
-							<p class="text-sm text-muted-foreground mt-1">
-								This will overwrite your config.yaml file
-							</p>
-						</div>
-					</div>
-					<Button variant="ghost" size="icon" onclick={cancelSave}>
-						{#snippet children()}
-							<X class="h-4 w-4" />
-						{/snippet}
-					</Button>
-				</div>
-
-				<!-- Content -->
-				<div class="bg-accent/50 rounded-lg p-4 space-y-2">
-					<p class="text-sm font-medium">Changes will be written to:</p>
-					<p class="text-xs font-mono bg-background px-2 py-1 rounded">
-						configs/config.yaml
-					</p>
-					<p class="text-xs text-muted-foreground mt-2">
-						Make sure you have a backup if needed. The server may need to restart for some changes to take effect.
-					</p>
-				</div>
-
-				<!-- Actions -->
-				<div class="flex items-center gap-3 justify-end">
-					<Button variant="outline" onclick={cancelSave} disabled={saving}>
-						{#snippet children()}
-							Cancel
-						{/snippet}
-					</Button>
-					<Button onclick={confirmSaveConfig} disabled={saving}>
-						{#snippet children()}
-							<Save class="h-4 w-4 mr-2" />
-							{saving ? 'Saving...' : 'Save Configuration'}
-						{/snippet}
-					</Button>
-				</div>
-			</div>
-		</Card>
-	</div>
-{/if}
-
 <style>
-	@keyframes fade-in {
-		from {
-			opacity: 0;
-		}
-		to {
-			opacity: 1;
-		}
+	:global(.sortable-ghost) {
+		opacity: 0.4;
+		background-color: hsl(var(--primary) / 0.1);
 	}
 
-	@keyframes scale-in {
-		from {
-			transform: scale(0.95);
-			opacity: 0;
-		}
-		to {
-			transform: scale(1);
-			opacity: 1;
-		}
-	}
-
-	.animate-fade-in {
-		animation: fade-in 0.2s ease-out;
-	}
-
-	:global(.animate-scale-in) {
-		animation: scale-in 0.3s ease-out;
+	:global(.sortable-drag) {
+		opacity: 0.8;
+		background-color: hsl(var(--background));
 	}
 </style>

@@ -10,21 +10,15 @@ import (
 // TestNewHTTPClient_NilProxy tests that nil globalProxy does not cause panic (JAVL-02).
 func TestNewHTTPClient_NilProxy(t *testing.T) {
 	cfg := &config.ScraperSettings{
-		Enabled:    true,
-		Timeout:    30,
-		RetryCount: 3,
-		Proxy:      nil,
-		FlareSolverr: config.FlareSolverrConfig{
-			Enabled:    true,
-			URL:        "http://localhost:8191/v1",
-			Timeout:    30,
-			MaxRetries: 3,
-			SessionTTL: 300,
-		},
+		Enabled:         true,
+		Timeout:         30,
+		RetryCount:      3,
+		Proxy:           nil,
+		UseFlareSolverr: true,
 	}
 
 	// This should NOT panic even though globalProxy is nil
-	client, _, err := NewHTTPClient(cfg, nil, config.FlareSolverrConfig{Enabled: false}, true)
+	client, _, err := NewHTTPClient(cfg, nil, config.FlareSolverrConfig{Enabled: false})
 
 	// FlareSolverr may or may not be created depending on whether a server is running
 	// The key assertion is that no panic occurs (JAVL-02)
@@ -35,14 +29,11 @@ func TestNewHTTPClient_NilProxy(t *testing.T) {
 // TestNewHTTPClient_FlareSolverrDisabled tests that FlareSolverr setup is skipped when disabled (JAVL-01).
 func TestNewHTTPClient_FlareSolverrDisabled(t *testing.T) {
 	cfg := &config.ScraperSettings{
-		Enabled:    true,
-		Timeout:    30,
-		RetryCount: 3,
-		Proxy:      nil,
-		FlareSolverr: config.FlareSolverrConfig{
-			Enabled: false,
-			URL:     "http://localhost:8191/v1", // Should be ignored
-		},
+		Enabled:         true,
+		Timeout:         30,
+		RetryCount:      3,
+		Proxy:           nil,
+		UseFlareSolverr: false,
 	}
 
 	globalProxy := &config.ProxyConfig{
@@ -56,7 +47,7 @@ func TestNewHTTPClient_FlareSolverrDisabled(t *testing.T) {
 	}
 
 	// useFlareSolverr=false should skip all FlareSolverr setup
-	client, fs, err := NewHTTPClient(cfg, globalProxy, config.FlareSolverrConfig{Enabled: false}, false)
+	client, fs, err := NewHTTPClient(cfg, globalProxy, config.FlareSolverrConfig{Enabled: false})
 
 	assert.NotNil(t, client)
 	assert.Nil(t, fs) // Should be nil when useFlareSolverr=false
@@ -66,17 +57,11 @@ func TestNewHTTPClient_FlareSolverrDisabled(t *testing.T) {
 // TestNewHTTPClient_GlobalProxyUsedForFlareSolverr tests that global proxy is used when scraper proxy is empty (JAVL-02).
 func TestNewHTTPClient_GlobalProxyUsedForFlareSolverr(t *testing.T) {
 	cfg := &config.ScraperSettings{
-		Enabled:    true,
-		Timeout:    30,
-		RetryCount: 3,
-		Proxy:      nil, // No scraper-specific proxy
-		FlareSolverr: config.FlareSolverrConfig{
-			Enabled:    true,
-			URL:        "http://localhost:8191/v1",
-			Timeout:    30,
-			MaxRetries: 3,
-			SessionTTL: 300,
-		},
+		Enabled:         true,
+		Timeout:         30,
+		RetryCount:      3,
+		Proxy:           nil, // No scraper-specific proxy
+		UseFlareSolverr: true,
 	}
 
 	// Global proxy is enabled and has profile
@@ -93,7 +78,7 @@ func TestNewHTTPClient_GlobalProxyUsedForFlareSolverr(t *testing.T) {
 	}
 
 	// Should not panic and should attempt to use global proxy for FlareSolverr
-	client, _, err := NewHTTPClient(cfg, globalProxy, config.FlareSolverrConfig{Enabled: false}, true)
+	client, _, err := NewHTTPClient(cfg, globalProxy, config.FlareSolverrConfig{Enabled: false})
 
 	assert.NotNil(t, client)
 	// err may be non-nil if FlareSolverr server isn't running, but client should still be created
@@ -103,20 +88,14 @@ func TestNewHTTPClient_GlobalProxyUsedForFlareSolverr(t *testing.T) {
 // TestNewHTTPClient_DisabledGlobalProxyNotUsed tests that disabled global proxy is NOT used for FlareSolverr (defense-in-depth).
 func TestNewHTTPClient_DisabledGlobalProxyNotUsed(t *testing.T) {
 	cfg := &config.ScraperSettings{
-		Enabled:    true,
-		Timeout:    30,
-		RetryCount: 3,
-		Proxy:      nil, // No scraper-specific proxy
-		FlareSolverr: config.FlareSolverrConfig{
-			Enabled:    true,
-			URL:        "http://localhost:8191/v1",
-			Timeout:    30,
-			MaxRetries: 3,
-			SessionTTL: 300,
-		},
+		Enabled:         true,
+		Timeout:         30,
+		RetryCount:      3,
+		Proxy:           nil, // No scraper-specific proxy
+		UseFlareSolverr: true,
 	}
 
-	// Global proxy has profile but is disabled
+	// Global proxy is disabled
 	globalProxy := &config.ProxyConfig{
 		Enabled: false,
 		Profile: "main",
@@ -129,9 +108,9 @@ func TestNewHTTPClient_DisabledGlobalProxyNotUsed(t *testing.T) {
 		},
 	}
 
-	client, _, err := NewHTTPClient(cfg, globalProxy, config.FlareSolverrConfig{Enabled: false}, true)
-
 	// Should create client with empty proxy for FlareSolverr (not using disabled global proxy)
+	client, _, err := NewHTTPClient(cfg, globalProxy, config.FlareSolverrConfig{Enabled: false})
+
 	assert.NotNil(t, client)
 	assert.NoError(t, err)
 }
@@ -153,13 +132,7 @@ func TestNewHTTPClient_ScraperProxyOverridesGlobal(t *testing.T) {
 				},
 			},
 		},
-		FlareSolverr: config.FlareSolverrConfig{
-			Enabled:    true,
-			URL:        "http://localhost:8191/v1",
-			Timeout:    30,
-			MaxRetries: 3,
-			SessionTTL: 300,
-		},
+		UseFlareSolverr: true,
 	}
 
 	// Global proxy is enabled but should be ignored since scraper has its own
@@ -175,7 +148,7 @@ func TestNewHTTPClient_ScraperProxyOverridesGlobal(t *testing.T) {
 		},
 	}
 
-	client, _, err := NewHTTPClient(cfg, globalProxy, config.FlareSolverrConfig{Enabled: false}, true)
+	client, _, err := NewHTTPClient(cfg, globalProxy, config.FlareSolverrConfig{Enabled: false})
 
 	assert.NotNil(t, client)
 	assert.NoError(t, err)
@@ -184,15 +157,13 @@ func TestNewHTTPClient_ScraperProxyOverridesGlobal(t *testing.T) {
 // TestNewHTTPClient_TimeoutDefaults tests that timeout defaults to 30s when zero.
 func TestNewHTTPClient_TimeoutDefaults(t *testing.T) {
 	cfg := &config.ScraperSettings{
-		Enabled:    true,
-		Timeout:    0, // Zero - should default to 30
-		RetryCount: 0, // Zero - should default to 3
-		FlareSolverr: config.FlareSolverrConfig{
-			Enabled: false,
-		},
+		Enabled:         true,
+		Timeout:         0, // Zero - should default to 30
+		RetryCount:      0, // Zero - should default to 3
+		UseFlareSolverr: false,
 	}
 
-	client, fs, err := NewHTTPClient(cfg, nil, config.FlareSolverrConfig{Enabled: false}, false)
+	client, fs, err := NewHTTPClient(cfg, nil, config.FlareSolverrConfig{Enabled: false})
 
 	assert.NotNil(t, client)
 	assert.Nil(t, fs)
@@ -202,15 +173,13 @@ func TestNewHTTPClient_TimeoutDefaults(t *testing.T) {
 // TestNewHTTPClient_RetryCountDefaults tests that retry count defaults to 3 when zero.
 func TestNewHTTPClient_RetryCountDefaults(t *testing.T) {
 	cfg := &config.ScraperSettings{
-		Enabled:    true,
-		Timeout:    10,
-		RetryCount: 0, // Zero - should default to 3
-		FlareSolverr: config.FlareSolverrConfig{
-			Enabled: false,
-		},
+		Enabled:         true,
+		Timeout:         10,
+		RetryCount:      0, // Zero - should default to 3
+		UseFlareSolverr: false,
 	}
 
-	client, fs, err := NewHTTPClient(cfg, nil, config.FlareSolverrConfig{Enabled: false}, false)
+	client, fs, err := NewHTTPClient(cfg, nil, config.FlareSolverrConfig{Enabled: false})
 
 	assert.NotNil(t, client)
 	assert.Nil(t, fs)

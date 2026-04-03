@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/javinizer/javinizer-go/internal/config"
+	"github.com/javinizer/javinizer-go/internal/scraperutil"
 	"github.com/javinizer/javinizer-go/internal/update"
 	"github.com/javinizer/javinizer-go/internal/version"
 	"github.com/spf13/cobra"
@@ -48,17 +49,22 @@ func run(cmd *cobra.Command, configFile string) error {
 	if _, err := fmt.Fprintf(cmd.OutOrStdout(), "  Priority: %v\n", cfg.Scrapers.Priority); err != nil {
 		return err
 	}
-	// Ensure Overrides is populated for display
 	cfg.Scrapers.NormalizeScraperConfigs()
-	if r18dev, ok := cfg.Scrapers.Overrides["r18dev"]; ok && r18dev != nil {
-		if _, err := fmt.Fprintf(cmd.OutOrStdout(), "  - R18.dev: %v\n", r18dev.Enabled); err != nil {
-			return err
+
+	priorities := scraperutil.GetPriorities()
+	for _, name := range priorities {
+		if scraper, ok := cfg.Scrapers.Overrides[name]; ok && scraper != nil {
+			displayName := name
+			if provider, exists := scraperutil.GetScraperOptions(name); exists {
+				displayName = provider.DisplayName
+			}
+			if _, err := fmt.Fprintf(cmd.OutOrStdout(), "  - %s: %v\n", displayName, scraper.Enabled); err != nil {
+				return err
+			}
 		}
 	}
-	if dmm, ok := cfg.Scrapers.Overrides["dmm"]; ok && dmm != nil {
-		if _, err := fmt.Fprintf(cmd.OutOrStdout(), "  - DMM: %v (scrape_actress: %v)\n\n", dmm.Enabled, dmm.GetBoolExtra("scrape_actress", false)); err != nil {
-			return err
-		}
+	if _, err := fmt.Fprintln(cmd.OutOrStdout()); err != nil {
+		return err
 	}
 
 	if _, err := fmt.Fprintln(cmd.OutOrStdout(), "Output:"); err != nil {

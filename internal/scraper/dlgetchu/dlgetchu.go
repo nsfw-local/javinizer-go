@@ -462,17 +462,15 @@ func isHTTPURL(v string) bool {
 }
 
 func init() {
-	scraper.RegisterScraper("dlgetchu", func(settings config.ScraperSettings, db *database.DB, globalProxy *config.ProxyConfig, globalFlareSolverr config.FlareSolverrConfig) (models.Scraper, error) {
-		return New(settings, globalProxy, globalFlareSolverr), nil
+	scraper.RegisterScraper("dlgetchu", func(settings config.ScraperSettings, db *database.DB, globalConfig *config.ScrapersConfig) (models.Scraper, error) {
+		return New(settings, &globalConfig.Proxy, globalConfig.FlareSolverr), nil
 	})
 	// Register default settings and priority
 	scraper.RegisterScraperDefaults("dlgetchu", scraper.DefaultSettings{
 		Settings: config.ScraperSettings{
 			Enabled:   false,
 			RateLimit: 1000,
-			Extra: map[string]any{
-				"base_url": "http://dl.getchu.com",
-			},
+			BaseURL:   "http://dl.getchu.com",
 		},
 		Priority: 40,
 	})

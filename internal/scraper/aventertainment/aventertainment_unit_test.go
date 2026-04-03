@@ -1198,7 +1198,6 @@ func TestApplyLanguage(t *testing.T) {
 		Enabled:   true,
 		Language:  "en",
 		RateLimit: 0,
-		Extra:     map[string]any{},
 	}
 	enScraper := New(enSettings, nil, config.FlareSolverrConfig{})
 	assert.Equal(t, "en", enScraper.language)
@@ -1207,7 +1206,6 @@ func TestApplyLanguage(t *testing.T) {
 		Enabled:   true,
 		Language:  "ja",
 		RateLimit: 0,
-		Extra:     map[string]any{},
 	}
 	jaScraper := New(jaSettings, nil, config.FlareSolverrConfig{})
 	assert.Equal(t, "ja", jaScraper.language)

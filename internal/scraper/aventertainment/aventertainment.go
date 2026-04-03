@@ -87,13 +87,21 @@ func New(settings config.ScraperSettings, globalProxy *config.ProxyConfig, globa
 	}
 	base = strings.TrimRight(base, "/")
 
+	// Extract scrape_bonus_screens from Extra if present
+	scrapeBonus := false
+	if settings.Extra != nil {
+		if val, ok := settings.Extra["scrape_bonus_screens"].(bool); ok {
+			scrapeBonus = val
+		}
+	}
+
 	s := &Scraper{
 		client:        client,
 		enabled:       settings.Enabled,
 		baseURL:       base,
 		language:      normalizeLanguage(settings.Language),
 		requestDelay:  time.Duration(settings.RateLimit) * time.Millisecond,
-		scrapeBonus:   settings.GetBoolExtra("scrape_bonus_screens", false),
+		scrapeBonus:   scrapeBonus,
 		proxyOverride: settings.Proxy,
 		downloadProxy: settings.DownloadProxy,
 		settings:      settings,
@@ -1025,17 +1033,15 @@ func normalizeResolverInput(input string) string {
 }
 
 func init() {
-	scraper.RegisterScraper("aventertainment", func(settings config.ScraperSettings, db *database.DB, globalProxy *config.ProxyConfig, globalFlareSolverr config.FlareSolverrConfig) (models.Scraper, error) {
-		return New(settings, globalProxy, globalFlareSolverr), nil
+	scraper.RegisterScraper("aventertainment", func(settings config.ScraperSettings, db *database.DB, globalConfig *config.ScrapersConfig) (models.Scraper, error) {
+		return New(settings, &globalConfig.Proxy, globalConfig.FlareSolverr), nil
 	})
 	// Register default settings and priority
 	scraper.RegisterScraperDefaults("aventertainment", scraper.DefaultSettings{
 		Settings: config.ScraperSettings{
 			Enabled:   false,
 			RateLimit: 1000,
-			Extra: map[string]any{
-				"base_url": "https://www.aventertainments.com",
-			},
+			BaseURL:   "https://www.aventertainments.com",
 		},
 		Priority: 45,
 	})

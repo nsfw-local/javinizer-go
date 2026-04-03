@@ -11,6 +11,15 @@ type ProxyProfile struct {
 	Password string `yaml:"password" json:"password"`
 }
 
+// ScraperProxyMode represents how a scraper should use proxy
+type ScraperProxyMode string
+
+const (
+	ScraperProxyModeDirect   ScraperProxyMode = "direct"
+	ScraperProxyModeInherit  ScraperProxyMode = "inherit"
+	ScraperProxyModeSpecific ScraperProxyMode = "specific"
+)
+
 // ProxyConfig holds HTTP/SOCKS5 proxy configuration
 // All proxy settings are managed through profiles (scrapers.proxy.profiles).
 // Use Profile field to reference a named profile for scraper-specific overrides.
@@ -30,54 +39,50 @@ func ResolveScraperUserAgent(userAgent string) string {
 	return DefaultFakeUserAgent
 }
 
-// ResolveScraperProxy returns the effective proxy profile for a scraper.
-// When no scraper-specific override exists or it is disabled, the global proxy
-// profile is used as a fallback (if enabled), preserving backward compatibility with
-// existing configs that only have scrapers.proxy configured.
-// When enabled, proxy profiles are applied first, then missing URL/credentials
-// inherit from the globally resolved proxy profile.
+// ResolveScraperProxy returns the effective proxy profile for a scraper based on
+// the three proxy modes: direct (no proxy), inherit (use global default), or
+// specific (use named profile with optional credential inheritance).
+//
+// Mode resolution follows this priority:
+// 1. If global proxy is disabled → direct mode for all scrapers
+// 2. If scraper override is disabled → direct mode for this scraper
+// 3. If scraper override enabled with profile → specific mode (profile + inherit missing creds)
+// 4. If scraper override enabled without profile → inherit mode (use global default)
+// 5. If no scraper override → inherit mode (use global default)
+//
 // Note: FlareSolverr is handled separately via ScraperSettings.FlareSolverr and
 // ScrapersConfig.FlareSolverr (global), not via ProxyConfig.
 func ResolveScraperProxy(global ProxyConfig, scraperOverride *ProxyConfig) *ProxyProfile {
-	globalProfile := ResolveGlobalProxy(global)
+	mode := ResolveScraperProxyMode(global, scraperOverride)
 
-	// If no scraper override, fall back to global proxy if enabled.
-	if scraperOverride == nil {
-		if global.Enabled {
-			return globalProfile
+	switch mode {
+	case ScraperProxyModeDirect:
+		return &ProxyProfile{} // Empty = no proxy
+	case ScraperProxyModeInherit:
+		return ResolveGlobalProxy(global)
+	case ScraperProxyModeSpecific:
+		// Look up the profile
+		if scraperOverride != nil && scraperOverride.Profile != "" {
+			if profile, ok := global.Profiles[scraperOverride.Profile]; ok {
+				resolved := profile
+				// Inherit credentials from global if omitted
+				globalProfile := ResolveGlobalProxy(global)
+				if resolved.URL == "" {
+					resolved.URL = globalProfile.URL
+				}
+				if resolved.Username == "" {
+					resolved.Username = globalProfile.Username
+				}
+				if resolved.Password == "" {
+					resolved.Password = globalProfile.Password
+				}
+				return &resolved
+			}
 		}
-		return &ProxyProfile{}
+		// Profile not found → fallback to inherit
+		return ResolveGlobalProxy(global)
 	}
-
-	// Scraper override exists but is disabled - check if global is enabled.
-	if !scraperOverride.Enabled {
-		if global.Enabled {
-			return globalProfile
-		}
-		return &ProxyProfile{}
-	}
-
-	// Scraper override is enabled - resolve its profile
-	resolved := ProxyProfile{}
-	if scraperOverride.Profile != "" {
-		if profile, ok := global.Profiles[scraperOverride.Profile]; ok {
-			resolved = profile
-		}
-	}
-
-	// If proxy is enabled but URL is omitted, inherit global proxy
-	// credentials so users can toggle per-scraper proxy usage without
-	// duplicating global proxy values.
-	if resolved.URL == "" {
-		resolved.URL = globalProfile.URL
-		if resolved.Username == "" {
-			resolved.Username = globalProfile.Username
-		}
-		if resolved.Password == "" {
-			resolved.Password = globalProfile.Password
-		}
-	}
-	return &resolved
+	return &ProxyProfile{}
 }
 
 // ResolveGlobalProxy returns the effective global proxy profile, including the
@@ -92,4 +97,37 @@ func ResolveGlobalProxy(global ProxyConfig) *ProxyProfile {
 		}
 	}
 	return &ProxyProfile{}
+}
+
+// ResolveScraperProxyMode determines the effective proxy mode for a scraper.
+//
+// Logic:
+//   - If global proxy disabled → Direct (circuit breaker)
+//   - If global proxy enabled + scraper override missing → Inherit
+//   - If global proxy enabled + scraper override disabled → Direct (user opted out)
+//   - If global proxy enabled + scraper override enabled + profile → Specific
+//   - If global proxy enabled + scraper override enabled + no profile → Inherit
+func ResolveScraperProxyMode(global ProxyConfig, scraperOverride *ProxyConfig) ScraperProxyMode {
+	// Circuit breaker: global proxy disabled means all scrapers use Direct
+	if !global.Enabled {
+		return ScraperProxyModeDirect
+	}
+
+	// No scraper-specific config → Inherit global
+	if scraperOverride == nil {
+		return ScraperProxyModeInherit
+	}
+
+	// Scraper explicitly disabled → Direct (user wants no proxy for this scraper)
+	if !scraperOverride.Enabled {
+		return ScraperProxyModeDirect
+	}
+
+	// Scraper enabled with profile → Specific
+	if strings.TrimSpace(scraperOverride.Profile) != "" {
+		return ScraperProxyModeSpecific
+	}
+
+	// Scraper enabled without profile → Inherit global default
+	return ScraperProxyModeInherit
 }

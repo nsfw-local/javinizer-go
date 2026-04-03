@@ -10,6 +10,7 @@ import (
 	"github.com/javinizer/javinizer-go/internal/database"
 	"github.com/javinizer/javinizer-go/internal/logging"
 	"github.com/javinizer/javinizer-go/internal/models"
+	"github.com/javinizer/javinizer-go/internal/scraperutil"
 	"github.com/spf13/cobra"
 )
 
@@ -44,43 +45,11 @@ func NewCommand() *cobra.Command {
 func ApplyFlagOverrides(cmd *cobra.Command, cfg *config.Config) {
 	// Ensure Overrides is populated
 	cfg.Scrapers.NormalizeScraperConfigs()
-	dmm, ok := cfg.Scrapers.Overrides["dmm"]
-	if !ok || dmm == nil {
-		return
-	}
-	// Initialize Extra map if nil
-	if dmm.Extra == nil {
-		dmm.Extra = make(map[string]any)
-	}
 
-	// Scrape actress flags
-	if cmd.Flags().Changed("scrape-actress") {
-		if val, _ := cmd.Flags().GetBool("scrape-actress"); val {
-			dmm.Extra["scrape_actress"] = true
-		}
-	}
-	if cmd.Flags().Changed("no-scrape-actress") {
-		if val, _ := cmd.Flags().GetBool("no-scrape-actress"); val {
-			dmm.Extra["scrape_actress"] = false
-		}
-	}
-
-	// Browser mode flags
-	if cmd.Flags().Changed("browser") {
-		if val, _ := cmd.Flags().GetBool("browser"); val {
-			dmm.Extra["enable_browser"] = true
-		}
-	}
-	if cmd.Flags().Changed("no-browser") {
-		if val, _ := cmd.Flags().GetBool("no-browser"); val {
-			dmm.Extra["enable_browser"] = false
-		}
-	}
-	if cmd.Flags().Changed("browser-timeout") {
-		if val, _ := cmd.Flags().GetInt("browser-timeout"); val > 0 {
-			dmm.Extra["browser_timeout"] = val
-		}
-	}
+	// Note: DMM-specific CLI flags (scrape-actress, browser, browser-timeout) were
+	// previously stored in ScraperSettings.Extra. Since Extra has been removed as part
+	// of the plugin system migration, these flags are temporarily disabled.
+	// They will be restored via the concrete DMMConfig type in a future update.
 
 	// Actress database flags
 	if cmd.Flags().Changed("actress-db") {
@@ -192,27 +161,30 @@ func Run(cmd *cobra.Command, args []string, configFile string, deps *commandutil
 		}
 	}
 
-	// Phase 1: Content-ID Resolution using DMM
-	logging.Info("🔍 Resolving content-ID using DMM...")
-	var resolvedID string
-	dmmScraper, exists := registry.Get("dmm")
+	priorities := scraperutil.GetPriorities()
+	if len(priorities) == 0 {
+		return nil, nil, fmt.Errorf("no scrapers registered")
+	}
+
+	var resolvedID = id
+	resolverScraperName := priorities[0]
+
+	logging.Infof("🔍 Resolving content-ID using %s...", resolverScraperName)
+	resolverScraper, exists := registry.Get(resolverScraperName)
 	if exists {
-		if resolver, ok := dmmScraper.(models.ContentIDResolver); ok {
+		if resolver, ok := resolverScraper.(models.ContentIDResolver); ok {
 			contentID, err := resolver.ResolveContentID(id)
 			if err != nil {
-				logging.Debugf("DMM content-ID resolution failed: %v, will use original ID", err)
-				resolvedID = id // Fallback to original ID
+				logging.Debugf("%s content-ID resolution failed: %v, will use original ID", resolverScraperName, err)
 			} else {
 				resolvedID = contentID
 				logging.Infof("✅ Resolved content-ID: %s", resolvedID)
 			}
 		} else {
-			logging.Debug("DMM scraper type assertion failed, using original ID")
-			resolvedID = id
+			logging.Debugf("%s does not implement ContentIDResolver, using original ID", resolverScraperName)
 		}
 	} else {
-		logging.Debug("DMM scraper not available, using original ID")
-		resolvedID = id
+		logging.Debugf("%s scraper not available, using original ID", resolverScraperName)
 	}
 
 	// Phase 2: Scrape from sources in priority order

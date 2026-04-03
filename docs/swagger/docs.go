@@ -807,12 +807,12 @@ const docTemplate = `{
                 "summary": "Update configuration",
                 "parameters": [
                     {
-                        "description": "Full configuration object",
+                        "description": "Full configuration object with optional proxy verification tokens",
                         "name": "config",
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/config.Config"
+                            "$ref": "#/definitions/system.UpdateConfigRequest"
                         }
                     }
                 ],
@@ -2135,44 +2135,60 @@ const docTemplate = `{
                 }
             }
         },
-        "config.Config": {
+        "config.BrowserConfig": {
             "type": "object",
             "properties": {
-                "api": {
-                    "$ref": "#/definitions/config.APIConfig"
+                "binary_path": {
+                    "description": "Chrome/Chromium path (auto-discovered if empty)",
+                    "type": "string"
                 },
-                "config_version": {
+                "block_css": {
+                    "description": "Block CSS for speed (default: false)",
+                    "type": "boolean"
+                },
+                "block_images": {
+                    "description": "Block images for speed (default: true)",
+                    "type": "boolean"
+                },
+                "debug_visible": {
+                    "description": "Show browser window for debugging (default: false)",
+                    "type": "boolean"
+                },
+                "enabled": {
+                    "description": "Master kill-switch (default: false)",
+                    "type": "boolean"
+                },
+                "headless": {
+                    "description": "Run headless (default: true)",
+                    "type": "boolean"
+                },
+                "max_retries": {
+                    "description": "Retry attempts (default: 3)",
                     "type": "integer"
                 },
-                "database": {
-                    "$ref": "#/definitions/config.DatabaseConfig"
+                "slow_mo": {
+                    "description": "Slow motion delay ms (default: 0)",
+                    "type": "integer"
                 },
-                "file_matching": {
-                    "$ref": "#/definitions/config.MatchingConfig"
+                "stealth_mode": {
+                    "description": "Anti-detection measures (default: true)",
+                    "type": "boolean"
                 },
-                "logging": {
-                    "$ref": "#/definitions/config.LoggingConfig"
+                "timeout": {
+                    "description": "Operation timeout in seconds (default: 30)",
+                    "type": "integer"
                 },
-                "mediainfo": {
-                    "$ref": "#/definitions/config.MediaInfoConfig"
+                "user_agent": {
+                    "description": "Override UA (empty = use scraper's)",
+                    "type": "string"
                 },
-                "metadata": {
-                    "$ref": "#/definitions/config.MetadataConfig"
+                "window_height": {
+                    "description": "Viewport height (default: 1080)",
+                    "type": "integer"
                 },
-                "output": {
-                    "$ref": "#/definitions/config.OutputConfig"
-                },
-                "performance": {
-                    "$ref": "#/definitions/config.PerformanceConfig"
-                },
-                "scrapers": {
-                    "$ref": "#/definitions/config.ScrapersConfig"
-                },
-                "server": {
-                    "$ref": "#/definitions/config.ServerConfig"
-                },
-                "system": {
-                    "$ref": "#/definitions/config.SystemConfig"
+                "window_width": {
+                    "description": "Viewport width (default: 1920)",
+                    "type": "integer"
                 }
             }
         },
@@ -2641,6 +2657,14 @@ const docTemplate = `{
         "config.ScrapersConfig": {
             "type": "object",
             "properties": {
+                "browser": {
+                    "description": "NEW: Global Browser configuration block",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/config.BrowserConfig"
+                        }
+                    ]
+                },
                 "flaresolverr": {
                     "description": "Global FlareSolverr config for Cloudflare bypass",
                     "allOf": [
@@ -2671,6 +2695,10 @@ const docTemplate = `{
                 "request_timeout_seconds": {
                     "description": "Overall request timeout in seconds (default: 60)",
                     "type": "integer"
+                },
+                "scrape_actress": {
+                    "description": "NEW: Global scrape_actress default (opt-out behavior, default: true)",
+                    "type": "boolean"
                 },
                 "timeout_seconds": {
                     "description": "HTTP client timeout in seconds (default: 30)",
@@ -3089,6 +3117,9 @@ const docTemplate = `{
                     "items": {
                         "$ref": "#/definitions/contracts.ScraperChoice"
                     }
+                },
+                "default": {
+                    "description": "Default value for this option"
                 },
                 "description": {
                     "type": "string",
@@ -3895,6 +3926,14 @@ const docTemplate = `{
                 },
                 "target_url": {
                     "type": "string"
+                },
+                "token_expires_at": {
+                    "description": "Unix timestamp when token expires",
+                    "type": "integer"
+                },
+                "verification_token": {
+                    "description": "Token for save authorization",
+                    "type": "string"
                 }
             }
         },
@@ -3927,6 +3966,53 @@ const docTemplate = `{
                     "items": {
                         "type": "string"
                     }
+                }
+            }
+        },
+        "system.UpdateConfigRequest": {
+            "type": "object",
+            "properties": {
+                "api": {
+                    "$ref": "#/definitions/config.APIConfig"
+                },
+                "config_version": {
+                    "type": "integer"
+                },
+                "database": {
+                    "$ref": "#/definitions/config.DatabaseConfig"
+                },
+                "file_matching": {
+                    "$ref": "#/definitions/config.MatchingConfig"
+                },
+                "logging": {
+                    "$ref": "#/definitions/config.LoggingConfig"
+                },
+                "mediainfo": {
+                    "$ref": "#/definitions/config.MediaInfoConfig"
+                },
+                "metadata": {
+                    "$ref": "#/definitions/config.MetadataConfig"
+                },
+                "output": {
+                    "$ref": "#/definitions/config.OutputConfig"
+                },
+                "performance": {
+                    "$ref": "#/definitions/config.PerformanceConfig"
+                },
+                "proxy_verification_tokens": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "string"
+                    }
+                },
+                "scrapers": {
+                    "$ref": "#/definitions/config.ScrapersConfig"
+                },
+                "server": {
+                    "$ref": "#/definitions/config.ServerConfig"
+                },
+                "system": {
+                    "$ref": "#/definitions/config.SystemConfig"
                 }
             }
         },

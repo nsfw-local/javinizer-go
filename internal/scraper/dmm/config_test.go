@@ -95,35 +95,12 @@ func TestValidateConfig(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name: "Timeout 30 is valid",
+			name: "basic valid config",
 			cfg: &config.ScraperSettings{
 				Enabled: true,
 				Timeout: 30,
 			},
 			wantErr: false,
-		},
-		{
-			name: "Browser enabled with valid timeout is valid",
-			cfg: &config.ScraperSettings{
-				Enabled: true,
-				Extra: map[string]any{
-					"enable_browser":  true,
-					"browser_timeout": 30,
-				},
-			},
-			wantErr: false,
-		},
-		{
-			name: "Browser enabled with zero timeout is invalid",
-			cfg: &config.ScraperSettings{
-				Enabled: true,
-				Extra: map[string]any{
-					"enable_browser":  true,
-					"browser_timeout": 0,
-				},
-			},
-			wantErr: true,
-			errMsg:  "dmm: browser_timeout must be at least 1 second",
 		},
 		{
 			name: "all valid fields",

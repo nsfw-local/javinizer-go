@@ -53,21 +53,16 @@ func init() {
 		if downloadProxy != nil {
 			downloadProxyVal = downloadProxy.(*config.ProxyConfig)
 		}
-		// Use type assertion to access JavBus-specific fields
-		if javbusCfg, ok := cfg.(*JavBusConfig); ok {
-			return &config.ScraperSettings{
-				Enabled:   c.IsEnabled(),
-				Language:  "",
-				RateLimit: c.GetRequestDelay(),
-				Extra: map[string]any{
-					"base_url": "https://www.javbus.com",
-				},
-				Proxy:         proxyVal,
-				DownloadProxy: downloadProxyVal,
-				FlareSolverr:  javbusCfg.FlareSolverr,
-			}
+		// ScraperSettings no longer needs type assertion since FlareSolverr was removed
+		_ = cfg // cfg is not used directly anymore
+		return &config.ScraperSettings{
+			Enabled:       c.IsEnabled(),
+			Language:      "",
+			RateLimit:     c.GetRequestDelay(),
+			BaseURL:       "https://www.javbus.com",
+			Proxy:         proxyVal,
+			DownloadProxy: downloadProxyVal,
 		}
-		return nil
 	})
 }
 

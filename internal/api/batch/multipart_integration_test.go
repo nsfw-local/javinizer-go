@@ -2,12 +2,15 @@ package batch
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	"fmt"
 	"net/http/httptest"
 	"testing"
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/javinizer/javinizer-go/internal/api/testkit"
 	"github.com/javinizer/javinizer-go/internal/config"
 	"github.com/javinizer/javinizer-go/internal/matcher"
 	"github.com/javinizer/javinizer-go/internal/models"
@@ -183,49 +186,49 @@ func TestMultipartPreviewLetterPatternDiscoveryFlow(t *testing.T) {
 		job.FileMatchInfo[path] = info
 	}
 
-	// Create a mock FileResult WITHOUT multipart info (simulating what RunBatchScrapeOnce returns)
-	// This tests that the task correctly applies metadata from FileMatchInfo
-	movie := &models.Movie{
-		ID:    "CEMD-349",
-		Title: "Test Movie",
+	// Register a mock scraper that returns test data
+	mockResult := &models.ScraperResult{
+		Source: "mock",
+		ID:     "CEMD-349",
+		Title:  "Test Movie",
+	}
+	mockScraper := testkit.NewMockScraperWithResults("mock", true, mockResult, nil)
+	deps.Registry.Register(mockScraper)
+
+	// Execute the real batch scrape task for each file (exercises actual production code)
+	progressUpdates := make(chan worker.ProgressUpdate, 100)
+	progressTracker := worker.NewProgressTracker(progressUpdates)
+	processedMovieIDs := make(map[string]bool)
+
+	for i, filePath := range files {
+		task := worker.NewBatchScrapeTask(
+			fmt.Sprintf("task-%d", i),
+			filePath,
+			i,
+			job,
+			deps.Registry,
+			deps.Aggregator,
+			deps.MovieRepo,
+			deps.GetMatcher(),
+			progressTracker,
+			false,            // force
+			false,            // updateMode
+			[]string{"mock"}, // selectedScrapers - use mock
+			nil,              // httpClient (mock doesn't need it)
+			"",               // userAgent
+			"",               // referer
+			processedMovieIDs,
+			cfg,
+			"", // scalarStrategy
+			"", // arrayStrategy
+		)
+
+		// Execute the task - this applies multipart metadata from FileMatchInfo
+		err := task.Execute(context.Background())
+		require.NoError(t, err, "batch scrape task should succeed for %s", filePath)
 	}
 
-	resultA := &worker.FileResult{
-		FilePath:  "/media/cemd-349-a.mp4",
-		MovieID:   "CEMD-349",
-		Status:    worker.JobStatusCompleted,
-		Data:      movie,
-		StartedAt: time.Now(),
-		// Note: IsMultiPart, PartNumber, PartSuffix are NOT set here
-		// They should be applied from FileMatchInfo
-	}
-	job.UpdateFileResult("/media/cemd-349-a.mp4", resultA)
-
-	resultB := &worker.FileResult{
-		FilePath:  "/media/cemd-349-b.mp4",
-		MovieID:   "CEMD-349",
-		Status:    worker.JobStatusCompleted,
-		Data:      movie,
-		StartedAt: time.Now(),
-		// Note: IsMultiPart, PartNumber, PartSuffix are NOT set here
-	}
-	job.UpdateFileResult("/media/cemd-349-b.mp4", resultB)
-
-	// Now simulate what the batch task does - apply metadata from FileMatchInfo to FileResult
-	// This tests that the wiring between discovery -> FileMatchInfo -> FileResult works
-	for _, filePath := range files {
-		fileResult, exists := job.Results[filePath]
-		require.True(t, exists, "should have result for %s", filePath)
-
-		// Apply metadata (simulating batch_scrape_task.go logic)
-		if info, ok := job.FileMatchInfo[filePath]; ok {
-			fileResult.IsMultiPart = info.IsMultiPart
-			fileResult.PartNumber = info.PartNumber
-			fileResult.PartSuffix = info.PartSuffix
-		}
-	}
-
-	// Verify metadata was applied
+	// Verify metadata was applied by the real batch task (not manually)
 	for path, res := range job.Results {
 		t.Logf("After metadata apply - %s: IsMultiPart=%v, PartNumber=%d",
 			path, res.IsMultiPart, res.PartNumber)

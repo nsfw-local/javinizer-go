@@ -35,11 +35,9 @@ func TestParseHTML_EdgeCases(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			settings := config.ScraperSettings{
 				Enabled: true,
-				Extra: map[string]any{
-					"scrape_actress": true,
-				},
+				// Note: scrape_actress was previously in Extra, now in DMMConfig
 			}
-			scraper := New(settings, nil, &config.ProxyConfig{}, config.FlareSolverrConfig{})
+			scraper := New(settings, createTestGlobalConfig(&config.ProxyConfig{}, config.FlareSolverrConfig{}, false, false), nil)
 
 			doc, err := parseHTMLString(tt.html)
 			require.NoError(t, err)
@@ -86,7 +84,7 @@ func TestExtractDescription_BothSites(t *testing.T) {
 			settings := config.ScraperSettings{
 				Enabled: true,
 			}
-			scraper := New(settings, nil, &config.ProxyConfig{}, config.FlareSolverrConfig{})
+			scraper := New(settings, createTestGlobalConfig(&config.ProxyConfig{}, config.FlareSolverrConfig{}, false, false), nil)
 
 			doc, err := parseHTMLString(tt.html)
 			require.NoError(t, err)
@@ -135,7 +133,7 @@ func TestExtractMaker_BothSites(t *testing.T) {
 			settings := config.ScraperSettings{
 				Enabled: true,
 			}
-			scraper := New(settings, nil, &config.ProxyConfig{}, config.FlareSolverrConfig{})
+			scraper := New(settings, createTestGlobalConfig(&config.ProxyConfig{}, config.FlareSolverrConfig{}, false, false), nil)
 
 			doc, err := parseHTMLString(tt.html)
 			require.NoError(t, err)
@@ -153,7 +151,7 @@ func TestExtractSeries_BothSites(t *testing.T) {
 		settings := config.ScraperSettings{
 			Enabled: true,
 		}
-		scraper := New(settings, nil, &config.ProxyConfig{}, config.FlareSolverrConfig{})
+		scraper := New(settings, createTestGlobalConfig(&config.ProxyConfig{}, config.FlareSolverrConfig{}, false, false), nil)
 
 		html := `<html><body><table><tr><th>シリーズ</th><td><a href="/series/1">New Series</a></td></tr></table></body></html>`
 		doc, err := parseHTMLString(html)
@@ -167,7 +165,7 @@ func TestExtractSeries_BothSites(t *testing.T) {
 		settings := config.ScraperSettings{
 			Enabled: true,
 		}
-		scraper := New(settings, nil, &config.ProxyConfig{}, config.FlareSolverrConfig{})
+		scraper := New(settings, createTestGlobalConfig(&config.ProxyConfig{}, config.FlareSolverrConfig{}, false, false), nil)
 
 		html := `<html><body></body></html>`
 		doc, err := parseHTMLString(html)
@@ -211,7 +209,7 @@ func TestExtractCoverURL_BothSites(t *testing.T) {
 			settings := config.ScraperSettings{
 				Enabled: true,
 			}
-			scraper := New(settings, nil, &config.ProxyConfig{}, config.FlareSolverrConfig{})
+			scraper := New(settings, createTestGlobalConfig(&config.ProxyConfig{}, config.FlareSolverrConfig{}, false, false), nil)
 
 			doc, err := parseHTMLString(tt.html)
 			require.NoError(t, err)
@@ -261,7 +259,7 @@ func TestExtractScreenshots_BothSites(t *testing.T) {
 			settings := config.ScraperSettings{
 				Enabled: true,
 			}
-			scraper := New(settings, nil, &config.ProxyConfig{}, config.FlareSolverrConfig{})
+			scraper := New(settings, createTestGlobalConfig(&config.ProxyConfig{}, config.FlareSolverrConfig{}, false, false), nil)
 
 			doc, err := parseHTMLString(tt.html)
 			require.NoError(t, err)
@@ -278,7 +276,7 @@ func TestExtractRating_BothSites(t *testing.T) {
 		settings := config.ScraperSettings{
 			Enabled: true,
 		}
-		scraper := New(settings, nil, &config.ProxyConfig{}, config.FlareSolverrConfig{})
+		scraper := New(settings, createTestGlobalConfig(&config.ProxyConfig{}, config.FlareSolverrConfig{}, false, false), nil)
 
 		html := `<html><head><script type="application/ld+json">{"aggregateRating":{"ratingValue":4.0,"ratingCount":150}}</script></head><body></body></html>`
 		doc, err := parseHTMLString(html)
@@ -294,7 +292,7 @@ func TestExtractRating_BothSites(t *testing.T) {
 		settings := config.ScraperSettings{
 			Enabled: true,
 		}
-		scraper := New(settings, nil, &config.ProxyConfig{}, config.FlareSolverrConfig{})
+		scraper := New(settings, createTestGlobalConfig(&config.ProxyConfig{}, config.FlareSolverrConfig{}, false, false), nil)
 
 		html := `<html><body></body></html>`
 		doc, err := parseHTMLString(html)

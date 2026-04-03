@@ -32,11 +32,11 @@ func NewHTTPClient(cfg *config.ScraperSettings, globalProxy *config.ProxyConfig,
 	var err error
 
 	// Check for FlareSolverr on ScraperConfig directly (HTTP-03)
-	if cfg.FlareSolverr.Enabled {
+	if globalFlareSolverr.Enabled && cfg.UseFlareSolverr {
 		// Pass FlareSolverr config separately since it's no longer embedded in ProxyConfig
 		_, fs, err = httpclient.NewRestyClientWithFlareSolverr(
 			proxyCfg,
-			cfg.FlareSolverr,
+			globalFlareSolverr,
 			timeout,
 			retryCount,
 		)

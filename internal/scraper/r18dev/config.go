@@ -54,16 +54,13 @@ func init() {
 		}
 		// Use type assertion to access R18Dev-specific RespectRetryAfter field
 		if r18Cfg, ok := cfg.(*R18DevConfig); ok {
+			_ = r18Cfg // r18Cfg is not used directly anymore since RespectRetryAfter moved to config
 			return &config.ScraperSettings{
-				Enabled:   c.IsEnabled(),
-				Language:  "", // r18dev scraper type doesn't have language field
-				RateLimit: c.GetRequestDelay(),
-				Extra: map[string]any{
-					"respect_retry_after": r18Cfg.RespectRetryAfter,
-				},
+				Enabled:       c.IsEnabled(),
+				Language:      "", // r18dev scraper type doesn't have language field
+				RateLimit:     c.GetRequestDelay(),
 				Proxy:         proxyVal,
 				DownloadProxy: downloadProxyVal,
-				FlareSolverr:  r18Cfg.FlareSolverr,
 			}
 		}
 		return nil
@@ -116,21 +113,6 @@ func (c *R18DevConfig) ValidateConfig(sc *config.ScraperSettings) error {
 	// Validate timeout
 	if sc.Timeout < 0 {
 		return fmt.Errorf("r18dev: timeout must be non-negative, got %d", sc.Timeout)
-	}
-	// Validate FlareSolverr config if enabled
-	if sc.FlareSolverr.Enabled {
-		if sc.FlareSolverr.URL == "" {
-			return fmt.Errorf("r18dev.flaresolverr.url is required when flaresolverr is enabled")
-		}
-		if sc.FlareSolverr.Timeout < 1 || sc.FlareSolverr.Timeout > 300 {
-			return fmt.Errorf("r18dev.flaresolverr.timeout must be between 1 and 300")
-		}
-		if sc.FlareSolverr.MaxRetries < 0 || sc.FlareSolverr.MaxRetries > 10 {
-			return fmt.Errorf("r18dev.flaresolverr.max_retries must be between 0 and 10")
-		}
-		if sc.FlareSolverr.SessionTTL < 60 || sc.FlareSolverr.SessionTTL > 3600 {
-			return fmt.Errorf("r18dev.flaresolverr.session_ttl must be between 60 and 3600")
-		}
 	}
 	return nil
 }

@@ -10,6 +10,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func init() {
+	RegisterTestScraperConfigs()
+}
+
 // TestDefaultConfigMatchesExample verifies that DefaultConfig() produces
 // values that match configs/config.yaml.example. This test prevents drift.
 func TestDefaultConfigMatchesExample(t *testing.T) {

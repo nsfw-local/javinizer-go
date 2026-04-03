@@ -15,5 +15,6 @@ type ScraperInfo = contracts.ScraperInfo
 type AvailableScrapersResponse = contracts.AvailableScrapersResponse
 type ProxyTestRequest = contracts.ProxyTestRequest
 type ProxyTestResponse = contracts.ProxyTestResponse
+type UpdateConfigRequest = contracts.UpdateConfigRequest
 type TranslationModelsRequest = contracts.TranslationModelsRequest
 type TranslationModelsResponse = contracts.TranslationModelsResponse

@@ -43,11 +43,11 @@ func TestNewScraper(t *testing.T) {
 		{
 			name: "scraper with FlareSolverr enabled",
 			settings: config.ScraperSettings{
-				Enabled:   false,
-				Language:  "en",
-				RateLimit: 1000,
-				BaseURL:   "http://www.javlibrary.com",
-				Extra:     map[string]any{"use_flaresolverr": true},
+				Enabled:         false,
+				Language:        "en",
+				RateLimit:       1000,
+				BaseURL:         "http://www.javlibrary.com",
+				UseFlareSolverr: true,
 			},
 			proxyCfg:    &config.ProxyConfig{},
 			wantEnabled: false,
@@ -230,11 +230,11 @@ func TestIntegration_Search(t *testing.T) {
 	requireJavLibraryIntegration(t)
 
 	settings := config.ScraperSettings{
-		Enabled:   true,
-		Language:  "en",
-		RateLimit: 1000,
-		BaseURL:   "http://www.javlibrary.com",
-		Extra:     map[string]any{"use_flaresolverr": true},
+		Enabled:         true,
+		Language:        "en",
+		RateLimit:       1000,
+		BaseURL:         "http://www.javlibrary.com",
+		UseFlareSolverr: true,
 	}
 
 	proxyCfg := &config.ProxyConfig{}

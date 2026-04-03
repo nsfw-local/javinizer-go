@@ -11,8 +11,8 @@ import (
 )
 
 // ScraperConstructor is a function that creates a scraper instance.
-// Parameters: settings, db, globalProxy, globalFlareSolverr
-type ScraperConstructor func(config.ScraperSettings, *database.DB, *config.ProxyConfig, config.FlareSolverrConfig) (models.Scraper, error)
+// Parameters: settings, db, globalScrapersConfig
+type ScraperConstructor func(config.ScraperSettings, *database.DB, *config.ScrapersConfig) (models.Scraper, error)
 
 // globalConstructorRegistry holds scraper constructors for init()-based registration
 var globalConstructorRegistry = make(map[string]ScraperConstructor)
@@ -84,8 +84,7 @@ func ResetDefaults() {
 //   - name: The scraper name (e.g., "r18dev", "dmm")
 //   - settings: The scraper configuration settings
 //   - db: The database connection (can be nil for scrapers that don't need it)
-//   - globalProxy: The global proxy configuration (can be nil)
-//   - globalFlareSolverr: The global FlareSolverr configuration (can be nil)
+//   - globalScrapersConfig: The global scrapers configuration (can be nil)
 //
 // Returns:
 //   - A new Scraper instance configured with the provided settings
@@ -94,7 +93,7 @@ func ResetDefaults() {
 // Example usage:
 //
 //	settings := config.ScraperSettings{Enabled: true, Language: "en"}
-//	scraper, err := scraper.Create("r18dev", settings, db, &cfg.Scrapers.Proxy, cfg.Scrapers.FlareSolverr)
+//	scraper, err := scraper.Create("r18dev", settings, db, &cfg.Scrapers)
 //	if err != nil {
 //	    log.Fatalf("Failed to create r18dev scraper: %v", err)
 //	}
@@ -102,8 +101,7 @@ func Create(
 	name string,
 	settings config.ScraperSettings,
 	db *database.DB,
-	globalProxy *config.ProxyConfig,
-	globalFlareSolverr config.FlareSolverrConfig,
+	globalScrapersConfig *config.ScrapersConfig,
 ) (models.Scraper, error) {
 	constructor, exists := globalConstructorRegistry[name]
 	if !exists {
@@ -115,8 +113,8 @@ func Create(
 	}
 
 	// Pass dependencies to constructor for scrapers that need database access
-	// or global proxy/FlareSolverr configuration.
-	scraper, err := constructor(settings, db, globalProxy, globalFlareSolverr)
+	// or global scrapers configuration.
+	scraper, err := constructor(settings, db, globalScrapersConfig)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create %s scraper: %w", name, err)
 	}

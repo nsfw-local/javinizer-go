@@ -371,7 +371,8 @@ func createTestConfig(dataDir string) *config.Config {
 		cfg.Scrapers.Overrides = make(map[string]*config.ScraperSettings)
 	}
 	cfg.Scrapers.Overrides["r18dev"] = &config.ScraperSettings{Enabled: true}
-	cfg.Scrapers.Overrides["dmm"] = &config.ScraperSettings{Extra: map[string]any{"scrape_actress": true}}
+	// Note: scrape_actress was previously in Extra, now in DMMConfig
+	cfg.Scrapers.Overrides["dmm"] = &config.ScraperSettings{Enabled: true}
 
 	// Metadata config with global priority (Phase 3: per-field removed)
 	cfg.Metadata.Priority.Priority = []string{"r18dev", "dmm"}

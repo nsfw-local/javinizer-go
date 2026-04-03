@@ -28,15 +28,20 @@ type ScraperSettingsAdapter interface {
 // ScrapersConfig holds scraper-specific settings.
 // PLUGIN-01: No concrete scraper type fields - map-backed storage only.
 type ScrapersConfig struct {
-	UserAgent             string                      `yaml:"user_agent" json:"user_agent"`
-	Referer               string                      `yaml:"referer" json:"referer"`                                 // Referer header for CDN compatibility (default: https://www.dmm.co.jp/)
-	TimeoutSeconds        int                         `yaml:"timeout_seconds" json:"timeout_seconds"`                 // HTTP client timeout in seconds (default: 30)
-	RequestTimeoutSeconds int                         `yaml:"request_timeout_seconds" json:"request_timeout_seconds"` // Overall request timeout in seconds (default: 60)
-	Priority              []string                    `yaml:"priority" json:"priority"`                               // Global scraper priority order
-	FlareSolverr          FlareSolverrConfig          `yaml:"flaresolverr" json:"flaresolverr"`                       // Global FlareSolverr config for Cloudflare bypass
-	Proxy                 ProxyConfig                 `yaml:"proxy" json:"proxy"`                                     // Default HTTP/SOCKS5 proxy for scraper requests
-	Overrides             map[string]*ScraperSettings `yaml:"-" json:"-"`                                             // Canonical per-scraper settings map
-	flatConfigs           map[string]ConfigValidator  `yaml:"-" json:"-"`                                             // Validator dispatch table built by NormalizeScraperConfigs
+	UserAgent             string             `yaml:"user_agent" json:"user_agent"`
+	Referer               string             `yaml:"referer" json:"referer"`                                 // Referer header for CDN compatibility (default: https://www.dmm.co.jp/)
+	TimeoutSeconds        int                `yaml:"timeout_seconds" json:"timeout_seconds"`                 // HTTP client timeout in seconds (default: 30)
+	RequestTimeoutSeconds int                `yaml:"request_timeout_seconds" json:"request_timeout_seconds"` // Overall request timeout in seconds (default: 60)
+	Priority              []string           `yaml:"priority" json:"priority"`                               // Global scraper priority order
+	FlareSolverr          FlareSolverrConfig `yaml:"flaresolverr" json:"flaresolverr"`                       // Global FlareSolverr config for Cloudflare bypass
+	// NEW: Global scrape_actress default (opt-out behavior, default: true)
+	ScrapeActress bool `yaml:"scrape_actress" json:"scrape_actress"`
+
+	// NEW: Global Browser configuration block
+	Browser     BrowserConfig               `yaml:"browser" json:"browser"`
+	Proxy       ProxyConfig                 `yaml:"proxy" json:"proxy"` // Default HTTP/SOCKS5 proxy for scraper requests
+	Overrides   map[string]*ScraperSettings `yaml:"-" json:"-"`         // Canonical per-scraper settings map
+	flatConfigs map[string]ConfigValidator  `yaml:"-" json:"-"`         // Validator dispatch table built by NormalizeScraperConfigs
 }
 
 type scraperDecodeFormat int
@@ -137,6 +142,25 @@ func (s *ScrapersConfig) decodeFromGeneric(generic map[string]any, format scrape
 			if err := unmarshalByFormat(format, data, &s.FlareSolverr); err != nil {
 				return fmt.Errorf("failed to unmarshal flaresolverr: %w", err)
 			}
+
+		// NEW: Handle scrape_actress
+		case "scrape_actress":
+			v, ok := value.(bool)
+			if !ok {
+				return fmt.Errorf("scrape_actress must be a boolean")
+			}
+			s.ScrapeActress = v
+
+		// NEW: Handle browser
+		case "browser":
+			data, err := marshalByFormat(format, value)
+			if err != nil {
+				return fmt.Errorf("failed to marshal browser: %w", err)
+			}
+			if err := unmarshalByFormat(format, data, &s.Browser); err != nil {
+				return fmt.Errorf("failed to unmarshal browser: %w", err)
+			}
+
 		default:
 			ss, err := decodeScraperEntry(key, value, format)
 			if err != nil {
@@ -214,17 +238,8 @@ func isSupportedScraperName(name string) bool {
 		return false
 	}
 
-	if _, ok := scraperutil.GetDefaultScraperSettings()[name]; ok {
-		return true
-	}
-
-	for _, builtIn := range legacyScraperPriorityBaseline() {
-		if name == builtIn {
-			return true
-		}
-	}
-
-	return false
+	_, exists := scraperutil.GetDefaultScraperSettings()[name]
+	return exists
 }
 
 func scraperConfigKeys(concrete any) map[string]struct{} {
@@ -278,10 +293,15 @@ func scraperConfigKeys(concrete any) map[string]struct{} {
 func isAllowedUnifiedScraperKey(key string) bool {
 	switch key {
 	case "enabled", "language", "timeout", "rate_limit", "retry_count", "user_agent",
-		"proxy", "download_proxy", "flaresolverr", "extra", "request_delay", "max_retries":
+		"proxy", "download_proxy", "use_flaresolverr", "base_url", "cookies",
+		"request_delay", "max_retries",
+		// NEW: Allow use_browser and scrape_actress per-scraper overrides
+		"use_browser", "scrape_actress":
 		return true
 	default:
-		return false
+		// Allow any key starting with known scraper-specific prefixes
+		// This permits extra fields to be stored in Extra map
+		return false // Unknown keys go to Extra
 	}
 }
 
@@ -304,11 +324,17 @@ func validateUnifiedScraperField(key string, value any, format scraperDecodeForm
 	case "proxy", "download_proxy":
 		var v *ProxyConfig
 		return strictDecodeConcrete(format, data, &v)
-	case "flaresolverr":
-		var v FlareSolverrConfig
-		return strictDecodeConcrete(format, data, &v)
-	case "extra":
-		var v map[string]any
+	case "use_flaresolverr":
+		var v bool
+		return unmarshalByFormat(format, data, &v)
+	case "use_browser":
+		var v bool
+		return unmarshalByFormat(format, data, &v)
+	case "scrape_actress":
+		var v bool
+		return unmarshalByFormat(format, data, &v)
+	case "cookies":
+		var v map[string]string
 		return unmarshalByFormat(format, data, &v)
 	default:
 		return fmt.Errorf("unsupported unified field %q", key)
@@ -408,17 +434,10 @@ func decodeGenericScraperSettings(raw map[string]any, decode func(any) error) (S
 		}
 	}
 
-	// Preserve unknown keys in Extra for plugin friendliness.
+	// Preserve unknown keys in Extra for scraper-specific fields
 	extra := make(map[string]any)
-	for k, v := range ss.Extra {
-		extra[k] = v
-	}
 	for key, value := range raw {
-		switch key {
-		case "enabled", "language", "timeout", "rate_limit", "retry_count", "user_agent",
-			"proxy", "download_proxy", "flaresolverr", "extra", "request_delay", "max_retries":
-			continue
-		default:
+		if !isAllowedUnifiedScraperKey(key) {
 			extra[key] = value
 		}
 	}
@@ -442,6 +461,10 @@ func (s *ScrapersConfig) MarshalJSON() ([]byte, error) {
 	m["proxy"] = s.Proxy
 	m["flaresolverr"] = s.FlareSolverr
 
+	// NEW: Include scrape_actress and browser
+	m["scrape_actress"] = s.ScrapeActress
+	m["browser"] = s.Browser
+
 	for name, settings := range s.Overrides {
 		if settings != nil {
 			m[name] = settings
@@ -462,6 +485,10 @@ func (s *ScrapersConfig) MarshalYAML() (interface{}, error) {
 	m["priority"] = s.Priority
 	m["proxy"] = s.Proxy
 	m["flaresolverr"] = s.FlareSolverr
+
+	// NEW: Include scrape_actress and browser
+	m["scrape_actress"] = s.ScrapeActress
+	m["browser"] = s.Browser
 
 	for name, settings := range s.Overrides {
 		if settings != nil {
