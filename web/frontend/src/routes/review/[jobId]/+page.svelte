@@ -495,7 +495,7 @@
 		refetchJob: fetchJob,
 		toastSuccess: (message, duration) => toastStore.success(message, duration),
 		toastError: (message, duration) => toastStore.error(message, duration),
-		navigateBatch: () => goto('/batch'),
+		navigateBatch: () => goto('/jobs'),
 		api: {
 			excludeBatchMovie: (nextJobId, movieId) => apiClient.excludeBatchMovie(nextJobId, movieId),
 			getPreviewImageURL: (url) => apiClient.getPreviewImageURL(url)
