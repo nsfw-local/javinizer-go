@@ -141,8 +141,9 @@ func Run(cmd *cobra.Command, configFile string, hostFlag string, portFlag int) (
 		return nil, fmt.Errorf("failed to initialize matcher: %w", err)
 	}
 
-	// Initialize job queue
-	jobQueue := worker.NewJobQueue()
+	// Initialize job repository and queue
+	jobRepo := database.NewJobRepository(db)
+	jobQueue := worker.NewJobQueue(jobRepo)
 
 	// Initialize history repository
 	historyRepo := database.NewHistoryRepository(db)

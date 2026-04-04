@@ -2,6 +2,7 @@ package worker
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -9,6 +10,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/javinizer/javinizer-go/internal/database"
 	"github.com/javinizer/javinizer-go/internal/logging"
 	"github.com/javinizer/javinizer-go/internal/models"
 )
@@ -22,6 +24,7 @@ const (
 	JobStatusCompleted JobStatus = "completed"
 	JobStatusFailed    JobStatus = "failed"
 	JobStatusCancelled JobStatus = "cancelled"
+	JobStatusOrganized JobStatus = "organized"
 )
 
 // FileResult represents the result of processing a single file
@@ -70,14 +73,154 @@ type FileMatchInfo struct {
 
 // JobQueue manages batch jobs
 type JobQueue struct {
-	jobs map[string]*BatchJob
-	mu   sync.RWMutex
+	jobs    map[string]*BatchJob
+	jobRepo database.JobRepositoryInterface
+	mu      sync.RWMutex
 }
 
 // NewJobQueue creates a new job queue
-func NewJobQueue() *JobQueue {
-	return &JobQueue{
-		jobs: make(map[string]*BatchJob),
+func NewJobQueue(jobRepo database.JobRepositoryInterface) *JobQueue {
+	jq := &JobQueue{
+		jobs:    make(map[string]*BatchJob),
+		jobRepo: jobRepo,
+	}
+	jq.loadFromDatabase()
+	return jq
+}
+
+// loadFromDatabase loads existing jobs from the database on startup
+func (jq *JobQueue) loadFromDatabase() {
+	if jq.jobRepo == nil {
+		return
+	}
+
+	jobs, err := jq.jobRepo.List()
+	if err != nil {
+		logging.Warnf("Failed to load jobs from database: %v", err)
+		return
+	}
+
+	for i := range jobs {
+		batchJob := jq.reconstructBatchJob(&jobs[i])
+		if batchJob != nil {
+			jq.jobs[batchJob.ID] = batchJob
+		}
+	}
+}
+
+// reconstructBatchJob reconstructs a BatchJob from a database Job model
+func (jq *JobQueue) reconstructBatchJob(dbJob *models.Job) *BatchJob {
+	batchJob := &BatchJob{
+		ID:            dbJob.ID,
+		Status:        JobStatus(dbJob.Status),
+		TotalFiles:    dbJob.TotalFiles,
+		Completed:     dbJob.Completed,
+		Failed:        dbJob.Failed,
+		Progress:      dbJob.Progress,
+		StartedAt:     dbJob.StartedAt,
+		CompletedAt:   dbJob.CompletedAt,
+		Results:       make(map[string]*FileResult),
+		Excluded:      make(map[string]bool),
+		FileMatchInfo: make(map[string]FileMatchInfo),
+		Done:          make(chan struct{}),
+	}
+
+	// Parse Files JSON
+	if dbJob.Files != "" {
+		if err := json.Unmarshal([]byte(dbJob.Files), &batchJob.Files); err != nil {
+			logging.Warnf("Failed to parse files for job %s: %v", dbJob.ID, err)
+		}
+	}
+
+	// Parse Results JSON
+	if dbJob.Results != "" {
+		if err := json.Unmarshal([]byte(dbJob.Results), &batchJob.Results); err != nil {
+			logging.Warnf("Failed to parse results for job %s: %v", dbJob.ID, err)
+		}
+	}
+
+	// Parse Excluded JSON
+	if dbJob.Excluded != "" {
+		if err := json.Unmarshal([]byte(dbJob.Excluded), &batchJob.Excluded); err != nil {
+			logging.Warnf("Failed to parse excluded for job %s: %v", dbJob.ID, err)
+		}
+	}
+
+	// Parse FileMatchInfo JSON
+	if dbJob.FileMatchInfo != "" {
+		if err := json.Unmarshal([]byte(dbJob.FileMatchInfo), &batchJob.FileMatchInfo); err != nil {
+			logging.Warnf("Failed to parse file match info for job %s: %v", dbJob.ID, err)
+		}
+	}
+
+	// Close Done channel for terminal states
+	switch batchJob.Status {
+	case JobStatusCompleted, JobStatusFailed, JobStatusCancelled, JobStatusOrganized:
+		close(batchJob.Done)
+	}
+
+	return batchJob
+}
+
+// persistToDatabase saves a BatchJob to the database
+func (jq *JobQueue) persistToDatabase(job *BatchJob) {
+	if jq.jobRepo == nil {
+		return
+	}
+
+	job.mu.RLock()
+	defer job.mu.RUnlock()
+
+	// Marshal fields to JSON
+	filesJSON, err := json.Marshal(job.Files)
+	if err != nil {
+		logging.Warnf("Failed to marshal files for job %s: %v", job.ID, err)
+		return
+	}
+
+	resultsJSON, err := json.Marshal(job.Results)
+	if err != nil {
+		logging.Warnf("Failed to marshal results for job %s: %v", job.ID, err)
+		return
+	}
+
+	excludedJSON, err := json.Marshal(job.Excluded)
+	if err != nil {
+		logging.Warnf("Failed to marshal excluded for job %s: %v", job.ID, err)
+		return
+	}
+
+	fileMatchInfoJSON, err := json.Marshal(job.FileMatchInfo)
+	if err != nil {
+		logging.Warnf("Failed to marshal file match info for job %s: %v", job.ID, err)
+		return
+	}
+
+	dbJob := &models.Job{
+		ID:            job.ID,
+		Status:        string(job.Status),
+		TotalFiles:    job.TotalFiles,
+		Completed:     job.Completed,
+		Failed:        job.Failed,
+		Progress:      job.Progress,
+		Files:         string(filesJSON),
+		Results:       string(resultsJSON),
+		Excluded:      string(excludedJSON),
+		FileMatchInfo: string(fileMatchInfoJSON),
+		StartedAt:     job.StartedAt,
+		CompletedAt:   job.CompletedAt,
+	}
+
+	// Try to update first, if not found then create
+	existing, err := jq.jobRepo.FindByID(job.ID)
+	if err != nil || existing == nil {
+		if err := jq.jobRepo.Create(dbJob); err != nil {
+			logging.Warnf("Failed to create job %s in database: %v", job.ID, err)
+		}
+	} else {
+		if err := jq.jobRepo.Update(dbJob); err != nil {
+			logging.Warnf("Failed to update job %s in database: %v", job.ID, err)
+		}
 	}
 }
 
@@ -98,6 +241,8 @@ func (jq *JobQueue) CreateJob(files []string) *BatchJob {
 	jq.mu.Lock()
 	jq.jobs[job.ID] = job
 	jq.mu.Unlock()
+
+	jq.persistToDatabase(job)
 
 	return job
 }
@@ -161,7 +306,19 @@ func (jq *JobQueue) DeleteJob(id string, tempDir string) {
 		logging.Warnf("Failed to clean up temp posters for job %s: %v", id, err)
 	}
 
+	// Delete from database
+	if jq.jobRepo != nil {
+		if err := jq.jobRepo.Delete(id); err != nil {
+			logging.Warnf("Failed to delete job %s from database: %v", id, err)
+		}
+	}
+
 	delete(jq.jobs, id)
+}
+
+// PersistJob saves a job to the database
+func (jq *JobQueue) PersistJob(job *BatchJob) {
+	jq.persistToDatabase(job)
 }
 
 // ListJobs returns thread-safe copies of all jobs
@@ -341,6 +498,20 @@ func (job *BatchJob) MarkCancelled() {
 	select {
 	case <-job.Done:
 		// already closed
+	default:
+		close(job.Done)
+	}
+}
+
+// MarkOrganized marks the job as organized
+func (job *BatchJob) MarkOrganized() {
+	job.mu.Lock()
+	defer job.mu.Unlock()
+	job.Status = JobStatusOrganized
+	now := time.Now()
+	job.CompletedAt = &now
+	select {
+	case <-job.Done:
 	default:
 		close(job.Done)
 	}
