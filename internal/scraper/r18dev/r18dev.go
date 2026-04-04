@@ -415,17 +415,37 @@ func (s *Scraper) parseResponse(data *R18Response, sourceURL string) (*models.Sc
 	}
 
 	// Parse director based on configured language preference.
-	result.Director = cleanString(selectLocalizedString(s.language, data.DirectorEn, data.Director))
+	// Try directors array first (new API format), then fall back to flat fields
+	if len(data.Directors) > 0 {
+		// Use directors array (new API format)
+		if s.language == "ja" {
+			result.Director = cleanString(getPreferredString(data.Directors[0].NameKanji, data.Directors[0].NameRomaji))
+		} else {
+			result.Director = cleanString(getPreferredString(data.Directors[0].NameRomaji, data.Directors[0].NameKanji))
+		}
+	} else {
+		// Use legacy flat fields
+		result.Director = cleanString(selectLocalizedString(s.language, data.DirectorEn, data.Director))
+	}
 
 	// Parse maker/studio based on configured language preference.
-	result.Maker = cleanString(selectLocalizedString(s.language, data.MakerNameEn, data.Maker.Name))
-	result.Label = cleanString(selectLocalizedString(s.language, data.LabelNameEn, data.Label.Name))
+	result.Maker = cleanString(selectLocalizedString(s.language, data.MakerNameEn, data.MakerNameJa))
+	if result.Maker == "" {
+		// Fallback to nested structure (legacy format)
+		result.Maker = cleanString(selectLocalizedString(s.language, "", data.Maker.Name))
+	}
+
+	result.Label = cleanString(selectLocalizedString(s.language, data.LabelNameEn, data.LabelNameJa))
+	if result.Label == "" {
+		// Fallback to nested structure (legacy format)
+		result.Label = cleanString(selectLocalizedString(s.language, "", data.Label.Name))
+	}
 
 	// Parse series based on configured language preference.
 	if s.language == "ja" {
-		result.Series = cleanString(getPreferredString(data.Series.Name, getPreferredString(data.SeriesName, data.SeriesNameEn)))
+		result.Series = cleanString(getPreferredString(data.SeriesNameJa, getPreferredString(data.Series.Name, getPreferredString(data.SeriesName, data.SeriesNameEn))))
 	} else {
-		result.Series = cleanString(getPreferredString(data.SeriesNameEn, getPreferredString(data.Series.Name, data.SeriesName)))
+		result.Series = cleanString(getPreferredString(data.SeriesNameEn, getPreferredString(data.SeriesNameJa, getPreferredString(data.Series.Name, data.SeriesName))))
 	}
 
 	// Parse actresses with detailed information
@@ -482,11 +502,19 @@ func (s *Scraper) parseResponse(data *R18Response, sourceURL string) (*models.Sc
 		})
 	}
 
-	// Parse genres (now simple name field)
+	// Parse genres (categories) - try new name_en/name_ja fields first, then legacy name field
 	result.Genres = make([]string, 0, len(data.Categories))
 	for _, category := range data.Categories {
-		if category.Name != "" {
-			result.Genres = append(result.Genres, cleanString(category.Name))
+		var genreName string
+		if s.language == "ja" {
+			// Japanese mode: prefer name_ja, fallback to name_en, then legacy name
+			genreName = cleanString(getPreferredString(category.NameJa, getPreferredString(category.NameEn, category.Name)))
+		} else {
+			// English mode: prefer name_en, fallback to name_ja, then legacy name
+			genreName = cleanString(getPreferredString(category.NameEn, getPreferredString(category.NameJa, category.Name)))
+		}
+		if genreName != "" {
+			result.Genres = append(result.Genres, genreName)
 		}
 	}
 
@@ -688,32 +716,45 @@ type R18Response struct {
 	// Sample video URL
 	SampleURL string `json:"sample_url"`
 
-	// Director is now a simple string
-	Director   string `json:"director"`
-	DirectorEn string `json:"director_en"` // New English director field
+	// Director - support both flat string and directors array
+	Director   string `json:"director"`    // Legacy flat string
+	DirectorEn string `json:"director_en"` // Legacy English director field
+	Directors  []struct {
+		ID         int    `json:"id"`
+		NameKana   string `json:"name_kana"`
+		NameKanji  string `json:"name_kanji"`
+		NameRomaji string `json:"name_romaji"`
+	} `json:"directors"` // New directors array format
 
 	// Maker - support both nested and flat structures
 	Maker struct {
 		Name string `json:"name"`
 	} `json:"maker"`
-	MakerNameEn string `json:"maker_name_en"` // New flat English field
+	MakerNameEn string `json:"maker_name_en"` // Flat English field
+	MakerNameJa string `json:"maker_name_ja"` // Flat Japanese field
 
 	// Label - support both nested and flat structures
 	Label struct {
 		Name string `json:"name"`
 	} `json:"label"`
-	LabelNameEn string `json:"label_name_en"` // New flat English field
+	LabelNameEn string `json:"label_name_en"` // Flat English field
+	LabelNameJa string `json:"label_name_ja"` // Flat Japanese field
 
 	// Series can be nested object or string
 	Series struct {
 		Name string `json:"name"`
 	} `json:"series"`
 	SeriesName   string `json:"series_name"`    // Fallback
-	SeriesNameEn string `json:"series_name_en"` // New English series field
+	SeriesNameEn string `json:"series_name_en"` // English series field
+	SeriesNameJa string `json:"series_name_ja"` // Japanese series field
 
-	// Categories with simple name field
+	// Categories - support both old name field and new name_en/name_ja fields
 	Categories []struct {
-		Name string `json:"name"`
+		ID                         int    `json:"id"`
+		Name                       string `json:"name"`    // Legacy field
+		NameEn                     string `json:"name_en"` // New English field
+		NameJa                     string `json:"name_ja"` // New Japanese field
+		NameEnIsMachineTranslation bool   `json:"name_en_is_machine_translation"`
 	} `json:"categories"`
 
 	// Actresses with detailed fields

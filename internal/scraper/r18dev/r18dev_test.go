@@ -1605,50 +1605,70 @@ func TestCategoryParsing(t *testing.T) {
 	tests := []struct {
 		name       string
 		categories []struct {
-			Name string `json:"name"`
+			ID                         int    `json:"id"`
+			Name                       string `json:"name"`
+			NameEn                     string `json:"name_en"`
+			NameJa                     string `json:"name_ja"`
+			NameEnIsMachineTranslation bool   `json:"name_en_is_machine_translation"`
 		}
 		expectedCount int
 		expectedFirst string
 	}{
 		{
-			name: "Multiple categories",
+			name: "Multiple categories with name_en",
 			categories: []struct {
-				Name string `json:"name"`
+				ID                         int    `json:"id"`
+				Name                       string `json:"name"`
+				NameEn                     string `json:"name_en"`
+				NameJa                     string `json:"name_ja"`
+				NameEnIsMachineTranslation bool   `json:"name_en_is_machine_translation"`
 			}{
-				{Name: "Drama"},
-				{Name: "Romance"},
-				{Name: "Action"},
+				{NameEn: "Drama"},
+				{NameEn: "Romance"},
+				{NameEn: "Action"},
 			},
 			expectedCount: 3,
 			expectedFirst: "Drama",
 		},
 		{
-			name: "Single category",
+			name: "Single category with name_ja",
 			categories: []struct {
-				Name string `json:"name"`
+				ID                         int    `json:"id"`
+				Name                       string `json:"name"`
+				NameEn                     string `json:"name_en"`
+				NameJa                     string `json:"name_ja"`
+				NameEnIsMachineTranslation bool   `json:"name_en_is_machine_translation"`
 			}{
-				{Name: "Comedy"},
+				{NameJa: "喜剧"},
 			},
 			expectedCount: 1,
-			expectedFirst: "Comedy",
+			expectedFirst: "喜剧",
 		},
 		{
 			name: "Empty categories",
 			categories: []struct {
-				Name string `json:"name"`
+				ID                         int    `json:"id"`
+				Name                       string `json:"name"`
+				NameEn                     string `json:"name_en"`
+				NameJa                     string `json:"name_ja"`
+				NameEnIsMachineTranslation bool   `json:"name_en_is_machine_translation"`
 			}{},
 			expectedCount: 0,
 		},
 		{
-			name: "Category with empty name",
+			name: "Legacy category with name field",
 			categories: []struct {
-				Name string `json:"name"`
+				ID                         int    `json:"id"`
+				Name                       string `json:"name"`
+				NameEn                     string `json:"name_en"`
+				NameJa                     string `json:"name_ja"`
+				NameEnIsMachineTranslation bool   `json:"name_en_is_machine_translation"`
 			}{
 				{Name: "Drama"},
 				{Name: ""},
 				{Name: "Romance"},
 			},
-			expectedCount: 2, // Empty names are filtered out by cleanString check
+			expectedCount: 2,
 			expectedFirst: "Drama",
 		},
 	}
@@ -1835,4 +1855,61 @@ func TestNew_DefaultMaxRetries(t *testing.T) {
 
 	scraper := New(cfg, testGlobalProxy, testGlobalFlareSolverr)
 	assert.Equal(t, 3, scraper.maxRetries)
+}
+
+func TestScraper_Search_ROYD191(t *testing.T) {
+	cfg := createTestSettings(true)
+	scraper := New(cfg, testGlobalProxy, testGlobalFlareSolverr)
+
+	var data R18Response
+	err := json.Unmarshal(loadTestData(t, "royd191_response.json"), &data)
+	require.NoError(t, err)
+
+	result, err := scraper.parseResponse(&data, "https://r18.dev/test")
+	require.NoError(t, err)
+	require.NotNil(t, result)
+
+	// Verify basic fields
+	assert.Equal(t, "ROYD-191", result.ID)
+	assert.Equal(t, "royd191", result.ContentID)
+
+	// Verify maker is parsed from maker_name_ja when maker_name_en is null
+	assert.Equal(t, "ROYAL", result.Maker, "Maker should be parsed from maker_name_ja when maker_name_en is null")
+
+	// Verify label is parsed correctly
+	assert.Equal(t, "HHH Group", result.Label)
+
+	// Verify series is parsed correctly
+	assert.NotEmpty(t, result.Series)
+
+	// Verify genres/categories are parsed
+	assert.NotEmpty(t, result.Genres, "Categories should be parsed from name_en/name_ja fields")
+
+	// Verify director is parsed from directors array
+	assert.Equal(t, "Kawajiri", result.Director, "Director should be parsed from directors array")
+}
+
+func TestScraper_Search_ROYD191_Japanese(t *testing.T) {
+	cfg := config.ScraperSettings{
+		Enabled:  true,
+		Language: "ja",
+	}
+	scraper := New(cfg, testGlobalProxy, testGlobalFlareSolverr)
+
+	var data R18Response
+	err := json.Unmarshal(loadTestData(t, "royd191_response.json"), &data)
+	require.NoError(t, err)
+
+	result, err := scraper.parseResponse(&data, "https://r18.dev/test")
+	require.NoError(t, err)
+	require.NotNil(t, result)
+
+	// Verify Japanese values are used
+	assert.Equal(t, "ja", result.Language)
+	assert.Contains(t, result.Title, "兄嫁", "Title should be in Japanese")
+	assert.Equal(t, "ROYAL", result.Maker, "Maker should use maker_name_ja")
+	assert.Contains(t, result.Label, "HHHグループ", "Label should be in Japanese")
+	assert.Contains(t, result.Series, "兄嫁", "Series should be in Japanese")
+	assert.Contains(t, result.Genres[0], "若妻", "Genres should be in Japanese")
+	assert.Equal(t, "川尻", result.Director, "Director should be in Japanese (name_kanji)")
 }
