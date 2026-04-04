@@ -1,9 +1,11 @@
 package batch
 
 import (
+	"encoding/json"
 	"path/filepath"
 
 	"github.com/gin-gonic/gin"
+	"github.com/javinizer/javinizer-go/internal/api/contracts"
 	"github.com/javinizer/javinizer-go/internal/logging"
 	"github.com/javinizer/javinizer-go/internal/nfo"
 )
@@ -170,5 +172,60 @@ func cancelBatchJob(deps *ServerDependencies) gin.HandlerFunc {
 		go cleanupJobTempPosters(jobID, deps.GetConfig().System.TempDir)
 
 		c.JSON(200, gin.H{"message": "Job cancelled successfully"})
+	}
+}
+
+func listBatchJobs(deps *ServerDependencies) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		jobs, err := deps.JobRepo.List()
+		if err != nil {
+			c.JSON(500, ErrorResponse{Error: "Failed to list jobs"})
+			return
+		}
+
+		response := contracts.BatchJobListResponse{
+			Jobs: make([]contracts.BatchJobResponse, 0, len(jobs)),
+		}
+
+		for _, job := range jobs {
+			var completedAt *string
+			if job.CompletedAt != nil {
+				str := job.CompletedAt.Format("2006-01-02T15:04:05Z07:00")
+				completedAt = &str
+			}
+
+			var results map[string]*contracts.BatchFileResult
+			if job.Results != "" {
+				if err := json.Unmarshal([]byte(job.Results), &results); err != nil {
+					results = make(map[string]*contracts.BatchFileResult)
+				}
+			} else {
+				results = make(map[string]*contracts.BatchFileResult)
+			}
+
+			var excluded map[string]bool
+			if job.Excluded != "" {
+				if err := json.Unmarshal([]byte(job.Excluded), &excluded); err != nil {
+					excluded = make(map[string]bool)
+				}
+			} else {
+				excluded = make(map[string]bool)
+			}
+
+			response.Jobs = append(response.Jobs, contracts.BatchJobResponse{
+				ID:          job.ID,
+				Status:      job.Status,
+				TotalFiles:  job.TotalFiles,
+				Completed:   job.Completed,
+				Failed:      job.Failed,
+				Excluded:    excluded,
+				Progress:    job.Progress,
+				Results:     results,
+				StartedAt:   job.StartedAt.Format("2006-01-02T15:04:05Z07:00"),
+				CompletedAt: completedAt,
+			})
+		}
+
+		c.JSON(200, response)
 	}
 }
