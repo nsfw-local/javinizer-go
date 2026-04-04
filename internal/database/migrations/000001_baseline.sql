@@ -125,6 +125,22 @@ CREATE TABLE IF NOT EXISTS movie_genres (
     CONSTRAINT fk_movie_genres_genre FOREIGN KEY (genre_id) REFERENCES genres(id)
 );
 
+CREATE TABLE IF NOT EXISTS jobs (
+    id TEXT PRIMARY KEY,
+    status TEXT NOT NULL,
+    total_files INTEGER NOT NULL,
+    completed INTEGER NOT NULL DEFAULT 0,
+    failed INTEGER NOT NULL DEFAULT 0,
+    progress REAL NOT NULL DEFAULT 0,
+    files TEXT NOT NULL,
+    results TEXT NOT NULL DEFAULT '{}',
+    excluded TEXT NOT NULL DEFAULT '{}',
+    file_match_info TEXT NOT NULL DEFAULT '{}',
+    started_at DATETIME NOT NULL,
+    completed_at DATETIME,
+    organized_at DATETIME
+);
+
 CREATE UNIQUE INDEX IF NOT EXISTS idx_movies_content_id ON movies(content_id);
 CREATE INDEX IF NOT EXISTS idx_movies_id ON movies(id);
 CREATE INDEX IF NOT EXISTS idx_actresses_japanese_name ON actresses(japanese_name);
@@ -138,6 +154,8 @@ CREATE INDEX IF NOT EXISTS idx_history_created_at ON history(created_at);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_content_id_mappings_search_id ON content_id_mappings(search_id);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_movie_language ON movie_translations(movie_id, language);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_actresses_dmm_id_positive ON actresses(dmm_id) WHERE dmm_id > 0;
+CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status);
+CREATE INDEX IF NOT EXISTS idx_jobs_started_at ON jobs(started_at);
 
 -- +goose StatementEnd
 
@@ -153,5 +171,6 @@ DROP TABLE IF EXISTS actress_aliases;
 DROP TABLE IF EXISTS genre_replacements;
 DROP TABLE IF EXISTS genres;
 DROP TABLE IF EXISTS actresses;
+DROP TABLE IF EXISTS jobs;
 DROP TABLE IF EXISTS movies;
 -- +goose StatementEnd
