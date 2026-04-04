@@ -753,6 +753,7 @@ func (job *BatchJob) GetStatus() *BatchJob {
 		Results:       results,
 		FileMatchInfo: fileMatchInfo,
 		Progress:      job.Progress,
+		Destination:   job.Destination,
 		StartedAt:     job.StartedAt,
 		CompletedAt:   completedAt,
 	}
