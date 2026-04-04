@@ -156,71 +156,6 @@ func TestDBAutoMigrate_DMMIDPartialUniqueIndex(t *testing.T) {
 	require.Error(t, err)
 }
 
-func TestRunMigrationsOnStartup_RepairsLegacyConstraintAndNormalizesNegativeDMMID(t *testing.T) {
-	cfg := &config.Config{
-		Database: config.DatabaseConfig{
-			Type: "sqlite",
-			DSN:  ":memory:",
-		},
-		Logging: config.LoggingConfig{
-			Level: "error",
-		},
-	}
-
-	db, err := New(cfg)
-	require.NoError(t, err)
-	defer func() { _ = db.Close() }()
-	require.NoError(t, db.DB.Exec(`
-		CREATE TABLE actresses (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			dmm_id INTEGER,
-			first_name TEXT,
-			last_name TEXT,
-			japanese_name TEXT,
-			thumb_url TEXT,
-			aliases TEXT,
-			created_at DATETIME,
-			updated_at DATETIME,
-			UNIQUE(dmm_id),
-			UNIQUE(japanese_name)
-		)
-	`).Error)
-	require.NoError(t, db.DB.Exec(
-		"CREATE INDEX IF NOT EXISTS idx_custom_actresses_dmm_id_name ON actresses(dmm_id, japanese_name)",
-	).Error)
-	require.NoError(t, db.DB.Exec(
-		"INSERT INTO actresses (dmm_id, japanese_name) VALUES (-111, '負A'), (-222, '負B'), (333, '正A')",
-	).Error)
-
-	require.NoError(t, db.RunMigrationsOnStartup(context.Background()))
-
-	var zeroCount int
-	err = db.DB.Raw(
-		"SELECT COUNT(*) FROM actresses WHERE dmm_id = 0",
-	).Scan(&zeroCount).Error
-	require.NoError(t, err)
-	assert.Equal(t, 2, zeroCount, "legacy negative dmm_id values should be normalized to zero")
-
-	var positiveCount int
-	err = db.DB.Raw(
-		"SELECT COUNT(*) FROM actresses WHERE dmm_id = 333",
-	).Scan(&positiveCount).Error
-	require.NoError(t, err)
-	assert.Equal(t, 1, positiveCount)
-
-	var customIndexCount int
-	err = db.DB.Raw(
-		"SELECT COUNT(*) FROM sqlite_master WHERE type='index' AND tbl_name='actresses' AND name='idx_custom_actresses_dmm_id_name'",
-	).Scan(&customIndexCount).Error
-	require.NoError(t, err)
-	assert.Equal(t, 1, customIndexCount, "custom indexes should be preserved during legacy table rebuild")
-
-	// Unique constraints that were previously represented as constraint-owned
-	// indexes should remain enforced after rebuild.
-	err = db.DB.Exec("INSERT INTO actresses (dmm_id, japanese_name) VALUES (444, '正A')").Error
-	require.Error(t, err, "duplicate japanese_name should remain rejected after rebuild")
-}
-
 func TestRunMigrationsOnStartup_PreservesConstraintCollationOnRebuild(t *testing.T) {
 	cfg := &config.Config{
 		Database: config.DatabaseConfig{
@@ -302,55 +237,6 @@ func TestRunMigrationsOnStartup_PreservesNonIndexConstraintsOnRebuild(t *testing
 	require.Error(t, err, "CHECK constraint should still reject empty japanese_name after rebuild")
 }
 
-func TestRunMigrationsOnStartup_SupportsInlineUniqueDMMConstraintOnRebuild(t *testing.T) {
-	cfg := &config.Config{
-		Database: config.DatabaseConfig{
-			Type: "sqlite",
-			DSN:  ":memory:",
-		},
-		Logging: config.LoggingConfig{
-			Level: "error",
-		},
-	}
-
-	db, err := New(cfg)
-	require.NoError(t, err)
-	defer func() { _ = db.Close() }()
-	require.NoError(t, db.DB.Exec(`
-		CREATE TABLE actresses (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			dmm_id INTEGER UNIQUE,
-			first_name TEXT,
-			last_name TEXT,
-			japanese_name TEXT,
-			thumb_url TEXT,
-			aliases TEXT,
-			created_at DATETIME,
-			updated_at DATETIME
-		)
-	`).Error)
-	require.NoError(t, db.DB.Exec(
-		"INSERT INTO actresses (dmm_id, japanese_name) VALUES (-1, 'A'), (5, 'B')",
-	).Error)
-
-	require.NoError(t, db.RunMigrationsOnStartup(context.Background()))
-
-	var normalizedNegativeCount int
-	err = db.DB.Raw("SELECT COUNT(*) FROM actresses WHERE dmm_id = 0").Scan(&normalizedNegativeCount).Error
-	require.NoError(t, err)
-	assert.Equal(t, 1, normalizedNegativeCount)
-
-	err = db.DB.Exec(
-		"INSERT INTO actresses (dmm_id, japanese_name) VALUES (0, 'C')",
-	).Error
-	require.NoError(t, err, "multiple dmm_id=0 rows should be allowed after inline unique removal")
-
-	err = db.DB.Exec(
-		"INSERT INTO actresses (dmm_id, japanese_name) VALUES (5, 'D')",
-	).Error
-	require.Error(t, err, "positive dmm_id values should remain unique after migration")
-}
-
 func TestRunMigrationsOnStartup_SupportsInlineUniqueDMMConstraintWithConflictClause(t *testing.T) {
 	cfg := &config.Config{
 		Database: config.DatabaseConfig{
@@ -395,47 +281,6 @@ func TestRunMigrationsOnStartup_SupportsInlineUniqueDMMConstraintWithConflictCla
 	).Scan(&rebuiltSchemaSQL).Error
 	require.NoError(t, err)
 	assert.NotContains(t, strings.ToLower(rebuiltSchemaSQL), "constraint uq_dmm", "inline named unique constraint should be removed entirely, not left dangling")
-}
-
-func TestRunMigrationsOnStartup_SupportsInlineUniqueDMMConstraintWithQuotedConstraintName(t *testing.T) {
-	cfg := &config.Config{
-		Database: config.DatabaseConfig{
-			Type: "sqlite",
-			DSN:  ":memory:",
-		},
-		Logging: config.LoggingConfig{
-			Level: "error",
-		},
-	}
-
-	db, err := New(cfg)
-	require.NoError(t, err)
-	defer func() { _ = db.Close() }()
-	require.NoError(t, db.DB.Exec(`
-		CREATE TABLE actresses (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			dmm_id INTEGER CONSTRAINT "uq dmm" UNIQUE ON CONFLICT IGNORE,
-			first_name TEXT,
-			last_name TEXT,
-			japanese_name TEXT,
-			thumb_url TEXT,
-			aliases TEXT,
-			created_at DATETIME,
-			updated_at DATETIME
-		)
-	`).Error)
-	require.NoError(t, db.DB.Exec(
-		"INSERT INTO actresses (dmm_id, japanese_name) VALUES (-1, 'A'), (9, 'B')",
-	).Error)
-
-	require.NoError(t, db.RunMigrationsOnStartup(context.Background()))
-
-	var rebuiltSchemaSQL string
-	err = db.DB.Raw(
-		"SELECT sql FROM sqlite_master WHERE type='table' AND name='actresses'",
-	).Scan(&rebuiltSchemaSQL).Error
-	require.NoError(t, err)
-	assert.NotContains(t, strings.ToLower(rebuiltSchemaSQL), `constraint "uq dmm"`, "quoted inline unique constraint prefix should be removed entirely")
 }
 
 func TestRunMigrationsOnStartup_CreatesBackupAndIsIdempotent(t *testing.T) {

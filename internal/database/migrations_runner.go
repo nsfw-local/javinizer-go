@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"io/fs"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -39,6 +40,10 @@ func (db *DB) RunMigrationsOnStartup(ctx context.Context) (err error) {
 	sqlDB, err := db.DB.DB()
 	if err != nil {
 		return fmt.Errorf("get sql database handle: %w", err)
+	}
+
+	if err := EnsureMigrationHashTable(sqlDB); err != nil {
+		return fmt.Errorf("ensure migration hash table: %w", err)
 	}
 
 	migrationLocker, err := newStartupMigrationLocker(db.dsn)
@@ -80,6 +85,26 @@ func (db *DB) RunMigrationsOnStartup(ctx context.Context) (err error) {
 		}
 	}
 
+	baselineContent, err := fs.ReadFile(dbmigrations.Filesystem(), "000001_baseline.sql")
+	if err != nil {
+		return fmt.Errorf("read baseline migration: %w", err)
+	}
+	baselineHash := ComputeMigrationHash(baselineContent)
+
+	storedHash, err := GetStoredHash(sqlDB, "000001_baseline.sql")
+	if err != nil {
+		return fmt.Errorf("get stored baseline hash: %w", err)
+	}
+
+	if storedHash != "" && storedHash != baselineHash {
+		return fmt.Errorf(
+			"baseline migration hash mismatch: stored=%s current=%s. "+
+				"Migration file was modified after being applied. "+
+				"Manual intervention required",
+			storedHash[:12], baselineHash[:12],
+		)
+	}
+
 	if _, err := provider.Up(ctx); err != nil {
 		if backupPath != "" {
 			restoreTarget := db.dsn
@@ -95,6 +120,12 @@ func (db *DB) RunMigrationsOnStartup(ctx context.Context) (err error) {
 			)
 		}
 		return fmt.Errorf("database migration failed: %w", err)
+	}
+
+	if storedHash == "" {
+		if err := StoreMigrationHash(sqlDB, "000001_baseline.sql", baselineHash); err != nil {
+			return fmt.Errorf("store baseline hash: %w", err)
+		}
 	}
 
 	return nil
