@@ -15,53 +15,26 @@ fi
 
 echo "FlareSolverr is running!"
 
-# Test basic request
+# Test FlareSolverr with Cloudflare URL (same as frontend test)
 echo ""
-echo "Test 1: Testing basic URL resolution..."
+echo "Testing FlareSolverr with Cloudflare URL..."
 RESPONSE=$(curl -s -X POST http://localhost:8191/v1 \
     -H "Content-Type: application/json" \
     -d '{
         "cmd": "request.get",
-        "url": "https://httpbin.org/get",
-        "maxTimeout": 10
+        "url": "https://www.cloudflare.com/cdn-cgi/trace",
+        "maxTimeout": 30
     }')
 
 if echo "$RESPONSE" | grep -q '"status":"ok"'; then
-    echo "SUCCESS: Basic request returned OK status"
-else
-    echo "ERROR: Basic request failed"
-    echo "Response: $RESPONSE"
-fi
-
-# Test with JavLibrary URL (this will be slow due to Cloudflare)
-echo ""
-echo "Test 2: Testing JavLibrary URL (may take 30-60 seconds)..."
-RESPONSE=$(curl -s -X POST http://localhost:8191/v1 \
-    -H "Content-Type: application/json" \
-    -d '{
-        "cmd": "request.get",
-        "url": "http://www.javlibrary.com/vl_searchbyid.php?keyword=IPX-123",
-        "maxTimeout": 60
-    }')
-
-if echo "$RESPONSE" | grep -q '"status":"ok"'; then
-    echo "SUCCESS: JavLibrary request returned OK status"
-
-    # Check if we got HTML response
-    if echo "$RESPONSE" | grep -q "<html"; then
-        HTML_LENGTH=$(echo "$RESPONSE" | grep -o '<html' | wc -c)
-        echo "Received HTML response ($HTML_LENGTH <html> tags)"
-
-        # Try to extract title if present
-        if echo "$RESPONSE" | grep -q -i "<title>"; then
-            TITLE=$(echo "$RESPONSE" | grep -oP '<title>.*</title>' | sed 's/<title>//g' | sed 's/<\/title>//g' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
-            if [ -n "$TITLE" ]; then
-                echo "Title found: $TITLE"
-            fi
-        fi
+    echo "SUCCESS: FlareSolverr resolved Cloudflare page successfully"
+    # Try to extract trace info if present
+    if echo "$RESPONSE" | grep -q "ip="; then
+        IP=$(echo "$RESPONSE" | grep -o 'ip=[^\\]*' | head -1 | sed 's/ip=//')
+        echo "Your IP via FlareSolverr: $IP"
     fi
 else
-    echo "ERROR: JavLibrary request failed"
+    echo "ERROR: FlareSolverr request failed"
     echo "Response: $RESPONSE"
 fi
 
