@@ -26,6 +26,7 @@
 	let loading = $state(true);
 	let hasLoadedOnce = $state(false);
 	let isRefreshing = $state(false);
+	let isClearing = $state(false);
 	let error = $state<string | null>(null);
 	let listRenderVersion = $state(0);
 	let activeFilter = $state<string>('all');
@@ -127,6 +128,36 @@
 		}
 	}
 
+	async function clearAllJobs() {
+		const clearableJobs = jobs.filter(job => job.status.toLowerCase() !== 'running');
+		if (clearableJobs.length === 0) return;
+
+		const confirmed = confirm(`Clear all non-running jobs? This will remove ${clearableJobs.length} job(s).`);
+		if (!confirmed) return;
+
+		isClearing = true;
+		error = null;
+		let failedCount = 0;
+
+		try {
+			for (const job of clearableJobs) {
+				try {
+					await apiClient.deleteBatchJob(job.id);
+				} catch (e) {
+					failedCount++;
+				}
+			}
+
+			if (failedCount > 0) {
+				error = `Failed to clear ${failedCount} job(s). Some jobs may still be removed.`;
+			}
+
+			await loadJobs();
+		} finally {
+			isClearing = false;
+		}
+	}
+
 	function formatDate(dateStr: string): string {
 		const date = new Date(dateStr);
 		const now = new Date();
@@ -203,9 +234,19 @@
 				<p class="text-muted-foreground text-sm mt-1">Manage your batch scrape jobs</p>
 			</div>
 			<div class="flex items-center gap-2">
-				<Button variant="outline" size="sm" onclick={loadJobs} disabled={isRefreshing}>
+				<Button variant="outline" size="sm" onclick={loadJobs} disabled={isRefreshing || isClearing}>
 					<RefreshCw class="h-4 w-4 mr-1.5 {isRefreshing ? 'animate-spin' : ''}" />
 					Refresh
+				</Button>
+				<Button
+					variant="outline"
+					size="sm"
+					onclick={clearAllJobs}
+					disabled={isClearing || jobs.length === 0 || jobs.every(j => j.status.toLowerCase() === 'running')}
+					title="Clear all completed, failed, cancelled jobs"
+				>
+					<Trash2 class="h-4 w-4 mr-1.5 {isClearing ? 'animate-pulse' : ''}" />
+					{isClearing ? 'Clearing...' : 'Clear All'}
 				</Button>
 				<Button size="sm" onclick={() => goto('/browse')}>
 					<FolderOpen class="h-4 w-4 mr-1.5" />
