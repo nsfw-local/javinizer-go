@@ -9,6 +9,7 @@ import (
 	"sync/atomic"
 
 	"github.com/sirupsen/logrus"
+	"gopkg.in/natefinch/lumberjack.v2"
 )
 
 // loggerState holds the logger instance and associated file closers
@@ -22,9 +23,13 @@ var current atomic.Value // holds *loggerState
 
 // Config represents logging configuration
 type Config struct {
-	Level  string `yaml:"level"`  // debug, info, warn, error
-	Format string `yaml:"format"` // text, json
-	Output string `yaml:"output"` // stdout, file path, or "stdout,/path/to/file.log"
+	Level      string `yaml:"level"`        // debug, info, warn, error
+	Format     string `yaml:"format"`       // text, json
+	Output     string `yaml:"output"`       // stdout, file path, or "stdout,/path/to/file.log"
+	MaxSizeMB  int    `yaml:"max_size_mb"`  // Max size in MB before rotation (0 = no rotation)
+	MaxBackups int    `yaml:"max_backups"`  // Max number of old log files to keep
+	MaxAgeDays int    `yaml:"max_age_days"` // Max age in days to keep log files (0 = no limit)
+	Compress   bool   `yaml:"compress"`     // Compress rotated files
 }
 
 // InitLogger initializes or reloads the global logger based on configuration.
@@ -83,7 +88,7 @@ func InitLogger(cfg *Config) error {
 		default:
 			// It's a file path - create directory if needed
 			dir := filepath.Dir(output)
-			if err := os.MkdirAll(dir, 0777); err != nil {
+			if err := os.MkdirAll(dir, 0755); err != nil {
 				// Close any files we've opened so far
 				for _, c := range closers {
 					_ = c.Close()
@@ -91,18 +96,30 @@ func InitLogger(cfg *Config) error {
 				return fmt.Errorf("failed to create log directory %q: %w", dir, err)
 			}
 
-			// Open file in append mode
-			file, err := os.OpenFile(output, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
-			if err != nil {
-				// Close any files we've opened so far
-				for _, c := range closers {
-					_ = c.Close()
+			// Use lumberjack for rotation if MaxSizeMB > 0, otherwise plain file
+			if cfg.MaxSizeMB > 0 {
+				lj := &lumberjack.Logger{
+					Filename:   output,
+					MaxSize:    cfg.MaxSizeMB,
+					MaxBackups: cfg.MaxBackups,
+					MaxAge:     cfg.MaxAgeDays,
+					Compress:   cfg.Compress,
 				}
-				return fmt.Errorf("failed to open log file %q: %w", output, err)
+				writers = append(writers, lj)
+				closers = append(closers, lj) // Track for cleanup
+			} else {
+				// No rotation - plain file append
+				file, err := os.OpenFile(output, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+				if err != nil {
+					// Close any files we've opened so far
+					for _, c := range closers {
+						_ = c.Close()
+					}
+					return fmt.Errorf("failed to open log file %q: %w", output, err)
+				}
+				writers = append(writers, file)
+				closers = append(closers, file) // Track for cleanup
 			}
-
-			writers = append(writers, file)
-			closers = append(closers, file) // Track for cleanup
 		}
 	}
 
@@ -256,4 +273,22 @@ func WithField(key string, value interface{}) *logrus.Entry {
 // WithFields returns a logger with multiple fields
 func WithFields(fields logrus.Fields) *logrus.Entry {
 	return L().WithFields(fields)
+}
+
+// GetFileOutputs extracts file paths from a comma-separated output string.
+// Returns only file paths (excludes "stdout" and "stderr").
+// Returns nil if no file outputs are found.
+func GetFileOutputs(output string) []string {
+	outputs := strings.Split(output, ",")
+	var files []string
+	for _, o := range outputs {
+		o = strings.TrimSpace(o)
+		if o != "" && o != "stdout" && o != "stderr" {
+			files = append(files, o)
+		}
+	}
+	if len(files) == 0 {
+		return nil
+	}
+	return files
 }

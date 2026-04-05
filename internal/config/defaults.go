@@ -238,9 +238,13 @@ func DefaultConfig() *Config {
 			LogLevel: "silent", // Default: no SQL query logging
 		},
 		Logging: LoggingConfig{
-			Level:  "info",
-			Format: "text",
-			Output: "stdout",
+			Level:      "info",
+			Format:     "text",
+			Output:     "stdout,data/logs/javinizer.log",
+			MaxSizeMB:  10,
+			MaxBackups: 5,
+			MaxAgeDays: 0,
+			Compress:   true,
 		},
 		Performance: PerformanceConfig{
 			MaxWorkers:     5,

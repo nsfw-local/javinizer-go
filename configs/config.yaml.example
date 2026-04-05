@@ -452,9 +452,16 @@ logging:
     level: info
     format: text
     # stdout, stderr, /path/to/file.log, or comma-separated (e.g. "stdout,data/logs/javinizer.log")
+    # Default: dual output to console and file for persistence
     # NOTE: JAVINIZER_LOG_DIR only rewrites file targets listed here.
     # If output is only stdout/stderr, JAVINIZER_LOG_DIR has no effect.
-    output: stdout
+    # Docker: JAVINIZER_LOG_DIR=/javinizer/logs rewrites file path to /javinizer/logs/javinizer.log
+    output: "stdout,data/logs/javinizer.log"
+    # Log rotation settings (applies to file outputs only)
+    max_size_mb: 10       # Max size in MB before rotation (0 = disabled)
+    max_backups: 5        # Max number of old log files to keep (0 = unlimited)
+    max_age_days: 0       # Max age in days to keep log files (0 = no limit)
+    compress: true        # Compress rotated files (.gz)
 performance:
     max_workers: 5
     worker_timeout: 300

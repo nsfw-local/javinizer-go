@@ -239,6 +239,39 @@ func TestConfig_Validate(t *testing.T) {
 			},
 			expectError: false,
 		},
+		{
+			name: "logging max_size_mb negative",
+			modifyConfig: func(c *Config) {
+				c.Logging.MaxSizeMB = -1
+			},
+			expectError:   true,
+			errorContains: "logging.max_size_mb must be >= 0",
+		},
+		{
+			name: "logging max_backups negative",
+			modifyConfig: func(c *Config) {
+				c.Logging.MaxBackups = -1
+			},
+			expectError:   true,
+			errorContains: "logging.max_backups must be >= 0",
+		},
+		{
+			name: "logging max_age_days negative",
+			modifyConfig: func(c *Config) {
+				c.Logging.MaxAgeDays = -1
+			},
+			expectError:   true,
+			errorContains: "logging.max_age_days must be >= 0",
+		},
+		{
+			name: "logging rotation zero values valid",
+			modifyConfig: func(c *Config) {
+				c.Logging.MaxSizeMB = 0
+				c.Logging.MaxBackups = 0
+				c.Logging.MaxAgeDays = 0
+			},
+			expectError: false,
+		},
 	}
 
 	for _, tt := range tests {

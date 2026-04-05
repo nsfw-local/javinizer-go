@@ -48,6 +48,8 @@ Thumbs.db
 /data/
 /downloads/
 /logs/
+**/data/
+**/logs/
 config.local.yaml
 configs/config.yaml
 configs/auth.credentials.json

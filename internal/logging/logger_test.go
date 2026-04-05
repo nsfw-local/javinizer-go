@@ -1,5 +1,9 @@
 package logging
 
+// NOTE: These tests mutate the global logger state (atomic.Value 'current').
+// Tests must run sequentially, not in parallel. Go's default test mode handles this,
+// but avoid using t.Parallel() in this package.
+
 import (
 	"os"
 	"path/filepath"
@@ -480,5 +484,74 @@ func TestInitLogger_ConfigReload(t *testing.T) {
 	// Verify file2 does not contain message from file1
 	if strings.Contains(string(content2), "Message to file1") {
 		t.Error("Second log file should not contain messages from first file")
+	}
+}
+
+func TestGetFileOutputs(t *testing.T) {
+	tests := []struct {
+		name     string
+		output   string
+		expected []string
+	}{
+		{
+			name:     "stdout only",
+			output:   "stdout",
+			expected: nil,
+		},
+		{
+			name:     "stderr only",
+			output:   "stderr",
+			expected: nil,
+		},
+		{
+			name:     "file only",
+			output:   "/var/log/javinizer.log",
+			expected: []string{"/var/log/javinizer.log"},
+		},
+		{
+			name:     "stdout and file",
+			output:   "stdout,/var/log/javinizer.log",
+			expected: []string{"/var/log/javinizer.log"},
+		},
+		{
+			name:     "multiple files",
+			output:   "stdout,/var/log/a.log,/var/log/b.log",
+			expected: []string{"/var/log/a.log", "/var/log/b.log"},
+		},
+		{
+			name:     "spaces trimmed",
+			output:   "stdout , /var/log/test.log ",
+			expected: []string{"/var/log/test.log"},
+		},
+		{
+			name:     "empty string",
+			output:   "",
+			expected: nil,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := GetFileOutputs(tt.output)
+			if tt.expected == nil {
+				if result != nil {
+					t.Errorf("Expected nil, got %v", result)
+				}
+				return
+			}
+			if result == nil {
+				t.Errorf("Expected %v, got nil", tt.expected)
+				return
+			}
+			if len(result) != len(tt.expected) {
+				t.Errorf("Expected %d files, got %d: %v", len(tt.expected), len(result), result)
+				return
+			}
+			for i, exp := range tt.expected {
+				if result[i] != exp {
+					t.Errorf("Expected file[%d] = %q, got %q", i, exp, result[i])
+				}
+			}
+		})
 	}
 }

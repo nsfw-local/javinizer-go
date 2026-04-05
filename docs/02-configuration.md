@@ -638,6 +638,14 @@ If `logging.output` only contains `stdout`/`stderr`, `JAVINIZER_LOG_DIR` does no
 - `logging.output: data/logs/javinizer.log` + `JAVINIZER_LOG_DIR=/javinizer/logs` -> `/javinizer/logs/javinizer.log`
 - `logging.output: "stdout,data/logs/javinizer.log"` + `JAVINIZER_LOG_DIR=/javinizer/logs` -> `"stdout,/javinizer/logs/javinizer.log"`
 
+**Log Rotation** (applies to file outputs only):
+- `max_size_mb`: Maximum file size in megabytes before rotation. Set to `0` to disable rotation (default: `10`)
+- `max_backups`: Maximum number of old log files to retain (default: `5`)
+- `max_age_days`: Maximum number of days to retain old log files. Set to `0` for no age limit (default: `0`)
+- `compress`: Compress rotated log files with gzip (default: `true`)
+
+When rotation is enabled, log files are automatically rotated when they exceed `max_size_mb`. Old files are renamed with a timestamp suffix (e.g., `javinizer-2026-04-06T01-00-00.000.log.gz`).
+
 ### Examples
 
 **Console output only (default):**
@@ -662,6 +670,17 @@ logging:
   level: info
   format: text
   output: "stdout,data/logs/javinizer.log"
+```
+
+**Dual output with rotation:**
+```yaml
+logging:
+  level: info
+  format: text
+  output: "stdout,data/logs/javinizer.log"
+  max_size_mb: 10      # Rotate at 10MB
+  max_backups: 5       # Keep 5 old files
+  compress: true       # Compress rotated files
 ```
 
 **JSON logs for analysis:**
@@ -693,7 +712,21 @@ This temporarily sets the log level to `debug` for that command.
 
 ### Log Rotation
 
-Javinizer appends to log files. For log rotation, use external tools like:
+Javinizer supports built-in log rotation for file outputs. Configure rotation using the `max_size_mb`, `max_backups`, `max_age_days`, and `compress` settings.
+
+**Built-in rotation (recommended):**
+```yaml
+logging:
+  output: "stdout,data/logs/javinizer.log"
+  max_size_mb: 10      # Rotate when file reaches 10MB
+  max_backups: 5       # Keep up to 5 rotated files
+  max_age_days: 30     # Delete files older than 30 days
+  compress: true       # Compress rotated files (.gz)
+```
+
+**External rotation (alternative):**
+
+If you prefer external tools or need time-based rotation, set `max_size_mb: 0` to disable built-in rotation and use tools like logrotate:
 
 **Linux/macOS (logrotate):**
 ```

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strconv"
 
 	"github.com/javinizer/javinizer-go/cmd/javinizer/commands/actress"
@@ -116,9 +117,13 @@ func initConfig() {
 
 	// Initialize logger
 	logCfg := &logging.Config{
-		Level:  cfg.Logging.Level,
-		Format: cfg.Logging.Format,
-		Output: cfg.Logging.Output,
+		Level:      cfg.Logging.Level,
+		Format:     cfg.Logging.Format,
+		Output:     cfg.Logging.Output,
+		MaxSizeMB:  cfg.Logging.MaxSizeMB,
+		MaxBackups: cfg.Logging.MaxBackups,
+		MaxAgeDays: cfg.Logging.MaxAgeDays,
+		Compress:   cfg.Logging.Compress,
 	}
 
 	// Override level to debug if --verbose flag is set
@@ -129,6 +134,17 @@ func initConfig() {
 	if err := logging.InitLogger(logCfg); err != nil {
 		_, _ = fmt.Fprintf(os.Stderr, "Failed to initialize logger: %v\n", err)
 		os.Exit(1)
+	}
+
+	// Log file output location (INFO level for visibility)
+	if logPaths := logging.GetFileOutputs(cfg.Logging.Output); len(logPaths) > 0 {
+		for _, path := range logPaths {
+			absPath, err := filepath.Abs(path)
+			if err != nil {
+				absPath = path
+			}
+			logging.Infof("Log file: %s", absPath)
+		}
 	}
 
 	logging.Debugf("Loaded configuration from: %s", cfgFile)

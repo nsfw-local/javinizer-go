@@ -186,9 +186,13 @@ type DatabaseConfig struct {
 
 // LoggingConfig holds logging configuration
 type LoggingConfig struct {
-	Level  string `yaml:"level" json:"level"`   // debug, info, warn, error
-	Format string `yaml:"format" json:"format"` // json, text
-	Output string `yaml:"output" json:"output"` // stdout, file path
+	Level      string `yaml:"level" json:"level"`               // debug, info, warn, error
+	Format     string `yaml:"format" json:"format"`             // json, text
+	Output     string `yaml:"output" json:"output"`             // stdout, file path
+	MaxSizeMB  int    `yaml:"max_size_mb" json:"max_size_mb"`   // Max size in MB before rotation (0 = no rotation)
+	MaxBackups int    `yaml:"max_backups" json:"max_backups"`   // Max number of old log files to keep (0 = unlimited)
+	MaxAgeDays int    `yaml:"max_age_days" json:"max_age_days"` // Max age in days to keep log files (0 = no limit)
+	Compress   bool   `yaml:"compress" json:"compress"`         // Compress rotated files
 }
 
 // PerformanceConfig holds performance and concurrency settings
@@ -290,6 +294,17 @@ func (c *Config) Validate() error {
 	// Allow 0 to mean "use default" (handled by DefaultConfig and migrations)
 	if c.System.VersionCheckIntervalHours != 0 && (c.System.VersionCheckIntervalHours < 1 || c.System.VersionCheckIntervalHours > 168) {
 		return fmt.Errorf("system.version_check_interval_hours must be between 1 and 168 (1 week), or 0 for default")
+	}
+
+	// Validate logging rotation settings
+	if c.Logging.MaxSizeMB < 0 {
+		return fmt.Errorf("logging.max_size_mb must be >= 0")
+	}
+	if c.Logging.MaxBackups < 0 {
+		return fmt.Errorf("logging.max_backups must be >= 0")
+	}
+	if c.Logging.MaxAgeDays < 0 {
+		return fmt.Errorf("logging.max_age_days must be >= 0")
 	}
 
 	return nil

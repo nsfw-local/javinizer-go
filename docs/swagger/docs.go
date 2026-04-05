@@ -2349,6 +2349,10 @@ const docTemplate = `{
         "config.LoggingConfig": {
             "type": "object",
             "properties": {
+                "compress": {
+                    "description": "Compress rotated files",
+                    "type": "boolean"
+                },
                 "format": {
                     "description": "json, text",
                     "type": "string"
@@ -2356,6 +2360,18 @@ const docTemplate = `{
                 "level": {
                     "description": "debug, info, warn, error",
                     "type": "string"
+                },
+                "max_age_days": {
+                    "description": "Max age in days to keep log files (0 = no limit)",
+                    "type": "integer"
+                },
+                "max_backups": {
+                    "description": "Max number of old log files to keep (0 = unlimited)",
+                    "type": "integer"
+                },
+                "max_size_mb": {
+                    "description": "Max size in MB before rotation (0 = no rotation)",
+                    "type": "integer"
                 },
                 "output": {
                     "description": "stdout, file path",
