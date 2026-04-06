@@ -173,6 +173,10 @@ func rescrapeBatchMovie(deps *ServerDependencies) gin.HandlerFunc {
 
 		job.UpdateFileResult(foundFilePath, result)
 
+		// Persist the updated job state to database
+		// This ensures the /jobs page shows the updated poster URL after rescrape
+		deps.JobQueue.PersistJob(job)
+
 		// Verify the update was persisted
 		verifyStatus := job.GetStatus()
 		if verifyResult, ok := verifyStatus.Results[foundFilePath]; ok {
@@ -180,28 +184,6 @@ func rescrapeBatchMovie(deps *ServerDependencies) gin.HandlerFunc {
 				foundFilePath, verifyResult.MovieID, verifyResult.Status)
 		} else {
 			logging.Errorf("[Rescrape] Failed to verify update for %s", foundFilePath)
-		}
-
-		// Generate and persist cropped poster
-		if httpClient != nil && movie != nil {
-			croppedURL, posterErr := worker.GenerateCroppedPoster(
-				ctx,
-				movie,
-				httpClient,
-				cfg.Scrapers.UserAgent,
-				cfg.Scrapers.Referer,
-				downloader.ResolveMediaReferer,
-			)
-			if posterErr != nil {
-				logging.Warnf("Failed to generate cropped poster: %v", posterErr)
-			} else {
-				// Update movie's cropped poster URL
-				movie.CroppedPosterURL = croppedURL
-				// Save to database (use Upsert to handle both new and existing records)
-				if err := deps.MovieRepo.Upsert(movie); err != nil {
-					logging.Warnf("Failed to upsert movie with cropped poster URL: %v", err)
-				}
-			}
 		}
 
 		c.JSON(http.StatusOK, BatchRescrapeResponse{
