@@ -106,7 +106,7 @@ export function createRescrapeController(deps: RescrapeControllerDeps) {
 		deps.setShowRescrapeModal(true);
 	}
 
-	async function executeRescrape() {
+	async function executeRescrape(mode?: { manualSearchMode: boolean; manualSearchInput: string }) {
 		const selectedScrapers = deps.getSelectedScrapers();
 		if (selectedScrapers.length === 0) {
 			deps.toastError('Please select at least one scraper');
@@ -119,8 +119,12 @@ export function createRescrapeController(deps: RescrapeControllerDeps) {
 			return;
 		}
 
-		if (deps.getManualSearchMode()) {
-			const input = deps.getManualSearchInput().trim();
+		// Use the passed mode if available, otherwise fall back to deps getters
+		const effectiveManualSearchMode = mode?.manualSearchMode ?? deps.getManualSearchMode();
+		const effectiveManualSearchInput = mode?.manualSearchInput ?? deps.getManualSearchInput();
+
+		if (effectiveManualSearchMode) {
+			const input = effectiveManualSearchInput.trim();
 			if (!input) {
 				deps.toastError('Please enter a content ID, DVD ID, or URL');
 				return;
@@ -137,8 +141,8 @@ export function createRescrapeController(deps: RescrapeControllerDeps) {
 			const response = await deps.api.rescrapeBatchMovie(deps.getJobId(), rescrapeMovieId, {
 				force: true,
 				selected_scrapers: selectedScrapers,
-				manual_search_input: deps.getManualSearchMode()
-					? deps.getManualSearchInput().trim()
+				manual_search_input: effectiveManualSearchMode
+					? effectiveManualSearchInput.trim()
 					: undefined,
 				preset: deps.getRescrapePreset() as 'conservative' | 'gap-fill' | 'aggressive' | undefined,
 				scalar_strategy:
@@ -170,15 +174,15 @@ export function createRescrapeController(deps: RescrapeControllerDeps) {
 			}
 
 			deps.toastSuccess(
-				deps.getManualSearchMode()
-					? `Successfully scraped metadata for ${deps.getManualSearchInput().trim()}`
+				effectiveManualSearchMode
+					? `Successfully scraped metadata for ${effectiveManualSearchInput.trim()}`
 					: `Successfully rescraped ${rescrapeMovieId}`
 			);
 			deps.setShowRescrapeModal(false);
 		} catch (error) {
-			console.error(deps.getManualSearchMode() ? 'Manual search failed' : 'Rescrape failed', ':', error);
+			console.error(effectiveManualSearchMode ? 'Manual search failed' : 'Rescrape failed', ':', error);
 			const errorMessage = error instanceof Error ? error.message : JSON.stringify(error);
-			deps.toastError((deps.getManualSearchMode() ? 'Manual search failed: ' : 'Rescrape failed: ') + errorMessage);
+			deps.toastError((effectiveManualSearchMode ? 'Manual search failed: ' : 'Rescrape failed: ') + errorMessage);
 		} finally {
 			setRescrapingState(deps, rescrapeMovieId, false);
 		}

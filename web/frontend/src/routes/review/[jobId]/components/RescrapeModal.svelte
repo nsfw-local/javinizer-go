@@ -21,7 +21,7 @@
 		rescrapePreset?: string;
 		rescrapeScalarStrategy: ScalarStrategy;
 		onApplyPreset: (preset: 'conservative' | 'gap-fill' | 'aggressive') => void;
-		onExecute: () => void;
+		onExecute: (mode: { manualSearchMode: boolean; manualSearchInput: string }) => void;
 	}
 
 	let {
@@ -241,7 +241,10 @@
 					<Button variant="outline" onclick={close} disabled={rescraping}>
 						{#snippet children()}Cancel{/snippet}
 					</Button>
-					<Button onclick={onExecute} disabled={rescraping}>
+					<Button
+						onclick={() => onExecute({ manualSearchMode, manualSearchInput })}
+						disabled={rescraping}
+					>
 						{#snippet children()}
 							{#if rescraping}
 								<LoaderCircle class="h-4 w-4 mr-2 animate-spin" />

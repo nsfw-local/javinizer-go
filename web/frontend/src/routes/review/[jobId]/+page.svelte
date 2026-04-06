@@ -513,8 +513,8 @@
 		await rescrapeController.openRescrapeModal(movieId);
 	}
 
-	async function executeRescrape() {
-		await rescrapeController.executeRescrape();
+	async function executeRescrape(mode?: { manualSearchMode: boolean; manualSearchInput: string }) {
+		await rescrapeController.executeRescrape(mode);
 	}
 
 	async function organizeAll() {
@@ -656,8 +656,8 @@
 						currentMovie={currentMovie}
 						currentResult={currentResult}
 						bind:showFieldScraperSources={showFieldScraperSources}
-						isRescraping={rescrapingStates.get(currentMovie?.id || '') || false}
-						onOpenRescrape={() => currentMovie && openRescrapeModal(currentMovie.id)}
+						isRescraping={rescrapingStates.get(currentResult?.movie_id || '') || false}
+						onOpenRescrape={() => currentResult && openRescrapeModal(currentResult.movie_id)}
 						onResetCurrentMovie={resetCurrentMovie}
 						onUpdateCurrentMovie={updateCurrentMovie}
 					/>
