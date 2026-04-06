@@ -46,8 +46,19 @@ func serveTempPoster(deps *ServerDependencies) gin.HandlerFunc {
 			return
 		}
 
+		// Get the job's stored TempDir for consistent path resolution
+		// This ensures temp posters remain accessible even if system.temp_dir is changed
+		// If job is not in memory (evicted after 24h cleanup), falls back to config TempDir
+		// This is acceptable for ephemeral temp posters since they're cleaned up on organization
+		tempDir := cfg.System.TempDir
+		if deps.JobQueue != nil {
+			if job, ok := deps.JobQueue.GetJob(jobID); ok && job.TempDir != "" {
+				tempDir = job.TempDir
+			}
+		}
+
 		// Construct path and verify it's within tempPosterDir
-		tempPosterDir := filepath.Join(cfg.System.TempDir, "posters", jobID)
+		tempPosterDir := filepath.Join(tempDir, "posters", jobID)
 		posterPath := filepath.Join(tempPosterDir, filename)
 
 		// Double-check the resolved path is still within tempPosterDir (defense in depth)
@@ -58,8 +69,8 @@ func serveTempPoster(deps *ServerDependencies) gin.HandlerFunc {
 			return
 		}
 
-		// Check if file exists before serving
-		if _, err := os.Stat(posterPath); os.IsNotExist(err) {
+		// Check if file exists and is accessible before serving
+		if _, err := os.Stat(posterPath); err != nil {
 			c.JSON(http.StatusNotFound, gin.H{"error": "Not Found"})
 			return
 		}
@@ -100,8 +111,8 @@ func serveCroppedPoster() gin.HandlerFunc {
 			return
 		}
 
-		// Check if file exists before serving
-		if _, err := os.Stat(posterPath); os.IsNotExist(err) {
+		// Check if file exists and is accessible before serving
+		if _, err := os.Stat(posterPath); err != nil {
 			c.JSON(http.StatusNotFound, gin.H{"error": "Not Found"})
 			return
 		}

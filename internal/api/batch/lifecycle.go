@@ -176,7 +176,12 @@ func cancelBatchJob(deps *ServerDependencies) gin.HandlerFunc {
 		job.Cancel()
 
 		// Cleanup temp posters for cancelled job (batch job is gone, temp posters no longer needed)
-		go cleanupJobTempPosters(jobID, deps.GetConfig().System.TempDir)
+		// Use job's stored TempDir for consistent cleanup path
+		tempDir := job.GetTempDir()
+		if tempDir == "" {
+			tempDir = deps.GetConfig().System.TempDir
+		}
+		go cleanupJobTempPosters(jobID, tempDir)
 
 		c.JSON(200, gin.H{"message": "Job cancelled successfully"})
 	}
@@ -197,14 +202,13 @@ func deleteBatchJob(deps *ServerDependencies) gin.HandlerFunc {
 			return
 		}
 
-		if err := deps.JobRepo.Delete(jobID); err != nil {
-			c.JSON(500, ErrorResponse{Error: "Failed to delete job"})
-			return
+		// Use job's stored TempDir for consistent cleanup path
+		tempDir := job.GetTempDir()
+		if tempDir == "" {
+			tempDir = deps.GetConfig().System.TempDir
 		}
-
-		deps.JobQueue.DeleteJob(jobID, deps.GetConfig().System.TempDir)
-
-		go cleanupJobTempPosters(jobID, deps.GetConfig().System.TempDir)
+		// DeleteJob handles both database deletion and filesystem cleanup
+		deps.JobQueue.DeleteJob(jobID, tempDir)
 
 		c.JSON(200, gin.H{"message": "Job deleted successfully"})
 	}

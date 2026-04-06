@@ -261,7 +261,7 @@ func DefaultConfig() *Config {
 			Umask:                     "002",
 			VersionCheckEnabled:       true,
 			VersionCheckIntervalHours: 24,
-			TempDir:                   "data/temp",
+			TempDir:                   DefaultTempDir,
 		},
 	}
 }

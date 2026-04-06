@@ -94,6 +94,7 @@ type BatchJob struct {
 	FileMatchInfo map[string]FileMatchInfo `json:"file_match_info,omitempty"`
 	Progress      float64                  `json:"progress"`
 	Destination   string                   `json:"destination"`
+	TempDir       string                   `json:"temp_dir"`
 	StartedAt     time.Time                `json:"started_at"`
 	CompletedAt   *time.Time               `json:"completed_at,omitempty"`
 	OrganizedAt   *time.Time               `json:"organized_at,omitempty"`
@@ -186,6 +187,7 @@ func (jq *JobQueue) reconstructBatchJob(dbJob *models.Job) *BatchJob {
 		Failed:        dbJob.Failed,
 		Progress:      dbJob.Progress,
 		Destination:   dbJob.Destination,
+		TempDir:       dbJob.TempDir,
 		StartedAt:     dbJob.StartedAt,
 		CompletedAt:   dbJob.CompletedAt,
 		OrganizedAt:   dbJob.OrganizedAt,
@@ -209,8 +211,9 @@ func (jq *JobQueue) reconstructBatchJob(dbJob *models.Job) *BatchJob {
 		}
 	}
 
-	if jq.tempDir != "" {
-		posterDir := filepath.Join(jq.tempDir, "posters", dbJob.ID)
+	// Use the job's stored TempDir to check for temp posters
+	if batchJob.TempDir != "" {
+		posterDir := filepath.Join(batchJob.TempDir, "posters", dbJob.ID)
 		for _, result := range batchJob.Results {
 			if result.Data == nil {
 				continue
@@ -287,6 +290,8 @@ func (jq *JobQueue) persistToDatabase(job *BatchJob) {
 		return
 	}
 
+	tempDir := job.GetTempDir()
+
 	dbJob := &models.Job{
 		ID:            job.ID,
 		Status:        string(job.Status),
@@ -295,6 +300,7 @@ func (jq *JobQueue) persistToDatabase(job *BatchJob) {
 		Failed:        job.Failed,
 		Progress:      job.Progress,
 		Destination:   job.Destination,
+		TempDir:       tempDir,
 		Files:         string(filesJSON),
 		Results:       string(resultsJSON),
 		Excluded:      string(excludedJSON),
@@ -329,6 +335,7 @@ func (jq *JobQueue) CreateJob(files []string) *BatchJob {
 		Excluded:      make(map[string]bool),
 		Done:          make(chan struct{}),
 		StartedAt:     time.Now(),
+		TempDir:       jq.tempDir,
 	}
 
 	jq.mu.Lock()
@@ -742,6 +749,12 @@ func (job *BatchJob) GetStatus() *BatchJob {
 		completedAt = &t
 	}
 
+	organizedAt := job.OrganizedAt
+	if organizedAt != nil {
+		t := *organizedAt
+		organizedAt = &t
+	}
+
 	return &BatchJob{
 		ID:            job.ID,
 		Status:        job.Status,
@@ -754,7 +767,17 @@ func (job *BatchJob) GetStatus() *BatchJob {
 		FileMatchInfo: fileMatchInfo,
 		Progress:      job.Progress,
 		Destination:   job.Destination,
+		TempDir:       job.TempDir,
 		StartedAt:     job.StartedAt,
 		CompletedAt:   completedAt,
+		OrganizedAt:   organizedAt,
 	}
+}
+
+// GetTempDir returns the job's temporary directory path in a thread-safe manner.
+// This is the recommended way to access TempDir for concurrent safety.
+func (job *BatchJob) GetTempDir() string {
+	job.mu.RLock()
+	defer job.mu.RUnlock()
+	return job.TempDir
 }

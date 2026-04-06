@@ -217,12 +217,4 @@ func processOrganizeJob(job *worker.BatchJob, jobQueue *worker.JobQueue, destina
 	if jobQueue != nil {
 		jobQueue.PersistJob(job)
 	}
-
-	// Cleanup temp posters only if ALL files succeeded
-	// If any failed, keep temp posters so user can retry without re-scraping
-	if failed == 0 {
-		go cleanupJobTempPosters(job.ID, cfg.System.TempDir)
-	} else {
-		logging.Debugf("[Job %s] Keeping temp posters for %d failed files (retry possible)", job.ID, failed)
-	}
 }

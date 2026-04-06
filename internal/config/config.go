@@ -34,6 +34,10 @@ const (
 	// DefaultFakeUserAgent is a browser-like UA for scraper-hostile sites.
 	// Used as fallback when scraper UserAgent is not set.
 	DefaultFakeUserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36"
+
+	// DefaultTempDir is the default temporary directory for transient files (e.g., temp posters).
+	// This constant is referenced by both config defaults and database migrations to ensure consistency.
+	DefaultTempDir = "data/temp"
 )
 
 // Config represents the application configuration

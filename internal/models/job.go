@@ -21,6 +21,7 @@ type Job struct {
 	Failed        int        `json:"failed"`
 	Progress      float64    `json:"progress"`
 	Destination   string     `json:"destination"`
+	TempDir       string     `json:"temp_dir" gorm:"default:'data/temp'"`
 	Files         string     `json:"files" gorm:"type:text"`
 	Results       string     `json:"results" gorm:"type:text"`
 	Excluded      string     `json:"excluded" gorm:"type:text"`
