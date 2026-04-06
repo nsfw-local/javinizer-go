@@ -65,8 +65,12 @@ func FetchWithBrowser(url string, timeout int, proxyProfile *config.ProxyProfile
 	// Chrome's sandbox doesn't work in containers due to namespace restrictions
 	// Trade-off: We run as non-root user, and the container itself provides isolation
 	if isRunningInContainer() {
-		logging.Debug("DMM Browser: Detected container environment, disabling Chrome sandbox")
-		opts = append(opts, chromedp.Flag("no-sandbox", true))
+		logging.Debug("DMM Browser: Detected container environment, disabling Chrome sandbox and crashpad")
+		opts = append(opts,
+			chromedp.Flag("no-sandbox", true),
+			chromedp.Flag("disable-setuid-sandbox", true),
+			chromedp.Flag("disable-crashpad", true),
+		)
 	}
 
 	// Only override Chrome binary path if explicitly set via environment variable

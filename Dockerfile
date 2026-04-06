@@ -137,6 +137,8 @@ ENV JAVINIZER_HOME=/javinizer \
     JAVINIZER_IMAGE_DEFAULT_GID=${GROUP_ID} \
     CHROME_BIN=/usr/bin/chromium-browser \
     CHROME_PATH=/usr/bin/chromium-browser \
+    XDG_CONFIG_HOME=/tmp/.chromium \
+    XDG_CACHE_HOME=/tmp/.chromium \
     PATH="/usr/local/bin:${PATH}"
 
 # Expose API/web port
