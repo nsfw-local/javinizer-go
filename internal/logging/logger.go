@@ -98,6 +98,14 @@ func InitLogger(cfg *Config) error {
 
 			// Use lumberjack for rotation if MaxSizeMB > 0, otherwise plain file
 			if cfg.MaxSizeMB > 0 {
+				// Lumberjack defaults to 0600 permissions. Pre-create the file
+				// with desired permissions (0644) to match non-rotation behavior.
+				if _, err := os.Stat(output); os.IsNotExist(err) {
+					if file, err := os.OpenFile(output, os.O_CREATE|os.O_WRONLY, 0644); err == nil {
+						_ = file.Close()
+					}
+				}
+
 				lj := &lumberjack.Logger{
 					Filename:   output,
 					MaxSize:    cfg.MaxSizeMB,

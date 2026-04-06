@@ -16,12 +16,13 @@ services:
 
     container_name: javinizer
     restart: unless-stopped
+    env_file:
+      - .env
     user: "${PUID:-${USER_ID:-1000}}:${PGID:-${GROUP_ID:-1000}}"
 
     ports:
       - "${HOST_PORT:-8080}:8080"
 
-    # SIMPLIFIED: Only 2 volumes
     volumes:
       # Application state (config, database, logs, cache)
       - ./data:/javinizer
@@ -42,6 +43,9 @@ services:
 
       # Log directory (applies only when logging.output includes a file target)
       - JAVINIZER_LOG_DIR=/javinizer/logs
+
+      # Temp directory for file processing
+      - JAVINIZER_TEMP_DIR=/javinizer/temp
 
       # Log level (optional: debug, info, warn, error)
       # Uncomment to override config.yaml
@@ -72,6 +76,8 @@ services:
         - USER_ID=${PUID:-${USER_ID:-1000}}
         - GROUP_ID=${PGID:-${GROUP_ID:-1000}}
     profiles: ["dev"]
+    env_file:
+      - .env
     user: "${PUID:-${USER_ID:-1000}}:${PGID:-${GROUP_ID:-1000}}"
     ports:
       - "${HOST_PORT:-8080}:8080"
@@ -87,6 +93,7 @@ services:
       - JAVINIZER_CONFIG=/javinizer/config.yaml
       - JAVINIZER_DB=/javinizer/javinizer.db
       - JAVINIZER_LOG_DIR=/javinizer/logs
+      - JAVINIZER_TEMP_DIR=/javinizer/temp
       - LOG_LEVEL=${LOG_LEVEL:-debug}
       - UMASK=${UMASK:-002}
       - TZ=${TZ:-UTC}

@@ -121,14 +121,15 @@ RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 # Create image-managed state directories. Sticky world-writable permissions are
 # only a fallback for containers started with an explicit Docker `user:` that
 # bypasses the root bootstrap; mounted volumes still rely on host ownership.
-RUN mkdir -p /javinizer/logs /javinizer/cache /media && \
-    chmod 1777 /javinizer /javinizer/logs /javinizer/cache /media
+RUN mkdir -p /javinizer/logs /javinizer/cache /javinizer/temp /media && \
+    chmod 1777 /javinizer /javinizer/logs /javinizer/cache /javinizer/temp /media
 
 # Environment variables
 ENV JAVINIZER_HOME=/javinizer \
     JAVINIZER_CONFIG=/javinizer/config.yaml \
     JAVINIZER_DB=/javinizer/javinizer.db \
     JAVINIZER_LOG_DIR=/javinizer/logs \
+    JAVINIZER_TEMP_DIR=/javinizer/temp \
     JAVINIZER_INIT_SERVER_HOST=0.0.0.0 \
     JAVINIZER_INIT_ALLOWED_DIRECTORIES=/media \
     JAVINIZER_INIT_ALLOWED_ORIGINS="http://localhost:8080,http://localhost:5173,http://127.0.0.1:8080,http://127.0.0.1:5173" \

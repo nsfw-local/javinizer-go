@@ -74,10 +74,10 @@ For a more complete setup with optional FlareSolverr support:
 
 ```bash
 # 1) Download example files
-curl -o docker-compose.yml \
-  https://raw.githubusercontent.com/javinizer/javinizer-go/main/docker-compose.yml.example
 curl -o .env \
   https://raw.githubusercontent.com/javinizer/javinizer-go/main/.env.example
+curl -o docker-compose.yml \
+  https://raw.githubusercontent.com/javinizer/javinizer-go/main/docker-compose.yml
 
 # 2) Edit .env to configure paths and settings
 # MEDIA_PATH=/path/to/your/jav-library
@@ -89,7 +89,7 @@ curl -o .env \
 docker-compose up -d
 ```
 
-The `docker-compose.yml.example` includes:
+The `docker-compose.yml` includes:
 - **javinizer**: Main API server + web UI
 - **flaresolverr** (optional): Cloudflare challenge solver for JavDB/JavLibrary
 

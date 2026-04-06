@@ -28,10 +28,7 @@ cd javinizer-go
 cp .env.example .env
 # Edit .env to set your PUID, PGID, and MEDIA_PATH
 
-# 3. Copy the Docker Compose template
-cp docker-compose.yml.example docker-compose.yml
-
-# 4. Build the Docker image
+# 3. Build the Docker image
 docker build -t javinizer:latest .
 
 # 5. Run with Docker Compose
@@ -82,12 +79,6 @@ The Dockerfile uses a multi-stage build:
 
 ### Basic Usage
 
-Copy the example file and customize as needed:
-
-```bash
-cp docker-compose.yml.example docker-compose.yml
-```
-
 The `docker-compose.yml` provides a production-ready setup:
 
 ```bash
@@ -125,10 +116,9 @@ Javinizer uses a `.env` file to configure Docker Compose variables. This makes i
 
 ### Setup
 
-1. **Copy the example files**:
+1. **Copy the example env file**:
    ```bash
    cp .env.example .env
-   cp docker-compose.yml.example docker-compose.yml
    ```
 
 2. **Edit `.env` with your settings**:

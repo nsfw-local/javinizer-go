@@ -57,7 +57,6 @@ auth.sessions.json
 
 # Docker configuration
 .env
-docker-compose.yml
 
 # Test files
 /test-videos/

@@ -81,6 +81,11 @@ if [ "${container_uid}" = "0" ] && [ "${JAVINIZER_RUNTIME_DROPPED:-0}" != "1" ];
     ensure_user_entry "${requested_uid}" "${requested_gid}"
     prepare_internal_path /javinizer "${requested_uid}" "${requested_gid}"
     prepare_internal_path /media "${requested_uid}" "${requested_gid}"
+    # Prepare app-specific directories before privilege drop
+    # These are subdirectories within mount points, so prepare_internal_path will chown them
+    prepare_internal_path /javinizer/logs "${requested_uid}" "${requested_gid}"
+    prepare_internal_path /javinizer/cache "${requested_uid}" "${requested_gid}"
+    prepare_internal_path /javinizer/temp "${requested_uid}" "${requested_gid}"
     export JAVINIZER_RUNTIME_DROPPED=1
     exec su-exec "${requested_uid}:${requested_gid}" /usr/local/bin/docker-entrypoint.sh "$@"
 fi

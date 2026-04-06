@@ -28,8 +28,9 @@ import (
 )
 
 var (
-	cfgFile     string
-	verboseFlag bool
+	cfgFile           string
+	verboseFlag       bool
+	originalLogOutput string
 )
 
 // rootCmd represents the base command
@@ -106,13 +107,26 @@ func initConfig() {
 		_, _ = fmt.Fprintf(os.Stderr, "Failed to load config: %v\n", err)
 		os.Exit(1)
 	}
-	originalLogOutput := cfg.Logging.Output
+	originalLogOutput = cfg.Logging.Output
 
-	// Override config values with environment variables (Docker-friendly)
+	// Apply environment variable overrides FIRST (UMASK, JAVINIZER_LOG_DIR, etc.)
 	config.ApplyEnvironmentOverrides(cfg)
 	if _, err := config.Prepare(cfg); err != nil {
 		_, _ = fmt.Fprintf(os.Stderr, "Failed to apply environment overrides: %v\n", err)
 		os.Exit(1)
+	}
+
+	// Apply umask AFTER env overrides, BEFORE creating log files
+	if cfg.System.Umask != "" {
+		umaskValue, err := strconv.ParseUint(cfg.System.Umask, 8, 32)
+		if err != nil {
+			_, _ = fmt.Fprintf(os.Stderr, "Invalid umask value '%s': %v\n", cfg.System.Umask, err)
+		} else {
+			oldUmask, applied := applyUmask(int(umaskValue))
+			if applied {
+				defer func() { _, _ = applyUmask(oldUmask) }()
+			}
+		}
 	}
 
 	// Initialize logger
@@ -185,21 +199,6 @@ func initConfig() {
 			cfg.Output.DownloadProxy.Enabled = false
 		} else {
 			logging.Infof("Download proxy enabled: %s", sanitizeProxyURL(resolvedDownloadProxy.URL))
-		}
-	}
-
-	// Apply umask if configured
-	if cfg.System.Umask != "" {
-		umaskValue, err := strconv.ParseUint(cfg.System.Umask, 8, 32)
-		if err != nil {
-			logging.Warnf("Invalid umask value '%s', using default: %v", cfg.System.Umask, err)
-		} else {
-			oldUmask, applied := applyUmask(int(umaskValue))
-			if applied {
-				logging.Debugf("Applied umask: %s (previous: %04o)", cfg.System.Umask, oldUmask)
-			} else {
-				logging.Debugf("Umask configured (%s) but unsupported on this platform", cfg.System.Umask)
-			}
 		}
 	}
 }
