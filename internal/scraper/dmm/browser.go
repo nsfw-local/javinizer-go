@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
+	"net/url"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -19,6 +21,34 @@ import (
 func basicAuth(username, password string) string {
 	auth := username + ":" + password
 	return base64.StdEncoding.EncodeToString([]byte(auth))
+}
+
+func validateBrowserURL(rawURL string) error {
+	if rawURL == "" {
+		return fmt.Errorf("browser URL is required")
+	}
+
+	parsedURL, err := url.ParseRequestURI(rawURL)
+	if err != nil {
+		return fmt.Errorf("invalid browser URL: %w", err)
+	}
+
+	if parsedURL.Scheme != "http" && parsedURL.Scheme != "https" {
+		return fmt.Errorf("invalid browser URL scheme: %s", parsedURL.Scheme)
+	}
+
+	if parsedURL.Host == "" || parsedURL.Hostname() == "" {
+		return fmt.Errorf("invalid browser URL: missing host")
+	}
+
+	if port := parsedURL.Port(); port != "" {
+		portNum, err := strconv.Atoi(port)
+		if err != nil || portNum < 1 || portNum > 65535 {
+			return fmt.Errorf("invalid browser URL port: %s", port)
+		}
+	}
+
+	return nil
 }
 
 // isRunningInContainer detects if we're running inside a Docker container
@@ -48,6 +78,10 @@ func isRunningInContainer() bool {
 func FetchWithBrowser(url string, timeout int, proxyProfile *config.ProxyProfile) (string, error) {
 	if timeout <= 0 {
 		timeout = 30 // Default timeout
+	}
+
+	if err := validateBrowserURL(url); err != nil {
+		return "", err
 	}
 
 	logging.Debugf("DMM Browser: Starting browser for %s (timeout: %ds)", url, timeout)

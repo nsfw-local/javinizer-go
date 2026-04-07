@@ -4,7 +4,6 @@ import (
 	"os"
 	"testing"
 
-	"github.com/javinizer/javinizer-go/internal/config"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -110,180 +109,106 @@ func TestBasicAuth(t *testing.T) {
 	}
 }
 
-// TestFetchWithBrowser_Timeout verifies timeout handling with mocked server
-func TestFetchWithBrowser_Timeout(t *testing.T) {
-	if testing.Short() {
-		t.Skip("Skipping browser test in short mode")
+func TestValidateBrowserURL(t *testing.T) {
+	tests := []struct {
+		name        string
+		rawURL      string
+		wantErr     string
+		description string
+	}{
+		{
+			name:        "empty URL",
+			rawURL:      "",
+			wantErr:     "browser URL is required",
+			description: "Should reject empty URLs",
+		},
+		{
+			name:        "malformed URL",
+			rawURL:      "ht!tp://invalid-url",
+			wantErr:     "invalid browser URL",
+			description: "Should reject malformed URLs",
+		},
+		{
+			name:        "unsupported scheme",
+			rawURL:      "file:///tmp/test.html",
+			wantErr:     "invalid browser URL scheme",
+			description: "Should reject non-http schemes",
+		},
+		{
+			name:        "missing host",
+			rawURL:      "https:///path-only",
+			wantErr:     "invalid browser URL: missing host",
+			description: "Should reject URLs without a host",
+		},
+		{
+			name:        "invalid port",
+			rawURL:      "http://localhost:99999/invalid",
+			wantErr:     "invalid browser URL port: 99999",
+			description: "Should reject ports outside the valid range",
+		},
+		{
+			name:        "valid http URL",
+			rawURL:      "http://localhost:8080/path",
+			description: "Should accept valid http URLs",
+		},
+		{
+			name:        "valid https URL",
+			rawURL:      "https://video.dmm.co.jp/av/content/?id=test123",
+			description: "Should accept valid https URLs",
+		},
 	}
 
-	// Note: These tests verify timeout parameter handling logic.
-	// They intentionally use invalid URLs to test error paths without real network calls.
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validateBrowserURL(tt.rawURL)
+			if tt.wantErr == "" {
+				assert.NoError(t, err, tt.description)
+				return
+			}
+
+			if assert.Error(t, err, tt.description) {
+				assert.ErrorContains(t, err, tt.wantErr, tt.description)
+			}
+		})
+	}
+}
+
+func TestFetchWithBrowser_FailsFastOnInvalidURL(t *testing.T) {
 	tests := []struct {
 		name        string
 		url         string
 		timeout     int
-		expectError bool
+		wantErr     string
 		description string
 	}{
 		{
-			name:        "zero timeout uses default",
-			url:         "http://localhost:99999/invalid", // Invalid URL to avoid network calls
-			timeout:     0,
-			expectError: true,
-			description: "Should use default timeout when timeout is 0",
+			name:        "malformed URL",
+			url:         "ht!tp://invalid-url",
+			timeout:     5,
+			wantErr:     "invalid browser URL",
+			description: "Should fail before browser launch on malformed URLs",
 		},
 		{
-			name:        "negative timeout uses default",
-			url:         "http://localhost:99999/invalid", // Invalid URL to avoid network calls
-			timeout:     -1,
-			expectError: true,
-			description: "Should use default timeout when timeout is negative",
+			name:        "empty URL",
+			url:         "",
+			timeout:     5,
+			wantErr:     "browser URL is required",
+			description: "Should fail before browser launch on empty URLs",
+		},
+		{
+			name:        "invalid port with zero timeout",
+			url:         "http://localhost:99999",
+			timeout:     0,
+			wantErr:     "invalid browser URL port: 99999",
+			description: "Should validate the URL before attempting browser startup",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			_, err := FetchWithBrowser(tt.url, tt.timeout, nil)
-
-			if tt.expectError {
-				assert.Error(t, err, tt.description)
-				t.Logf("Browser fetch correctly returned error: %v", err)
-			}
-		})
-	}
-}
-
-// TestFetchWithBrowser_ProxyConfig verifies proxy configuration handling
-func TestFetchWithBrowser_ProxyConfig(t *testing.T) {
-	if testing.Short() {
-		t.Skip("Skipping browser test in short mode")
-	}
-
-	// Note: These tests verify proxy configuration is properly applied.
-	// Using invalid URLs to test error paths without real network/proxy calls.
-	tests := []struct {
-		name         string
-		proxyProfile *config.ProxyProfile
-		description  string
-	}{
-		{
-			name:         "nil proxy profile",
-			proxyProfile: nil,
-			description:  "Should handle nil proxy profile",
-		},
-		{
-			name: "empty proxy profile",
-			proxyProfile: &config.ProxyProfile{
-				URL: "",
-			},
-			description: "Should handle empty proxy profile",
-		},
-		{
-			name: "proxy profile with URL",
-			proxyProfile: &config.ProxyProfile{
-				URL: "http://proxy.example.com:8080",
-			},
-			description: "Should handle proxy profile with URL",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			// Use invalid URL to avoid real network calls
-			// This tests that proxy config doesn't cause panics in setup
-			_, err := FetchWithBrowser("http://localhost:99999/invalid", 2, tt.proxyProfile)
-			// We expect errors due to invalid URL, but no panics
-			assert.Error(t, err, "Should error on invalid URL")
-			t.Logf("Proxy config test completed: %v", err)
-		})
-	}
-}
-
-// TestFetchWithBrowser_ContainerMode verifies container mode detection
-func TestFetchWithBrowser_ContainerMode(t *testing.T) {
-	if testing.Short() {
-		t.Skip("Skipping browser test in short mode")
-	}
-
-	tests := []struct {
-		name        string
-		setup       func()
-		cleanup     func()
-		description string
-	}{
-		{
-			name: "with CHROME_BIN set",
-			setup: func() {
-				_ = os.Setenv("CHROME_BIN", "/usr/bin/chromium")
-			},
-			cleanup: func() {
-				_ = os.Unsetenv("CHROME_BIN")
-			},
-			description: "Should use container mode when CHROME_BIN is set",
-		},
-		{
-			name: "without container indicators",
-			setup: func() {
-				_ = os.Unsetenv("CHROME_BIN")
-				_ = os.Unsetenv("CHROME_PATH")
-			},
-			cleanup:     func() {},
-			description: "Should use standard mode when no container indicators",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			tt.setup()
-			defer tt.cleanup()
-
-			// Use invalid URL to avoid real network calls
-			// This tests container detection logic without launching browser
-			_, err := FetchWithBrowser("http://localhost:99999/invalid", 2, nil)
-			assert.Error(t, err, "Should error on invalid URL")
-			t.Logf("Container mode test completed: %v", err)
-		})
-	}
-}
-
-// TestFetchWithBrowser_InvalidURL verifies error handling for invalid URLs
-func TestFetchWithBrowser_InvalidURL(t *testing.T) {
-	if testing.Short() {
-		t.Skip("Skipping browser test in short mode")
-	}
-
-	tests := []struct {
-		name        string
-		url         string
-		expectError bool
-		description string
-	}{
-		{
-			name:        "malformed URL",
-			url:         "ht!tp://invalid-url",
-			expectError: true,
-			description: "Should return error for malformed URL",
-		},
-		{
-			name:        "empty URL",
-			url:         "",
-			expectError: true,
-			description: "Should return error for empty URL",
-		},
-		{
-			name:        "localhost (likely fails)",
-			url:         "http://localhost:99999",
-			expectError: true,
-			description: "Should handle unreachable URLs",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			_, err := FetchWithBrowser(tt.url, 5, nil)
-
-			if tt.expectError {
-				assert.Error(t, err, tt.description)
+			if assert.Error(t, err, tt.description) {
+				assert.ErrorContains(t, err, tt.wantErr, tt.description)
 			}
 		})
 	}
