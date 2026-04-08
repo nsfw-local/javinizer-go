@@ -155,7 +155,7 @@ func (s *Scraper) CanHandleURL(rawURL string) bool {
 		return false
 	}
 	host := strings.ToLower(u.Hostname())
-	return strings.HasSuffix(host, "libredmm.com")
+	return host == "libredmm.com" || strings.HasSuffix(host, ".libredmm.com")
 }
 
 // ExtractIDFromURL extracts the movie ID from a LibreDMM URL
@@ -301,10 +301,13 @@ func (s *Scraper) ValidateConfig(cfg *config.ScraperSettings) error {
 // ResolveDownloadProxyForHost declares LibreDMM-owned media hosts for downloader proxy routing.
 func (s *Scraper) ResolveDownloadProxyForHost(host string) (*config.ProxyConfig, *config.ProxyConfig, bool) {
 	host = strings.ToLower(strings.TrimSpace(host))
-	if host == "" || !strings.HasSuffix(host, "libredmm.com") {
+	if host == "" {
 		return nil, nil, false
 	}
-	return s.downloadProxy, s.proxyOverride, true
+	if host == "libredmm.com" || strings.HasSuffix(host, ".libredmm.com") {
+		return s.downloadProxy, s.proxyOverride, true
+	}
+	return nil, nil, false
 }
 
 // ResolveSearchQuery prioritizes this scraper when the input is a LibreDMM URL.
@@ -640,7 +643,7 @@ func normalizeMovieURL(raw, base string) (string, bool) {
 		return "", false
 	}
 	host := strings.ToLower(parsed.Hostname())
-	if !strings.Contains(host, "libredmm.com") {
+	if host != "libredmm.com" && !strings.HasSuffix(host, ".libredmm.com") {
 		return "", false
 	}
 
@@ -756,7 +759,8 @@ func normalizeLibredmmScreenshotURL(raw string) string {
 	u.Fragment = ""
 
 	host := strings.ToLower(u.Hostname())
-	if strings.HasSuffix(host, "dmm.co.jp") || strings.HasSuffix(host, "dmm.com") {
+	if host == "dmm.co.jp" || strings.HasSuffix(host, ".dmm.co.jp") ||
+		host == "dmm.com" || strings.HasSuffix(host, ".dmm.com") {
 		segments := strings.Split(u.Path, "/")
 		for i, seg := range segments {
 			if seg == "" {

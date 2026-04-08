@@ -7,7 +7,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
-	"sync/atomic"
+	"sync"
 	"time"
 	"unicode"
 
@@ -44,7 +44,8 @@ type Scraper struct {
 	requestDelay    time.Duration
 	proxyOverride   *config.ProxyConfig
 	downloadProxy   *config.ProxyConfig
-	lastRequestTime atomic.Value
+	mu              sync.Mutex // protects lastRequestTime and rate limiting
+	lastRequestTime time.Time
 	settings        config.ScraperSettings // stores the full settings for Config() method
 }
 
@@ -97,7 +98,6 @@ func New(settings config.ScraperSettings, globalProxy *config.ProxyConfig, globa
 		downloadProxy: settings.DownloadProxy,
 		settings:      settings,
 	}
-	s.lastRequestTime.Store(time.Time{})
 
 	if usingProxy {
 		logging.Infof("JavBus: Using proxy %s", httpclient.SanitizeProxyURL(proxyCfg.URL))
@@ -363,8 +363,7 @@ func (s *Scraper) parseDetailPage(doc *goquery.Document, sourceURL, fallbackID s
 }
 
 func (s *Scraper) fetchPage(targetURL string) (string, int, error) {
-	s.waitForRateLimit()
-	defer s.updateLastRequestTime()
+	s.waitAndUpdateRateLimit()
 
 	resp, err := s.client.R().Get(targetURL)
 	if err != nil {
@@ -695,25 +694,16 @@ func parseDate(raw string) *time.Time {
 	return nil
 }
 
-func (s *Scraper) waitForRateLimit() {
-	if s.requestDelay <= 0 {
-		return
-	}
-	lastReq := s.lastRequestTime.Load()
-	if lastReq == nil {
-		return
-	}
-	lastTime, ok := lastReq.(time.Time)
-	if !ok || lastTime.IsZero() {
-		return
-	}
-	if elapsed := time.Since(lastTime); elapsed < s.requestDelay {
-		time.Sleep(s.requestDelay - elapsed)
-	}
-}
+func (s *Scraper) waitAndUpdateRateLimit() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 
-func (s *Scraper) updateLastRequestTime() {
-	s.lastRequestTime.Store(time.Now())
+	if s.requestDelay > 0 && !s.lastRequestTime.IsZero() {
+		if elapsed := time.Since(s.lastRequestTime); elapsed < s.requestDelay {
+			time.Sleep(s.requestDelay - elapsed)
+		}
+	}
+	s.lastRequestTime = time.Now()
 }
 
 func normalizeLanguage(lang string) string {

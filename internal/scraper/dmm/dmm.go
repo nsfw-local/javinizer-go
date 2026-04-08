@@ -82,8 +82,21 @@ func New(settings config.ScraperSettings, globalConfig *config.ScrapersConfig, c
 	// Create HTTP client via per-scraper NewHTTPClient (HTTP-01)
 	client, proxyProfile, err := NewHTTPClient(scraperCfg, &globalConfig.Proxy, globalConfig.FlareSolverr)
 	if err != nil {
-		// NewHTTPClient already logged and fell back; client is non-nil
-		logging.Debugf("DMM: Using fallback HTTP client: %v", err)
+		// Fallback: try without proxy
+		fallbackCfg := &config.ScraperSettings{
+			Enabled:    settings.Enabled,
+			Timeout:    30,
+			RateLimit:  0,
+			RetryCount: 3,
+			UserAgent:  settings.UserAgent,
+		}
+		var fallbackErr error
+		client, proxyProfile, fallbackErr = NewHTTPClient(fallbackCfg, nil, globalConfig.FlareSolverr)
+		if fallbackErr != nil {
+			logging.Warnf("DMM: Failed to create HTTP client: %v (fallback also failed: %v)", err, fallbackErr)
+			return nil
+		}
+		logging.Debugf("DMM: Using fallback HTTP client without proxy: %v", err)
 	}
 
 	// Log proxy usage if enabled
@@ -139,7 +152,8 @@ func (s *Scraper) CanHandleURL(rawURL string) bool {
 	if strings.HasPrefix(host, "pics.") || strings.HasPrefix(host, "awsimgsrc.") {
 		return false
 	}
-	return strings.HasSuffix(host, "dmm.co.jp") || strings.HasSuffix(host, "dmm.com")
+	return host == "dmm.co.jp" || strings.HasSuffix(host, ".dmm.co.jp") ||
+		host == "dmm.com" || strings.HasSuffix(host, ".dmm.com")
 }
 
 // ExtractIDFromURL extracts the movie ID from a DMM URL
@@ -190,10 +204,11 @@ func (s *Scraper) ResolveDownloadProxyForHost(host string) (*config.ProxyConfig,
 		return nil, nil, false
 	}
 	// Exclude LibreDMM hosts to avoid conflicting matches.
-	if strings.Contains(host, "libredmm") {
+	if host == "libredmm.com" || strings.HasSuffix(host, ".libredmm.com") {
 		return nil, nil, false
 	}
-	if strings.Contains(host, "dmm") {
+	if host == "dmm.co.jp" || strings.HasSuffix(host, ".dmm.co.jp") ||
+		host == "dmm.com" || strings.HasSuffix(host, ".dmm.com") {
 		return s.downloadProxy, s.proxyOverride, true
 	}
 	return nil, nil, false

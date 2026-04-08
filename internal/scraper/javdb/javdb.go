@@ -6,6 +6,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 	"unicode"
@@ -51,6 +52,7 @@ type Scraper struct {
 	downloadProxy   *config.ProxyConfig
 	lastRequestTime atomic.Value
 	settings        config.ScraperSettings // stores the full settings for Config() method
+	cookieMu        sync.Mutex             // protects cookie mutations on shared client
 }
 
 // New creates a new JavDB scraper.
@@ -68,12 +70,16 @@ func New(settings config.ScraperSettings, globalProxy *config.ProxyConfig, globa
 
 	// Create HTTP client and FlareSolverr via per-scraper NewHTTPClient (HTTP-01, HTTP-03)
 	client, flaresolverr, err := NewHTTPClient(javdbScraperCfg, globalProxy, globalFlareSolverr)
-	proxyEnabled := globalProxy.Enabled
+	proxyEnabled := false
+	var proxyCfg *config.ProxyProfile
+	if globalProxy != nil {
+		proxyEnabled = globalProxy.Enabled
+		proxyCfg = config.ResolveScraperProxy(*globalProxy, settings.Proxy)
+	}
 	if settings.Proxy != nil && settings.Proxy.Enabled {
 		proxyEnabled = true
 	}
-	proxyCfg := config.ResolveScraperProxy(*globalProxy, settings.Proxy)
-	usingProxy := err == nil && proxyEnabled && strings.TrimSpace(proxyCfg.URL) != ""
+	usingProxy := err == nil && proxyEnabled && proxyCfg != nil && strings.TrimSpace(proxyCfg.URL) != ""
 	if err != nil {
 		logging.Errorf("JavDB: Failed to create HTTP client with proxy/flaresolverr: %v, using explicit no-proxy fallback", err)
 		client = httpclient.NewRestyClientNoProxy(30*time.Second, 3)
@@ -96,9 +102,7 @@ func New(settings config.ScraperSettings, globalProxy *config.ProxyConfig, globa
 		settings:      settings,
 	}
 
-	s.lastRequestTime.Store(time.Time{})
-
-	if usingProxy {
+	if usingProxy && proxyCfg != nil {
 		logging.Infof("JavDB: Using proxy %s", httpclient.SanitizeProxyURL(proxyCfg.URL))
 	}
 	if settings.UseFlareSolverr && flaresolverr == nil {
@@ -451,9 +455,11 @@ func (s *Scraper) fetchPage(targetURL string) (string, error) {
 		logging.Debugf("JavDB: Resolving via FlareSolverr: %s", targetURL)
 		html, cookies, fsErr := s.flaresolverr.ResolveURL(targetURL)
 		if fsErr == nil {
+			s.cookieMu.Lock()
 			for _, c := range cookies {
 				s.client.SetCookie(&c)
 			}
+			s.cookieMu.Unlock()
 			if models.IsCloudflareChallengePage(html) {
 				return "", models.NewScraperChallengeError(
 					"JavDB",

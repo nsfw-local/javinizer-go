@@ -1789,10 +1789,10 @@ func TestWaitForRateLimit(t *testing.T) {
 	}
 
 	scraper := New(cfg, testGlobalProxy, testGlobalFlareSolverr)
-	scraper.updateLastRequestTime()
+	scraper.waitAndUpdateRateLimit()
 
 	start := time.Now()
-	scraper.waitForRateLimit()
+	scraper.waitAndUpdateRateLimit()
 	elapsed := time.Since(start)
 
 	assert.GreaterOrEqual(t, elapsed.Milliseconds(), int64(90))
@@ -1808,7 +1808,7 @@ func TestWaitForRateLimit_NoDelay(t *testing.T) {
 	scraper := New(cfg, testGlobalProxy, testGlobalFlareSolverr)
 
 	start := time.Now()
-	scraper.waitForRateLimit()
+	scraper.waitAndUpdateRateLimit()
 	elapsed := time.Since(start)
 
 	assert.Less(t, elapsed.Milliseconds(), int64(10))
@@ -1818,12 +1818,16 @@ func TestUpdateLastRequestTime(t *testing.T) {
 	cfg := createTestSettings(true)
 	scraper := New(cfg, testGlobalProxy, testGlobalFlareSolverr)
 
-	lastTime := scraper.lastRequestTime.Load().(time.Time)
+	scraper.mu.Lock()
+	lastTime := scraper.lastRequestTime
+	scraper.mu.Unlock()
 	assert.True(t, lastTime.IsZero())
 
-	scraper.updateLastRequestTime()
+	scraper.waitAndUpdateRateLimit()
 
-	updatedTime := scraper.lastRequestTime.Load().(time.Time)
+	scraper.mu.Lock()
+	updatedTime := scraper.lastRequestTime
+	scraper.mu.Unlock()
 	assert.False(t, updatedTime.IsZero())
 }
 

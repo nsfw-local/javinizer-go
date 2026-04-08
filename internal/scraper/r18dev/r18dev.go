@@ -7,7 +7,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
-	"sync/atomic"
+	"sync"
 	"time"
 	"unicode"
 
@@ -39,7 +39,8 @@ type Scraper struct {
 	respectRetryAfter bool
 	proxyOverride     *config.ProxyConfig
 	downloadProxy     *config.ProxyConfig
-	lastRequestTime   atomic.Value           // stores time.Time of last request for rate limiting
+	mu                sync.Mutex // protects lastRequestTime and rate limiting
+	lastRequestTime   time.Time
 	settings          config.ScraperSettings // stores the full settings for Config() method
 }
 
@@ -111,9 +112,6 @@ func New(settings config.ScraperSettings, globalProxy *config.ProxyConfig, globa
 		downloadProxy:     settings.DownloadProxy,
 		settings:          settings,
 	}
-
-	// Initialize lastRequestTime with zero time
-	scraper.lastRequestTime.Store(time.Time{})
 
 	if requestDelay > 0 {
 		logging.Infof("R18Dev: Rate limiting enabled with %v delay between requests", requestDelay)
@@ -257,35 +255,19 @@ func (s *Scraper) GetURL(id string) (string, error) {
 	return fmt.Sprintf(apiURL, normalized), nil
 }
 
-// waitForRateLimit enforces the request delay between requests
-func (s *Scraper) waitForRateLimit() {
-	if s.requestDelay == 0 {
-		return // No rate limiting configured
-	}
+func (s *Scraper) waitAndUpdateRateLimit() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 
-	// Get last request time
-	lastReq := s.lastRequestTime.Load()
-	if lastReq == nil {
-		return // First request, no need to wait
+	if s.requestDelay > 0 && !s.lastRequestTime.IsZero() {
+		elapsed := time.Since(s.lastRequestTime)
+		if elapsed < s.requestDelay {
+			waitTime := s.requestDelay - elapsed
+			logging.Debugf("R18: Rate limit wait: %v", waitTime)
+			time.Sleep(waitTime)
+		}
 	}
-
-	lastTime := lastReq.(time.Time)
-	if lastTime.IsZero() {
-		return // First request, no need to wait
-	}
-
-	// Calculate how long to wait
-	elapsed := time.Since(lastTime)
-	if elapsed < s.requestDelay {
-		waitTime := s.requestDelay - elapsed
-		logging.Debugf("R18: Rate limit wait: %v", waitTime)
-		time.Sleep(waitTime)
-	}
-}
-
-// updateLastRequestTime updates the timestamp of the last request
-func (s *Scraper) updateLastRequestTime() {
-	s.lastRequestTime.Store(time.Now())
+	s.lastRequestTime = time.Now()
 }
 
 // doRequestWithRetry performs an HTTP request with retry logic for rate limiting
@@ -294,16 +276,11 @@ func (s *Scraper) doRequestWithRetry(url string) (*resty.Response, error) {
 	var err error
 
 	for attempt := 0; attempt <= s.maxRetries; attempt++ {
-		// Wait for rate limit before making request
-		s.waitForRateLimit()
+		s.waitAndUpdateRateLimit()
 
-		// Make the request
 		resp, err = s.client.R().
-			SetHeader("Accept-Encoding", ""). // Disable compression to avoid issues
+			SetHeader("Accept-Encoding", "").
 			Get(url)
-
-		// Update last request time
-		s.updateLastRequestTime()
 
 		// Handle rate limiting
 		if resp != nil && (resp.StatusCode() == 429 || resp.StatusCode() == 503) {
@@ -389,7 +366,7 @@ func (s *Scraper) Search(id string) (*models.ScraperResult, error) {
 					returnedDVDID := strings.ToLower(strings.ReplaceAll(lookupData.DVDID, "-", ""))
 					expectedDVDID := idVariation
 
-					if returnedDVDID == expectedDVDID || lookupData.ContentID != "" {
+					if returnedDVDID == expectedDVDID && lookupData.ContentID != "" {
 						contentID = lookupData.ContentID
 						successfulVariation = idVariation
 						logging.Debugf("R18: ✓ Resolved %s (tried: %s) to content-id: %s", id, idVariation, contentID)

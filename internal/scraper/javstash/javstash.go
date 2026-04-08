@@ -196,7 +196,7 @@ func (s *Scraper) CanHandleURL(rawURL string) bool {
 		return false
 	}
 	host := strings.ToLower(u.Hostname())
-	return strings.HasSuffix(host, "javstash.org")
+	return host == "javstash.org" || strings.HasSuffix(host, ".javstash.org")
 }
 
 func (s *Scraper) ExtractIDFromURL(urlStr string) (string, error) {

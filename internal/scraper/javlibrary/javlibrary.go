@@ -6,6 +6,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/go-resty/resty/v2"
@@ -31,6 +32,7 @@ type Scraper struct {
 	proxyOverride *config.ProxyConfig
 	downloadProxy *config.ProxyConfig
 	settings      config.ScraperSettings // stores the full settings for Config() method
+	cookieMu      sync.Mutex             // protects cookie mutations on shared client
 }
 
 // New creates a new JavLibrary scraper.
@@ -50,8 +52,12 @@ func New(settings config.ScraperSettings, globalProxy *config.ProxyConfig, globa
 
 	client, flaresolverr, err := NewHTTPClient(configForHTTP, globalProxy, globalFlareSolverr)
 	// Resolve proxy to check if it's actually being used
-	resolvedProxy := config.ResolveScraperProxy(*globalProxy, settings.Proxy)
-	usingProxy := err == nil && globalProxy != nil && globalProxy.Enabled && strings.TrimSpace(resolvedProxy.URL) != ""
+	var resolvedProxy *config.ProxyProfile
+	usingProxy := false
+	if globalProxy != nil {
+		resolvedProxy = config.ResolveScraperProxy(*globalProxy, settings.Proxy)
+		usingProxy = err == nil && globalProxy.Enabled && strings.TrimSpace(resolvedProxy.URL) != ""
+	}
 	if err != nil {
 		logging.Errorf("JavLibrary: Failed to create HTTP client with proxy/flaresolverr: %v, using explicit no-proxy fallback", err)
 		client = httpclient.NewRestyClientNoProxy(30*time.Second, 3)
@@ -76,7 +82,7 @@ func New(settings config.ScraperSettings, globalProxy *config.ProxyConfig, globa
 	userAgent := config.ResolveScraperUserAgent(settings.UserAgent)
 	client.SetHeader("User-Agent", userAgent)
 
-	if usingProxy {
+	if usingProxy && resolvedProxy != nil {
 		logging.Infof("JavLibrary: Using proxy %s", httpclient.SanitizeProxyURL(resolvedProxy.URL))
 	}
 
@@ -129,7 +135,8 @@ func (s *Scraper) ResolveDownloadProxyForHost(host string) (*config.ProxyConfig,
 		return nil, nil, false
 	}
 	// JavLibrary uses c.impact.jp for its image CDN alongside javlibrary.com
-	if strings.Contains(host, "javlibrary") || strings.Contains(host, "c.impact.jp") {
+	if host == "javlibrary.com" || strings.HasSuffix(host, ".javlibrary.com") ||
+		host == "c.impact.jp" || strings.HasSuffix(host, ".c.impact.jp") {
 		return s.downloadProxy, s.proxyOverride, true
 	}
 	return nil, nil, false
@@ -142,7 +149,7 @@ func (s *Scraper) CanHandleURL(rawURL string) bool {
 		return false
 	}
 	host := strings.ToLower(u.Hostname())
-	return strings.HasSuffix(host, "javlibrary.com")
+	return host == "javlibrary.com" || strings.HasSuffix(host, ".javlibrary.com")
 }
 
 func (s *Scraper) ExtractIDFromURL(urlStr string) (string, error) {
@@ -281,10 +288,12 @@ func (s *Scraper) fetchPage(url string) (string, error) {
 					"JavLibrary returned a Cloudflare challenge page (request blocked; check FlareSolverr/proxy configuration)",
 				)
 			}
-			// Apply cookies to client for subsequent requests
+			// Apply cookies to client for subsequent requests (thread-safe)
+			s.cookieMu.Lock()
 			for _, c := range cookies {
 				s.client.SetCookie(&c)
 			}
+			s.cookieMu.Unlock()
 			return html, nil
 		}
 		logging.Warnf("JavLibrary: FlareSolverr failed, falling back to direct request result: %v", fsErr)

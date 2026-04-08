@@ -141,10 +141,13 @@ func (s *Scraper) ValidateConfig(cfg *config.ScraperSettings) error {
 // ResolveDownloadProxyForHost declares FC2-owned media hosts for downloader proxy routing.
 func (s *Scraper) ResolveDownloadProxyForHost(host string) (*config.ProxyConfig, *config.ProxyConfig, bool) {
 	host = strings.ToLower(strings.TrimSpace(host))
-	if host == "" || !strings.HasSuffix(host, "fc2.com") {
+	if host == "" {
 		return nil, nil, false
 	}
-	return s.downloadProxy, s.proxyOverride, true
+	if host == "fc2.com" || strings.HasSuffix(host, ".fc2.com") {
+		return s.downloadProxy, s.proxyOverride, true
+	}
+	return nil, nil, false
 }
 
 // ResolveSearchQuery normalizes FC2/PPV identifiers from free-form input.
@@ -154,7 +157,7 @@ func (s *Scraper) CanHandleURL(rawURL string) bool {
 		return false
 	}
 	host := strings.ToLower(u.Hostname())
-	return strings.HasSuffix(host, "fc2.com")
+	return host == "fc2.com" || strings.HasSuffix(host, ".fc2.com")
 }
 
 func (s *Scraper) ExtractIDFromURL(urlStr string) (string, error) {

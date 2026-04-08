@@ -139,10 +139,13 @@ func (s *Scraper) ValidateConfig(cfg *config.ScraperSettings) error {
 // ResolveDownloadProxyForHost declares Jav321-owned media hosts for downloader proxy routing.
 func (s *Scraper) ResolveDownloadProxyForHost(host string) (*config.ProxyConfig, *config.ProxyConfig, bool) {
 	host = strings.ToLower(strings.TrimSpace(host))
-	if host == "" || !strings.HasSuffix(host, "jav321.com") {
+	if host == "" {
 		return nil, nil, false
 	}
-	return s.downloadProxy, s.proxyOverride, true
+	if host == "jav321.com" || strings.HasSuffix(host, ".jav321.com") {
+		return s.downloadProxy, s.proxyOverride, true
+	}
+	return nil, nil, false
 }
 
 // GetURL returns the detail page URL for an ID.
@@ -152,7 +155,7 @@ func (s *Scraper) CanHandleURL(rawURL string) bool {
 		return false
 	}
 	host := strings.ToLower(u.Hostname())
-	return strings.HasSuffix(host, "jav321.com")
+	return host == "jav321.com" || strings.HasSuffix(host, ".jav321.com")
 }
 
 func (s *Scraper) ExtractIDFromURL(urlStr string) (string, error) {

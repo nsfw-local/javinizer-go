@@ -146,10 +146,13 @@ func (s *Scraper) ValidateConfig(cfg *config.ScraperSettings) error {
 // ResolveDownloadProxyForHost declares MGStage-owned media hosts for downloader proxy routing.
 func (s *Scraper) ResolveDownloadProxyForHost(host string) (*config.ProxyConfig, *config.ProxyConfig, bool) {
 	host = strings.ToLower(strings.TrimSpace(host))
-	if host == "" || !strings.Contains(host, "mgstage") {
+	if host == "" {
 		return nil, nil, false
 	}
-	return s.downloadProxy, s.proxyOverride, true
+	if host == "mgstage.com" || strings.HasSuffix(host, ".mgstage.com") {
+		return s.downloadProxy, s.proxyOverride, true
+	}
+	return nil, nil, false
 }
 
 // ResolveSearchQuery normalizes MGStage-specific IDs from free-form input.
@@ -161,7 +164,7 @@ func (s *Scraper) CanHandleURL(rawURL string) bool {
 		return false
 	}
 	host := strings.ToLower(u.Hostname())
-	return strings.HasSuffix(host, "mgstage.com")
+	return host == "mgstage.com" || strings.HasSuffix(host, ".mgstage.com")
 }
 
 func (s *Scraper) ExtractIDFromURL(urlStr string) (string, error) {

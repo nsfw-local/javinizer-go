@@ -146,7 +146,8 @@ func (s *Scraper) ResolveDownloadProxyForHost(host string) (*config.ProxyConfig,
 	if host == "" {
 		return nil, nil, false
 	}
-	if strings.HasSuffix(host, "dl.getchu.com") || strings.HasSuffix(host, "getchu.com") {
+	if host == "dl.getchu.com" || strings.HasSuffix(host, ".dl.getchu.com") ||
+		host == "getchu.com" || strings.HasSuffix(host, ".getchu.com") {
 		return s.downloadProxy, s.proxyOverride, true
 	}
 	return nil, nil, false
@@ -159,7 +160,8 @@ func (s *Scraper) CanHandleURL(rawURL string) bool {
 		return false
 	}
 	host := strings.ToLower(u.Hostname())
-	return strings.HasSuffix(host, "dl.getchu.com") || strings.HasSuffix(host, "getchu.com")
+	return host == "dl.getchu.com" || strings.HasSuffix(host, ".dl.getchu.com") ||
+		host == "getchu.com" || strings.HasSuffix(host, ".getchu.com")
 }
 
 func (s *Scraper) ExtractIDFromURL(urlStr string) (string, error) {

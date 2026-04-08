@@ -141,10 +141,13 @@ func (s *Scraper) ValidateConfig(cfg *config.ScraperSettings) error {
 // ResolveDownloadProxyForHost declares TokyoHot-owned media hosts for downloader proxy routing.
 func (s *Scraper) ResolveDownloadProxyForHost(host string) (*config.ProxyConfig, *config.ProxyConfig, bool) {
 	host = strings.ToLower(strings.TrimSpace(host))
-	if host == "" || !strings.HasSuffix(host, "tokyo-hot.com") {
+	if host == "" {
 		return nil, nil, false
 	}
-	return s.downloadProxy, s.proxyOverride, true
+	if host == "tokyo-hot.com" || strings.HasSuffix(host, ".tokyo-hot.com") {
+		return s.downloadProxy, s.proxyOverride, true
+	}
+	return nil, nil, false
 }
 
 // GetURL finds the TokyoHot detail URL for an ID.
@@ -154,7 +157,7 @@ func (s *Scraper) CanHandleURL(rawURL string) bool {
 		return false
 	}
 	host := strings.ToLower(u.Hostname())
-	return strings.HasSuffix(host, "tokyo-hot.com")
+	return host == "tokyo-hot.com" || strings.HasSuffix(host, ".tokyo-hot.com")
 }
 
 func (s *Scraper) ExtractIDFromURL(urlStr string) (string, error) {
