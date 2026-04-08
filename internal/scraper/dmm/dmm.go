@@ -68,6 +68,11 @@ type Scraper struct {
 
 // New creates a new DMM scraper
 func New(settings config.ScraperSettings, globalConfig *config.ScrapersConfig, contentIDRepo *database.ContentIDMappingRepository) *Scraper {
+	// Guard against nil globalConfig
+	if globalConfig == nil {
+		globalConfig = &config.ScrapersConfig{}
+	}
+
 	// Construct ScraperConfig from ScraperSettings for HTTP client creation
 	scraperCfg := &config.ScraperSettings{
 		Enabled:       settings.Enabled,
