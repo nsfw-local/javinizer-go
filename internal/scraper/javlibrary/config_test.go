@@ -217,3 +217,115 @@ func TestValidateConfig(t *testing.T) {
 		})
 	}
 }
+
+func TestGetterMethods(t *testing.T) {
+	proxyConfig := &config.ProxyConfig{
+		Enabled: true,
+		Profile: "default",
+	}
+	downloadProxyConfig := &config.ProxyConfig{
+		Enabled: true,
+		Profile: "download",
+	}
+
+	tests := []struct {
+		name           string
+		config         *JavLibraryConfig
+		getter         string
+		expectedResult interface{}
+	}{
+		{
+			name:           "IsEnabled returns true when enabled",
+			config:         &JavLibraryConfig{Enabled: true},
+			getter:         "IsEnabled",
+			expectedResult: true,
+		},
+		{
+			name:           "IsEnabled returns false when disabled",
+			config:         &JavLibraryConfig{Enabled: false},
+			getter:         "IsEnabled",
+			expectedResult: false,
+		},
+		{
+			name:           "GetUserAgent returns custom user agent",
+			config:         &JavLibraryConfig{UserAgent: "custom-agent/1.0"},
+			getter:         "GetUserAgent",
+			expectedResult: "custom-agent/1.0",
+		},
+		{
+			name:           "GetUserAgent returns empty string when not set",
+			config:         &JavLibraryConfig{UserAgent: ""},
+			getter:         "GetUserAgent",
+			expectedResult: "",
+		},
+		{
+			name:           "GetRequestDelay returns configured delay",
+			config:         &JavLibraryConfig{RequestDelay: 1000},
+			getter:         "GetRequestDelay",
+			expectedResult: 1000,
+		},
+		{
+			name:           "GetRequestDelay returns 0 when not set",
+			config:         &JavLibraryConfig{RequestDelay: 0},
+			getter:         "GetRequestDelay",
+			expectedResult: 0,
+		},
+		{
+			name:           "GetMaxRetries always returns 0",
+			config:         &JavLibraryConfig{},
+			getter:         "GetMaxRetries",
+			expectedResult: 0,
+		},
+		{
+			name:           "GetProxy returns proxy config when set",
+			config:         &JavLibraryConfig{Proxy: proxyConfig},
+			getter:         "GetProxy",
+			expectedResult: proxyConfig,
+		},
+		{
+			name:           "GetProxy returns nil when not set",
+			config:         &JavLibraryConfig{Proxy: nil},
+			getter:         "GetProxy",
+			expectedResult: nil,
+		},
+		{
+			name:           "GetDownloadProxy returns download proxy config when set",
+			config:         &JavLibraryConfig{DownloadProxy: downloadProxyConfig},
+			getter:         "GetDownloadProxy",
+			expectedResult: downloadProxyConfig,
+		},
+		{
+			name:           "GetDownloadProxy returns nil when not set",
+			config:         &JavLibraryConfig{DownloadProxy: nil},
+			getter:         "GetDownloadProxy",
+			expectedResult: nil,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			switch tt.getter {
+			case "IsEnabled":
+				assert.Equal(t, tt.expectedResult, tt.config.IsEnabled())
+			case "GetUserAgent":
+				assert.Equal(t, tt.expectedResult, tt.config.GetUserAgent())
+			case "GetRequestDelay":
+				assert.Equal(t, tt.expectedResult, tt.config.GetRequestDelay())
+			case "GetMaxRetries":
+				assert.Equal(t, tt.expectedResult, tt.config.GetMaxRetries())
+			case "GetProxy":
+				if tt.expectedResult == nil {
+					assert.Nil(t, tt.config.GetProxy())
+				} else {
+					assert.Equal(t, tt.expectedResult, tt.config.GetProxy())
+				}
+			case "GetDownloadProxy":
+				if tt.expectedResult == nil {
+					assert.Nil(t, tt.config.GetDownloadProxy())
+				} else {
+					assert.Equal(t, tt.expectedResult, tt.config.GetDownloadProxy())
+				}
+			}
+		})
+	}
+}

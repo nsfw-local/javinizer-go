@@ -78,3 +78,74 @@ func TestBatchScrape_InvalidPresetReturnsBadRequest(t *testing.T) {
 	router.ServeHTTP(w, req)
 	assert.Equal(t, 400, w.Code)
 }
+
+func TestDeleteBatchJob_Success(t *testing.T) {
+	cfg := &config.Config{}
+	deps := createTestDeps(t, cfg, "")
+
+	job := deps.JobQueue.CreateJob([]string{"/path/to/IPX-700.mp4"})
+	job.MarkCompleted()
+
+	router := gin.New()
+	router.DELETE("/batch/:id", deleteBatchJob(deps))
+
+	req := httptest.NewRequest("DELETE", "/batch/"+job.ID, nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, 200, w.Code)
+}
+
+func TestDeleteBatchJob_NotFound(t *testing.T) {
+	cfg := &config.Config{}
+	deps := createTestDeps(t, cfg, "")
+
+	router := gin.New()
+	router.DELETE("/batch/:id", deleteBatchJob(deps))
+
+	req := httptest.NewRequest("DELETE", "/batch/nonexistent-id", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, 404, w.Code)
+}
+
+func TestDeleteBatchJob_RunningJobRejected(t *testing.T) {
+	cfg := &config.Config{}
+	deps := createTestDeps(t, cfg, "")
+
+	job := deps.JobQueue.CreateJob([]string{"/path/to/IPX-700.mp4"})
+	job.Status = worker.JobStatusRunning
+
+	router := gin.New()
+	router.DELETE("/batch/:id", deleteBatchJob(deps))
+
+	req := httptest.NewRequest("DELETE", "/batch/"+job.ID, nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, 400, w.Code)
+}
+
+func TestListBatchJobs_Success(t *testing.T) {
+	cfg := &config.Config{}
+	deps := createTestDeps(t, cfg, "")
+
+	deps.JobQueue.CreateJob([]string{"/path/to/IPX-700.mp4"})
+	deps.JobQueue.CreateJob([]string{"/path/to/IPX-701.mp4"})
+
+	router := gin.New()
+	router.GET("/batch", listBatchJobs(deps))
+
+	req := httptest.NewRequest("GET", "/batch", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, 200, w.Code)
+
+	var response map[string]interface{}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &response))
+	jobs, ok := response["jobs"].([]interface{})
+	require.True(t, ok)
+	assert.GreaterOrEqual(t, len(jobs), 2)
+}

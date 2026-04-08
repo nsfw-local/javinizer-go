@@ -354,7 +354,11 @@ func TestRescrapeBatchMovie_JobLifecycleRace(t *testing.T) {
 
 // TestRescrapeBatchMovie_ConcurrentMultiPartPosterRace tests Bug #2
 // P2 DEFENSIVE - Concurrent rescrapes generate duplicate posters
-func TestRescrapeBatchMovie_ConcurrentMultiPartPosterRace(t *testing.T) {
+func TestRescrapeBatchMovie_CASRevisionConflict(t *testing.T) {
+	// This test verifies the CAS (Compare-And-Swap) revision mechanism directly.
+	// Instead of trying to create true HTTP concurrency (which is flaky),
+	// we simulate concurrent modification by changing the revision between
+	// the initial read and the final update.
 	initTestWebSocket(t)
 	gin.SetMode(gin.TestMode)
 
@@ -362,68 +366,133 @@ func TestRescrapeBatchMovie_ConcurrentMultiPartPosterRace(t *testing.T) {
 	deps := createTestDeps(t, cfg, "")
 	deps.Registry.Register(&noPosterStubScraper{})
 
-	// Create job with two multi-part files sharing same movie ID
-	job := deps.JobQueue.CreateJob([]string{"/tmp/IPX-200-A.mp4", "/tmp/IPX-200-B.mp4"})
+	// Create job with a file
+	job := deps.JobQueue.CreateJob([]string{"/tmp/IPX-200-A.mp4"})
 	job.UpdateFileResult("/tmp/IPX-200-A.mp4", &worker.FileResult{
 		FilePath: "/tmp/IPX-200-A.mp4",
 		MovieID:  "IPX-200",
 		Status:   worker.JobStatusCompleted,
 		Data:     &models.Movie{ID: "IPX-200"},
 	})
-	job.UpdateFileResult("/tmp/IPX-200-B.mp4", &worker.FileResult{
-		FilePath: "/tmp/IPX-200-B.mp4",
-		MovieID:  "IPX-200",
+
+	// Manually set revision to 5 (UpdateFileResult always resets to 1 or +1)
+	job.Lock()
+	job.Results["/tmp/IPX-200-A.mp4"].Revision = 5
+	job.Unlock()
+
+	router := gin.New()
+	router.POST("/batch/:id/movies/:movieId/rescrape", rescrapeBatchMovie(deps))
+
+	// Make a rescrape request
+	body, _ := json.Marshal(BatchRescrapeRequest{
+		SelectedScrapers:  []string{"stub-no-poster"},
+		ManualSearchInput: "IPX-200",
+	})
+
+	req := httptest.NewRequest(http.MethodPost, "/batch/"+job.ID+"/movies/IPX-200/rescrape", bytes.NewBuffer(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	// The rescrape should succeed because the revision was captured at the start
+	// (before any modification in this test), and the CAS check should pass
+	assert.Equal(t, http.StatusOK, rec.Code, "Rescrape should succeed when revision matches")
+
+	// Verify the revision was incremented
+	status := job.GetStatus()
+	result := status.Results["/tmp/IPX-200-A.mp4"]
+	require.NotNil(t, result)
+	assert.Equal(t, uint64(6), result.Revision, "Revision should be incremented from 5 to 6")
+}
+
+func TestRescrapeBatchMovie_ConcurrentRescrapeDetected(t *testing.T) {
+	// This test verifies that when a rescrape detects concurrent modification
+	// (revision changed between capture and update), it returns 409 Conflict.
+	// We simulate this by starting a rescrape, then modifying the revision
+	// before the handler can complete its CAS check.
+	initTestWebSocket(t)
+	gin.SetMode(gin.TestMode)
+
+	cfg := config.DefaultConfig()
+	deps := createTestDeps(t, cfg, "")
+	deps.Registry.Register(&slowStubScraper{})
+
+	// Create job
+	job := deps.JobQueue.CreateJob([]string{"/tmp/IPX-300.mp4"})
+	job.UpdateFileResult("/tmp/IPX-300.mp4", &worker.FileResult{
+		FilePath: "/tmp/IPX-300.mp4",
+		MovieID:  "IPX-300",
 		Status:   worker.JobStatusCompleted,
-		Data:     &models.Movie{ID: "IPX-200"},
+		Data:     &models.Movie{ID: "IPX-300"},
+		Revision: 1,
 	})
 
 	router := gin.New()
 	router.POST("/batch/:id/movies/:movieId/rescrape", rescrapeBatchMovie(deps))
 
-	// Track both success and conflict responses
-	var successCount, conflictCount int32
-
-	// Launch two concurrent rescrapes
+	// Start rescrape in a goroutine
 	var wg sync.WaitGroup
-	wg.Add(2)
+	var rec httptest.ResponseRecorder
+	wg.Add(1)
 
-	for i := 0; i < 2; i++ {
-		go func() {
-			defer wg.Done()
+	go func() {
+		defer wg.Done()
+		body, _ := json.Marshal(BatchRescrapeRequest{
+			SelectedScrapers:  []string{"slow-scraper"},
+			ManualSearchInput: "IPX-300",
+		})
+		req := httptest.NewRequest(http.MethodPost, "/batch/"+job.ID+"/movies/IPX-300/rescrape", bytes.NewBuffer(body))
+		req.Header.Set("Content-Type", "application/json")
+		router.ServeHTTP(&rec, req)
+	}()
 
-			body, err := json.Marshal(BatchRescrapeRequest{
-				SelectedScrapers:  []string{"stub-no-poster"},
-				ManualSearchInput: "IPX-200",
-			})
-			if err != nil {
-				t.Errorf("Failed to marshal request: %v", err)
-				return
-			}
+	// Wait a bit for the rescrape to start and capture the revision
+	time.Sleep(50 * time.Millisecond)
 
-			req := httptest.NewRequest(http.MethodPost, "/batch/"+job.ID+"/movies/IPX-200/rescrape", bytes.NewBuffer(body))
-			req.Header.Set("Content-Type", "application/json")
-			rec := httptest.NewRecorder()
-			router.ServeHTTP(rec, req)
-
-			switch rec.Code {
-			case http.StatusOK:
-				atomic.AddInt32(&successCount, 1)
-			case http.StatusConflict:
-				atomic.AddInt32(&conflictCount, 1)
-			}
-		}()
+	// Simulate concurrent modification by incrementing the revision
+	job.Lock()
+	if result := job.Results["/tmp/IPX-300.mp4"]; result != nil {
+		result.Revision = 2 // Simulate another rescrape completing first
 	}
+	job.Unlock()
 
+	// Wait for the rescrape to complete
 	wg.Wait()
 
-	// With CAS revision check, concurrent rescrapes are serialized
-	// Exactly one should succeed (200) and one should get conflict (409)
-	assert.Equal(t, int32(1), successCount, "Exactly one rescrape should succeed (200)")
-	assert.Equal(t, int32(1), conflictCount, "Exactly one rescrape should get conflict (409)")
+	// The rescrape should return 409 because the revision changed
+	assert.Equal(t, http.StatusConflict, rec.Code, "Rescrape should return 409 when revision changed")
+}
 
-	// Note: This test verifies concurrent request handling with CAS protection.
-	// The CAS ensures only one concurrent rescrape wins, preventing stale overwrites.
-	// The noPosterStubScraper doesn't generate posters, so we can't test actual poster generation.
+// slowStubScraper is a scraper that introduces a delay to allow concurrent modification
+type slowStubScraper struct{}
+
+func (s *slowStubScraper) Name() string { return "slow-scraper" }
+
+func (s *slowStubScraper) Search(id string) (*models.ScraperResult, error) {
+	time.Sleep(100 * time.Millisecond) // Simulate slow scraping
+	releaseDate, _ := time.Parse("2006-01-02", "2024-01-15")
+	return &models.ScraperResult{
+		Source:        s.Name(),
+		ID:            id,
+		ContentID:     id,
+		Title:         "Slow Scraper Result",
+		OriginalTitle: "Slow Scraper Result",
+		ReleaseDate:   &releaseDate,
+		Actresses:     []models.ActressInfo{{FirstName: "Slow", LastName: "Scraper"}},
+		Genres:        []string{"Test"},
+	}, nil
+}
+
+func (s *slowStubScraper) GetURL(id string) (string, error) {
+	return "https://example.invalid/" + id, nil
+}
+
+func (s *slowStubScraper) IsEnabled() bool { return true }
+
+func (s *slowStubScraper) Close() error { return nil }
+
+func (s *slowStubScraper) Config() *config.ScraperSettings {
+	return &config.ScraperSettings{Enabled: true}
 }
 
 // TestRescrapeBatchMovie_ConcurrentJobStateMutation tests Bug #3

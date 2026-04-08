@@ -1350,3 +1350,162 @@ func TestNormalizePathForPlatform_NoOp(t *testing.T) {
 	result := normalizePathForPlatform(input)
 	assert.Equal(t, input, result, "Should be no-op on non-Windows")
 }
+
+func TestValidateScanPath_DenylistPrefix(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Unix-specific test")
+	}
+
+	tempDir := t.TempDir()
+
+	securityCfg := &config.SecurityConfig{
+		AllowedDirectories: []string{tempDir},
+		DeniedDirectories:  []string{},
+		MaxFilesPerScan:    10000,
+		ScanTimeoutSeconds: 30,
+	}
+
+	t.Run("/devmedia is NOT blocked (prefix collision with /dev)", func(t *testing.T) {
+		devmediaDir := filepath.Join(tempDir, "devmedia")
+		require.NoError(t, os.Mkdir(devmediaDir, 0755))
+
+		_, err := validateScanPath(devmediaDir, securityCfg)
+		require.NoError(t, err, "Path /devmedia should not be blocked by /dev denylist prefix")
+	})
+
+	t.Run("/dev/null IS blocked (within /dev)", func(t *testing.T) {
+		securityCfgAll := &config.SecurityConfig{
+			AllowedDirectories: []string{"/"},
+			DeniedDirectories:  []string{},
+			MaxFilesPerScan:    10000,
+			ScanTimeoutSeconds: 30,
+		}
+		if _, err := os.Stat("/dev/null"); os.IsNotExist(err) {
+			t.Skip("/dev/null doesn't exist on this system")
+		}
+		_, err := validateScanPath("/dev/null", securityCfgAll)
+		require.Error(t, err)
+		assert.True(t, errors.Is(err, apperrors.ErrPathInDenylist),
+			"Expected ErrPathInDenylist for /dev/null, got %v", err)
+	})
+
+	t.Run("/sys/kernel IS blocked (within /sys)", func(t *testing.T) {
+		securityCfgAll := &config.SecurityConfig{
+			AllowedDirectories: []string{"/"},
+			DeniedDirectories:  []string{},
+			MaxFilesPerScan:    10000,
+			ScanTimeoutSeconds: 30,
+		}
+		if _, err := os.Stat("/sys/kernel"); os.IsNotExist(err) {
+			t.Skip("/sys/kernel doesn't exist on this system")
+		}
+		_, err := validateScanPath("/sys/kernel", securityCfgAll)
+		require.Error(t, err)
+		assert.True(t, errors.Is(err, apperrors.ErrPathInDenylist),
+			"Expected ErrPathInDenylist for /sys/kernel, got %v", err)
+	})
+
+	t.Run("custom denylist with prefix collision works correctly", func(t *testing.T) {
+		customDeniedDir := filepath.Join(tempDir, "custom")
+		require.NoError(t, os.Mkdir(customDeniedDir, 0755))
+
+		customDeniedPath := filepath.Join(tempDir, "custombackup")
+		require.NoError(t, os.Mkdir(customDeniedPath, 0755))
+
+		cfg := &config.SecurityConfig{
+			AllowedDirectories: []string{tempDir},
+			DeniedDirectories:  []string{customDeniedDir},
+			MaxFilesPerScan:    10000,
+			ScanTimeoutSeconds: 30,
+		}
+
+		_, err := validateScanPath(customDeniedPath, cfg)
+		require.NoError(t, err, "custombackup should not be blocked by custom denylist")
+	})
+}
+
+func TestIsPathWithin_ComponentAware(t *testing.T) {
+	tests := []struct {
+		name     string
+		path     string
+		parent   string
+		expected bool
+	}{
+		{"exact match", "/dev", "/dev", true},
+		{"within /dev", "/dev/null", "/dev", true},
+		{"within /dev nested", "/dev/fd/0", "/dev", true},
+		{"prefix collision /devmedia", "/devmedia", "/dev", false},
+		{"prefix collision /devtools", "/devtools", "/dev", false},
+		{"prefix collision /sysinfo", "/sysinfo", "/sys", false},
+		{"within /sys", "/sys/kernel", "/sys", true},
+		{"no match different path", "/home", "/dev", false},
+		{"trailing slash match", "/dev/", "/dev", true},
+		{"parent shorter", "/usr/local", "/usr", true},
+		{"path escapes parent", "/usr/../etc", "/usr", false},
+		{"relative path escapes", "../etc", "/usr", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := isPathWithin(tt.path, tt.parent)
+			assert.Equal(t, tt.expected, result, "isPathWithin(%q, %q) = %v, expected %v", tt.path, tt.parent, result, tt.expected)
+		})
+	}
+}
+
+func TestValidateScanPath_Symlink(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Skipping symlink tests on Windows (requires admin privileges)")
+	}
+
+	tempDir := t.TempDir()
+
+	allowedDir := filepath.Join(tempDir, "allowed")
+	require.NoError(t, os.Mkdir(allowedDir, 0755))
+
+	targetDir := filepath.Join(allowedDir, "target")
+	require.NoError(t, os.Mkdir(targetDir, 0755))
+
+	forbiddenDir := filepath.Join(tempDir, "forbidden")
+	require.NoError(t, os.Mkdir(forbiddenDir, 0755))
+
+	targetFile := filepath.Join(allowedDir, "file.txt")
+	require.NoError(t, os.WriteFile(targetFile, []byte("test"), 0644))
+
+	symlinkToAllowed := filepath.Join(tempDir, "symlink_to_allowed")
+	require.NoError(t, os.Symlink(targetDir, symlinkToAllowed))
+
+	symlinkToForbidden := filepath.Join(tempDir, "symlink_to_forbidden")
+	require.NoError(t, os.Symlink(forbiddenDir, symlinkToForbidden))
+
+	symlinkToFile := filepath.Join(tempDir, "symlink_to_file")
+	require.NoError(t, os.Symlink(targetFile, symlinkToFile))
+
+	securityCfg := &config.SecurityConfig{
+		AllowedDirectories: []string{allowedDir},
+		DeniedDirectories:  []string{},
+		MaxFilesPerScan:    10000,
+		ScanTimeoutSeconds: 30,
+	}
+
+	t.Run("symlink to allowed directory passes validation", func(t *testing.T) {
+		validPath, err := validateScanPath(symlinkToAllowed, securityCfg)
+		require.NoError(t, err, "Symlink to allowed directory should pass validation")
+		expectedCanonical, _ := filepath.EvalSymlinks(targetDir)
+		assert.Equal(t, expectedCanonical, validPath, "Should return canonical (resolved) path")
+	})
+
+	t.Run("symlink to forbidden directory fails with ErrPathOutsideAllowed", func(t *testing.T) {
+		_, err := validateScanPath(symlinkToForbidden, securityCfg)
+		require.Error(t, err)
+		assert.True(t, errors.Is(err, apperrors.ErrPathOutsideAllowed),
+			"Expected ErrPathOutsideAllowed, got %v", err)
+	})
+
+	t.Run("symlink to file fails with ErrPathNotDir", func(t *testing.T) {
+		_, err := validateScanPath(symlinkToFile, securityCfg)
+		require.Error(t, err)
+		assert.True(t, errors.Is(err, apperrors.ErrPathNotDir),
+			"Expected ErrPathNotDir, got %v", err)
+	})
+}

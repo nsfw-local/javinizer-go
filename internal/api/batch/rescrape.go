@@ -6,10 +6,10 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"runtime"
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -21,8 +21,54 @@ import (
 	"github.com/javinizer/javinizer-go/internal/worker"
 )
 
+var (
+	fsCaseCacheMu sync.RWMutex
+	fsCaseCache   = make(map[string]bool)
+)
+
+func isCaseInsensitiveFS(path string) bool {
+	testFile1 := filepath.Join(path, ".javinizer_case_test_1")
+	testFile2 := filepath.Join(path, ".JAVINIZER_CASE_TEST_1")
+
+	defer func() { _ = os.Remove(testFile1) }()
+	defer func() { _ = os.Remove(testFile2) }()
+
+	if err := os.WriteFile(testFile1, []byte("test"), 0644); err != nil {
+		return false
+	}
+
+	if err := os.WriteFile(testFile2, []byte("test2"), 0644); err != nil {
+		return false
+	}
+
+	content, err := os.ReadFile(testFile1)
+	if err != nil {
+		return false
+	}
+
+	return string(content) == "test2"
+}
+
+func isCaseInsensitiveFSCached(path string) bool {
+	dir := filepath.Dir(path)
+
+	fsCaseCacheMu.RLock()
+	if result, ok := fsCaseCache[dir]; ok {
+		fsCaseCacheMu.RUnlock()
+		return result
+	}
+	fsCaseCacheMu.RUnlock()
+
+	result := isCaseInsensitiveFS(dir)
+
+	fsCaseCacheMu.Lock()
+	fsCaseCache[dir] = result
+	fsCaseCacheMu.Unlock()
+
+	return result
+}
+
 func suffixOrder(s string) int {
-	// Strip leading dash if present (PartSuffix is stored as "-A", "-pt1")
 	s = strings.TrimPrefix(s, "-")
 	if s == "" {
 		return 100
@@ -505,8 +551,8 @@ func rescrapeBatchMovie(deps *ServerDependencies) gin.HandlerFunc {
 			shouldCleanupPoster := true
 			if movie != nil && movie.ID != "" && currentResult != nil {
 				movieIDMatches := currentResult.MovieID == movie.ID
-				// On case-insensitive filesystems, use case-folded comparison
-				if !movieIDMatches && (runtime.GOOS == "windows" || runtime.GOOS == "darwin") {
+				posterDir := filepath.Join(cfg.System.TempDir, "posters", jobID)
+				if !movieIDMatches && isCaseInsensitiveFSCached(posterDir) {
 					movieIDMatches = strings.EqualFold(currentResult.MovieID, movie.ID)
 				}
 				if movieIDMatches {
@@ -515,7 +561,7 @@ func rescrapeBatchMovie(deps *ServerDependencies) gin.HandlerFunc {
 				} else if currentResult.Data != nil {
 					if winnerMovie, ok := currentResult.Data.(*models.Movie); ok {
 						winnerIDMatches := winnerMovie.ID == movie.ID
-						if !winnerIDMatches && (runtime.GOOS == "windows" || runtime.GOOS == "darwin") {
+						if !winnerIDMatches && isCaseInsensitiveFSCached(posterDir) {
 							winnerIDMatches = strings.EqualFold(winnerMovie.ID, movie.ID)
 						}
 						if winnerIDMatches {
@@ -601,13 +647,13 @@ func rescrapeBatchMovie(deps *ServerDependencies) gin.HandlerFunc {
 			if !otherMovieUsingCurrentID {
 				currentPosterPath := filepath.Join(cfg.System.TempDir, "posters", jobID, currentMovieIDBeforeUpdate+".jpg")
 				currentPosterFullPath := filepath.Join(cfg.System.TempDir, "posters", jobID, currentMovieIDBeforeUpdate+"-full.jpg")
+				posterDir := filepath.Join(cfg.System.TempDir, "posters", jobID)
 
-				// Check for case-only ID change on case-insensitive filesystems
 				if strings.EqualFold(currentMovieIDBeforeUpdate, movie.ID) {
-					if runtime.GOOS == "windows" || runtime.GOOS == "darwin" {
-						logging.Infof("[Rescrape] Concurrent case change detected (%s → %s), skipping poster cleanup (case-insensitive filesystem: %s)", currentMovieIDBeforeUpdate, movie.ID, runtime.GOOS)
+					if isCaseInsensitiveFSCached(posterDir) {
+						logging.Infof("[Rescrape] Concurrent case change detected (%s → %s), skipping poster cleanup (case-insensitive filesystem)", currentMovieIDBeforeUpdate, movie.ID)
 					} else {
-						logging.Infof("[Rescrape] Concurrent case change detected (%s → %s) on case-sensitive filesystem (%s), cleaning up poster", currentMovieIDBeforeUpdate, movie.ID, runtime.GOOS)
+						logging.Infof("[Rescrape] Concurrent case change detected (%s → %s) on case-sensitive filesystem, cleaning up poster", currentMovieIDBeforeUpdate, movie.ID)
 						oldPosterPathsToCleanup = append(oldPosterPathsToCleanup, currentPosterPath, currentPosterFullPath)
 					}
 				} else {
@@ -620,17 +666,15 @@ func rescrapeBatchMovie(deps *ServerDependencies) gin.HandlerFunc {
 		// ORIGINAL CHANGE CLEANUP: Only when movie.ID changed from original oldMovieID
 		// Skip if currentMovieIDBeforeUpdate already covers this (concurrent modification)
 		if movie != nil && movie.ID != "" && oldMovieID != "" && movie.ID != oldMovieID {
-			// If concurrent modification occurred, oldMovieID was already cleaned by previous rescrape
 			if currentMovieIDBeforeUpdate == oldMovieID {
-				// Safe to proceed with original cleanup logic
-				// Check if this is a case-only ID change
 				skipCleanup := false
+				posterDir := filepath.Join(cfg.System.TempDir, "posters", jobID)
 				if strings.EqualFold(movie.ID, oldMovieID) {
-					if runtime.GOOS == "windows" || runtime.GOOS == "darwin" {
-						logging.Infof("[Rescrape] ID case change detected (%s → %s), skipping poster cleanup (case-insensitive filesystem: %s)", oldMovieID, movie.ID, runtime.GOOS)
+					if isCaseInsensitiveFSCached(posterDir) {
+						logging.Infof("[Rescrape] ID case change detected (%s → %s), skipping poster cleanup (case-insensitive filesystem)", oldMovieID, movie.ID)
 						skipCleanup = true
 					} else {
-						logging.Infof("[Rescrape] ID case change detected (%s → %s) on case-sensitive filesystem (%s), will clean up old poster", oldMovieID, movie.ID, runtime.GOOS)
+						logging.Infof("[Rescrape] ID case change detected (%s → %s) on case-sensitive filesystem, will clean up old poster", oldMovieID, movie.ID)
 					}
 				}
 

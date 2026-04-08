@@ -1,4 +1,4 @@
-package aventertainment
+package javstash
 
 import (
 	"testing"
@@ -18,7 +18,7 @@ func TestValidateConfig(t *testing.T) {
 			name:    "nil config returns error",
 			cfg:     nil,
 			wantErr: true,
-			errMsg:  "aventertainment: config is nil",
+			errMsg:  "javstash: config is nil",
 		},
 		{
 			name: "disabled scraper is valid",
@@ -28,77 +28,50 @@ func TestValidateConfig(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name: "language en is valid",
+			name: "enabled with api_key in config is valid",
 			cfg: &config.ScraperSettings{
-				Enabled:  true,
-				Language: "en",
+				Enabled: true,
+				Extra: map[string]any{
+					"api_key": "test-api-key",
+				},
 			},
 			wantErr: false,
 		},
 		{
-			name: "language ja is valid",
+			name: "enabled with api_key from env is valid",
 			cfg: &config.ScraperSettings{
-				Enabled:  true,
-				Language: "ja",
+				Enabled: true,
 			},
 			wantErr: false,
 		},
 		{
-			name: "language empty is valid",
+			name: "enabled without api_key returns error",
 			cfg: &config.ScraperSettings{
-				Enabled:  true,
-				Language: "",
-			},
-			wantErr: false,
-		},
-		{
-			name: "language case insensitive EN is valid",
-			cfg: &config.ScraperSettings{
-				Enabled:  true,
-				Language: "EN",
-			},
-			wantErr: false,
-		},
-		{
-			name: "language de is invalid",
-			cfg: &config.ScraperSettings{
-				Enabled:  true,
-				Language: "de",
+				Enabled: true,
 			},
 			wantErr: true,
-			errMsg:  "aventertainment: language must be 'en' or 'ja', got \"de\"",
-		},
-		{
-			name: "language fr is invalid",
-			cfg: &config.ScraperSettings{
-				Enabled:  true,
-				Language: "fr",
-			},
-			wantErr: true,
-			errMsg:  "aventertainment: language must be 'en' or 'ja', got \"fr\"",
+			errMsg:  "javstash: api_key is required (set in config or JAVSTASH_API_KEY env var)",
 		},
 		{
 			name: "RateLimit -1 is invalid",
 			cfg: &config.ScraperSettings{
 				Enabled:   true,
 				RateLimit: -1,
+				Extra: map[string]any{
+					"api_key": "test-key",
+				},
 			},
 			wantErr: true,
-			errMsg:  "aventertainment: rate_limit must be non-negative, got -1",
+			errMsg:  "javstash: rate_limit must be non-negative, got -1",
 		},
 		{
 			name: "RateLimit 0 is valid",
 			cfg: &config.ScraperSettings{
 				Enabled:   true,
 				RateLimit: 0,
-			},
-			wantErr: false,
-		},
-		{
-			name: "RateLimit 1000 is valid",
-			cfg: &config.ScraperSettings{
-				Enabled:   true,
-				RateLimit: 1000,
+				Extra: map[string]any{
+					"api_key": "test-key",
+				},
 			},
 			wantErr: false,
 		},
@@ -107,92 +80,67 @@ func TestValidateConfig(t *testing.T) {
 			cfg: &config.ScraperSettings{
 				Enabled:    true,
 				RetryCount: -1,
+				Extra: map[string]any{
+					"api_key": "test-key",
+				},
 			},
 			wantErr: true,
-			errMsg:  "aventertainment: retry_count must be non-negative, got -1",
-		},
-		{
-			name: "RetryCount 0 is valid",
-			cfg: &config.ScraperSettings{
-				Enabled:    true,
-				RetryCount: 0,
-			},
-			wantErr: false,
-		},
-		{
-			name: "RetryCount 3 is valid",
-			cfg: &config.ScraperSettings{
-				Enabled:    true,
-				RetryCount: 3,
-			},
-			wantErr: false,
+			errMsg:  "javstash: retry_count must be non-negative, got -1",
 		},
 		{
 			name: "Timeout -1 is invalid",
 			cfg: &config.ScraperSettings{
 				Enabled: true,
 				Timeout: -1,
+				Extra: map[string]any{
+					"api_key": "test-key",
+				},
 			},
 			wantErr: true,
-			errMsg:  "aventertainment: timeout must be non-negative, got -1",
-		},
-		{
-			name: "Timeout 0 is valid",
-			cfg: &config.ScraperSettings{
-				Enabled: true,
-				Timeout: 0,
-			},
-			wantErr: false,
-		},
-		{
-			name: "Timeout 30 is valid",
-			cfg: &config.ScraperSettings{
-				Enabled: true,
-				Timeout: 30,
-			},
-			wantErr: false,
-		},
-		{
-			name: "valid http base URL is valid",
-			cfg: &config.ScraperSettings{
-				Enabled: true,
-				BaseURL: "https://aventertainment.com",
-			},
-			wantErr: false,
+			errMsg:  "javstash: timeout must be non-negative, got -1",
 		},
 		{
 			name: "invalid base URL (no protocol) is invalid",
 			cfg: &config.ScraperSettings{
 				Enabled: true,
-				BaseURL: "aventertainment.com",
+				BaseURL: "javstash.com",
+				Extra: map[string]any{
+					"api_key": "test-key",
+				},
 			},
 			wantErr: true,
-			errMsg:  "aventertainment.base_url must be a valid HTTP or HTTPS URL",
+			errMsg:  "javstash.base_url must be a valid HTTP or HTTPS URL",
 		},
 		{
-			name: "FlareSolverr enabled is valid",
+			name: "valid http base URL is valid",
 			cfg: &config.ScraperSettings{
-				Enabled:         true,
-				UseFlareSolverr: true,
+				Enabled: true,
+				BaseURL: "http://javstash.com",
+				Extra: map[string]any{
+					"api_key": "test-key",
+				},
 			},
 			wantErr: false,
 		},
 		{
-			name: "all valid fields",
+			name: "valid https base URL is valid",
 			cfg: &config.ScraperSettings{
-				Enabled:    true,
-				Language:   "ja",
-				RateLimit:  500,
-				RetryCount: 3,
-				Timeout:    60,
+				Enabled: true,
+				BaseURL: "https://javstash.com",
+				Extra: map[string]any{
+					"api_key": "test-key",
+				},
 			},
 			wantErr: false,
 		},
 	}
 
-	c := &AVEntertainmentConfig{}
+	c := &JavstashConfig{}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			if tt.name == "enabled with api_key from env is valid" {
+				t.Setenv("JAVSTASH_API_KEY", "env-api-key")
+			}
 			err := c.ValidateConfig(tt.cfg)
 			if tt.wantErr {
 				assert.Error(t, err)
@@ -218,79 +166,73 @@ func TestGetterMethods(t *testing.T) {
 
 	tests := []struct {
 		name           string
-		config         *AVEntertainmentConfig
+		config         *JavstashConfig
 		getter         string
 		expectedResult interface{}
 	}{
 		{
 			name:           "IsEnabled returns true when enabled",
-			config:         &AVEntertainmentConfig{Enabled: true},
+			config:         &JavstashConfig{Enabled: true},
 			getter:         "IsEnabled",
 			expectedResult: true,
 		},
 		{
 			name:           "IsEnabled returns false when disabled",
-			config:         &AVEntertainmentConfig{Enabled: false},
+			config:         &JavstashConfig{Enabled: false},
 			getter:         "IsEnabled",
 			expectedResult: false,
 		},
 		{
 			name:           "GetUserAgent returns custom user agent",
-			config:         &AVEntertainmentConfig{UserAgent: "custom-agent/1.0"},
+			config:         &JavstashConfig{UserAgent: "custom-agent/1.0"},
 			getter:         "GetUserAgent",
 			expectedResult: "custom-agent/1.0",
 		},
 		{
 			name:           "GetUserAgent returns empty string when not set",
-			config:         &AVEntertainmentConfig{UserAgent: ""},
+			config:         &JavstashConfig{UserAgent: ""},
 			getter:         "GetUserAgent",
 			expectedResult: "",
 		},
 		{
 			name:           "GetRequestDelay returns configured delay",
-			config:         &AVEntertainmentConfig{RequestDelay: 1000},
+			config:         &JavstashConfig{RequestDelay: 1000},
 			getter:         "GetRequestDelay",
 			expectedResult: 1000,
 		},
 		{
 			name:           "GetRequestDelay returns 0 when not set",
-			config:         &AVEntertainmentConfig{RequestDelay: 0},
+			config:         &JavstashConfig{RequestDelay: 0},
 			getter:         "GetRequestDelay",
 			expectedResult: 0,
 		},
 		{
-			name:           "GetMaxRetries returns configured retry count",
-			config:         &AVEntertainmentConfig{MaxRetries: 3},
-			getter:         "GetMaxRetries",
-			expectedResult: 3,
-		},
-		{
-			name:           "GetMaxRetries returns 0 when not set",
-			config:         &AVEntertainmentConfig{MaxRetries: 0},
+			name:           "GetMaxRetries always returns 0",
+			config:         &JavstashConfig{},
 			getter:         "GetMaxRetries",
 			expectedResult: 0,
 		},
 		{
 			name:           "GetProxy returns proxy config when set",
-			config:         &AVEntertainmentConfig{Proxy: proxyConfig},
+			config:         &JavstashConfig{Proxy: proxyConfig},
 			getter:         "GetProxy",
 			expectedResult: proxyConfig,
 		},
 		{
 			name:           "GetProxy returns nil when not set",
-			config:         &AVEntertainmentConfig{Proxy: nil},
+			config:         &JavstashConfig{Proxy: nil},
 			getter:         "GetProxy",
 			expectedResult: nil,
 		},
 		{
 			name:           "GetDownloadProxy returns download proxy config when set",
-			config:         &AVEntertainmentConfig{DownloadProxy: downloadProxyConfig},
+			config:         &JavstashConfig{DownloadProxy: downloadProxyConfig},
 			getter:         "GetDownloadProxy",
 			expectedResult: downloadProxyConfig,
 		},
 		{
 			name:           "GetDownloadProxy returns nil when not set",
-			config:         &AVEntertainmentConfig{DownloadProxy: nil},
+			config:         &JavstashConfig{DownloadProxy: nil},
 			getter:         "GetDownloadProxy",
 			expectedResult: nil,
 		},

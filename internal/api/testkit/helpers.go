@@ -147,6 +147,7 @@ func CreateTestDeps(t *testing.T, cfg *config.Config, configFile string) *core.S
 	// Initialize repositories
 	movieRepo := database.NewMovieRepository(db)
 	actressRepo := database.NewActressRepository(db)
+	jobRepo := database.NewJobRepository(db)
 
 	// Initialize scraper registry
 	registry := models.NewScraperRegistry()
@@ -160,8 +161,8 @@ func CreateTestDeps(t *testing.T, cfg *config.Config, configFile string) *core.S
 		t.Fatalf("Failed to create matcher: %v", err)
 	}
 
-	// Initialize job queue
-	jobQueue := worker.NewJobQueue(nil, "")
+	// Initialize job queue with jobRepo for persistence
+	jobQueue := worker.NewJobQueue(jobRepo, "")
 
 	deps := &core.ServerDependencies{
 		ConfigFile:  configFile,
@@ -170,6 +171,7 @@ func CreateTestDeps(t *testing.T, cfg *config.Config, configFile string) *core.S
 		Aggregator:  agg,
 		MovieRepo:   movieRepo,
 		ActressRepo: actressRepo,
+		JobRepo:     jobRepo,
 		Matcher:     mat,
 		JobQueue:    jobQueue,
 		Runtime:     core.NewRuntimeState(),

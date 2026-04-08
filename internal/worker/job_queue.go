@@ -436,37 +436,38 @@ func (jq *JobQueue) GetJobPointer(id string) (*BatchJob, bool) {
 // DeleteJob removes a job from the queue and cleans up associated temp files
 // Cancels the job first and waits for it to fully finish before removing files
 // tempDir is the base temp directory (e.g., "data/temp")
-func (jq *JobQueue) DeleteJob(id string, tempDir string) {
-	// Get job without holding queue lock to avoid lock ordering issues
+// Returns error if job not found, job is running, or database deletion fails
+func (jq *JobQueue) DeleteJob(id string, tempDir string) error {
 	jq.mu.RLock()
 	job, ok := jq.jobs[id]
 	jq.mu.RUnlock()
 
-	if ok {
-		snap := job.GetStatus()
-		if snap.Status == JobStatusRunning || snap.Status == JobStatusPending {
-			job.Cancel()
-		}
-
-		// Wait for job to fully finish using Done channel
-		select {
-		case <-job.Done:
-			// Job finished, safe to cleanup
-		case <-time.After(5 * time.Second):
-			logging.Warnf("DeleteJob: timed out waiting for job %s to finish, proceeding with cleanup", id)
-		}
-
-		// Set tombstone before removal to prevent PersistJob from recreating DB row
-		job.mu.Lock()
-		job.deleted = true
-		job.mu.Unlock()
+	if !ok {
+		return fmt.Errorf("job %s not found", id)
 	}
 
-	// Now safe to clean up filesystem and remove from map
+	snap := job.GetStatus()
+	if snap.Status == JobStatusRunning {
+		return fmt.Errorf("cannot delete running job")
+	}
+
+	if snap.Status == JobStatusPending {
+		job.Cancel()
+	}
+
+	select {
+	case <-job.Done:
+	case <-time.After(5 * time.Second):
+		logging.Warnf("DeleteJob: timed out waiting for job %s to finish, proceeding with cleanup", id)
+	}
+
+	job.mu.Lock()
+	job.deleted = true
+	job.mu.Unlock()
+
 	jq.mu.Lock()
 	defer jq.mu.Unlock()
 
-	// Clean up temp posters for this job (data/temp/posters/{jobID}/)
 	tempPosterDir := filepath.Join(tempDir, "posters", id)
 	if err := os.RemoveAll(tempPosterDir); err != nil {
 		logging.Warnf("Failed to clean up temp posters for job %s: %v", id, err)
@@ -474,14 +475,15 @@ func (jq *JobQueue) DeleteJob(id string, tempDir string) {
 		logging.Debugf("[Job %s] Cleaned up temporary poster directory: %s", id, tempPosterDir)
 	}
 
-	// Delete from database
 	if jq.jobRepo != nil {
 		if err := jq.jobRepo.Delete(id); err != nil {
 			logging.Warnf("Failed to delete job %s from database: %v", id, err)
+			return fmt.Errorf("database deletion failed: %w", err)
 		}
 	}
 
 	delete(jq.jobs, id)
+	return nil
 }
 
 // PersistJob saves a job to the database

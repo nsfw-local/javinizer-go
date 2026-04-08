@@ -318,3 +318,32 @@ func TestErrorCode_String(t *testing.T) {
 		})
 	}
 }
+
+func TestIsPathError(t *testing.T) {
+	t.Parallel()
+
+	t.Run("path_error_returns_true", func(t *testing.T) {
+		err := NewPathError(ErrPathOutsideAllowed, "/test/path")
+		assert.True(t, IsPathError(err))
+	})
+
+	t.Run("other_error_returns_false", func(t *testing.T) {
+		err := errors.New("not a path error")
+		assert.False(t, IsPathError(err))
+	})
+
+	t.Run("nil_error_returns_false", func(t *testing.T) {
+		assert.False(t, IsPathError(nil))
+	})
+
+	t.Run("wrapped_path_error_returns_true", func(t *testing.T) {
+		err := NewPathError(ErrPathOutsideAllowed, "/test/path")
+		wrapped := errors.Join(err, errors.New("additional error"))
+		assert.True(t, IsPathError(wrapped))
+	})
+
+	t.Run("base_path_error_returns_true", func(t *testing.T) {
+		assert.True(t, IsPathError(ErrPathOutsideAllowed))
+		assert.True(t, IsPathError(ErrPathNotExist))
+	})
+}

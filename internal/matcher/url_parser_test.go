@@ -1,6 +1,7 @@
 package matcher
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/javinizer/javinizer-go/internal/config"
@@ -427,5 +428,308 @@ func TestCalculateOptimalScrapersWithNilParsed(t *testing.T) {
 		[]string{"dmm", "r18dev"},
 		nil,
 	)
+	assert.Equal(t, []string{"dmm", "r18dev"}, result)
+}
+
+func TestCalculateOptimalScrapers_Priority(t *testing.T) {
+	tests := []struct {
+		name            string
+		requestScrapers []string
+		configPriority  []string
+		parsed          *ParsedInput
+		expected        []string
+		description     string
+	}{
+		{
+			name:            "multi-compatible URL uses config priority for hint",
+			requestScrapers: []string{},
+			configPriority:  []string{"bbb", "aaa", "ccc"},
+			parsed: &ParsedInput{
+				ID:                 "test123",
+				IsURL:              true,
+				CompatibleScrapers: []string{"aaa", "bbb", "ccc"},
+				ScraperHint:        "aaa",
+			},
+			expected:    []string{"bbb", "aaa", "ccc"},
+			description: "When multiple scrapers can handle URL, hint should be highest priority (bbb), not alphabetical (aaa)",
+		},
+		{
+			name:            "priority hint selection ignores non-compatible scrapers",
+			requestScrapers: []string{},
+			configPriority:  []string{"xxx", "bbb", "aaa"},
+			parsed: &ParsedInput{
+				ID:                 "test123",
+				IsURL:              true,
+				CompatibleScrapers: []string{"aaa", "bbb"},
+				ScraperHint:        "aaa",
+			},
+			expected:    []string{"bbb", "aaa"},
+			description: "Highest priority scraper xxx is not compatible, so use next compatible (bbb)",
+		},
+		{
+			name:            "all compatible scrapers in priority order",
+			requestScrapers: []string{},
+			configPriority:  []string{"ccc", "bbb", "aaa", "ddd"},
+			parsed: &ParsedInput{
+				ID:                 "test123",
+				IsURL:              true,
+				CompatibleScrapers: []string{"aaa", "bbb", "ccc"},
+				ScraperHint:        "aaa",
+			},
+			expected:    []string{"ccc", "bbb", "aaa"},
+			description: "All three compatible scrapers should be ordered by config priority",
+		},
+		{
+			name:            "user selection overrides priority-based hint",
+			requestScrapers: []string{"aaa", "bbb"},
+			configPriority:  []string{"bbb", "aaa", "ccc"},
+			parsed: &ParsedInput{
+				ID:                 "test123",
+				IsURL:              true,
+				CompatibleScrapers: []string{"aaa", "bbb", "ccc"},
+				ScraperHint:        "aaa",
+			},
+			expected:    []string{"aaa", "bbb"},
+			description: "User selection takes precedence; no priority reordering",
+		},
+		{
+			name:            "no compatible scrapers returns empty",
+			requestScrapers: []string{},
+			configPriority:  []string{"bbb", "aaa"},
+			parsed: &ParsedInput{
+				ID:                 "test123",
+				IsURL:              true,
+				CompatibleScrapers: []string{},
+				ScraperHint:        "",
+			},
+			expected:    []string{"bbb", "aaa"},
+			description: "No compatible scrapers means no URL filtering, use config priority",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := CalculateOptimalScrapers(tt.requestScrapers, tt.configPriority, tt.parsed)
+			assert.Equal(t, tt.expected, result, tt.description)
+		})
+	}
+}
+
+func TestParseInput_MalformedURL(t *testing.T) {
+	tests := []struct {
+		name          string
+		input         string
+		setupRegistry func() *models.ScraperRegistry
+		expectError   bool
+		errorContains string
+		description   string
+	}{
+		{
+			name:  "malformed supported URL returns error",
+			input: "https://www.dmm.co.jp/digital/videoa/-/detail/=/cid=INVALID/",
+			setupRegistry: func() *models.ScraperRegistry {
+				reg := models.NewScraperRegistry()
+				reg.Register(&mockURLHandlerScraper{
+					name:       "dmm",
+					enabled:    true,
+					canHandle:  true,
+					extractID:  "",
+					extractErr: fmt.Errorf("failed to extract ID from malformed URL"),
+				})
+				return reg
+			},
+			expectError:   true,
+			errorContains: "failed to extract ID",
+			description:   "When scraper claims URL but extraction fails, should return error",
+		},
+		{
+			name:  "unknown URL returns IsURL=false without error",
+			input: "https://unknown-site.com/video/123",
+			setupRegistry: func() *models.ScraperRegistry {
+				reg := models.NewScraperRegistry()
+				reg.Register(&mockURLHandlerScraper{
+					name:       "dmm",
+					enabled:    true,
+					canHandle:  false,
+					extractID:  "",
+					extractErr: nil,
+				})
+				return reg
+			},
+			expectError: false,
+			description: "URL that no scraper claims should return IsURL=false with raw input as ID",
+		},
+		{
+			name:  "valid URL extracts successfully",
+			input: "https://www.dmm.co.jp/digital/videoa/-/detail/=/cid=ipx00535/",
+			setupRegistry: func() *models.ScraperRegistry {
+				reg := models.NewScraperRegistry()
+				reg.Register(&mockURLHandlerScraper{
+					name:       "dmm",
+					enabled:    true,
+					canHandle:  true,
+					extractID:  "ipx00535",
+					extractErr: nil,
+				})
+				return reg
+			},
+			expectError: false,
+			description: "Valid URL should extract ID successfully",
+		},
+		{
+			name:  "first scraper fails but second succeeds",
+			input: "https://javbus.com/IPX-535",
+			setupRegistry: func() *models.ScraperRegistry {
+				reg := models.NewScraperRegistry()
+				reg.Register(&mockURLHandlerScraper{
+					name:       "dmm",
+					enabled:    true,
+					canHandle:  true,
+					extractID:  "",
+					extractErr: fmt.Errorf("dmm cannot extract from this URL"),
+				})
+				reg.Register(&mockURLHandlerScraper{
+					name:       "javbus",
+					enabled:    true,
+					canHandle:  true,
+					extractID:  "IPX-535",
+					extractErr: nil,
+				})
+				return reg
+			},
+			expectError: false,
+			description: "If one scraper fails extraction, should try next compatible scraper",
+		},
+		{
+			name:  "all compatible scrapers fail extraction",
+			input: "https://www.dmm.co.jp/digital/videoa/-/detail/=/cid=INVALID/",
+			setupRegistry: func() *models.ScraperRegistry {
+				reg := models.NewScraperRegistry()
+				reg.Register(&mockURLHandlerScraper{
+					name:       "dmm",
+					enabled:    true,
+					canHandle:  true,
+					extractID:  "",
+					extractErr: fmt.Errorf("dmm extraction failed"),
+				})
+				reg.Register(&mockURLHandlerScraper{
+					name:       "r18dev",
+					enabled:    true,
+					canHandle:  true,
+					extractID:  "",
+					extractErr: fmt.Errorf("r18dev extraction failed"),
+				})
+				return reg
+			},
+			expectError:   true,
+			errorContains: "extraction failed",
+			description:   "If all scrapers that claim URL fail extraction, return error",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			registry := tt.setupRegistry()
+			result, err := ParseInput(tt.input, registry)
+
+			if tt.expectError {
+				assert.Error(t, err, tt.description)
+				if tt.errorContains != "" {
+					assert.Contains(t, err.Error(), tt.errorContains)
+				}
+				return
+			}
+
+			require.NoError(t, err, tt.description)
+			if tt.name == "unknown URL returns IsURL=false without error" {
+				assert.False(t, result.IsURL)
+				assert.Equal(t, tt.input, result.ID)
+			}
+		})
+	}
+}
+
+func TestFilterScrapersForURL_AllCases(t *testing.T) {
+	tests := []struct {
+		name         string
+		userScrapers []string
+		parsed       *ParsedInput
+		expected     []string
+	}{
+		{
+			name:         "not a URL returns user scrapers unchanged",
+			userScrapers: []string{"dmm", "r18dev"},
+			parsed: &ParsedInput{
+				IsURL:              false,
+				CompatibleScrapers: nil,
+			},
+			expected: []string{"dmm", "r18dev"},
+		},
+		{
+			name:         "URL with no compatible scrapers returns user scrapers",
+			userScrapers: []string{"dmm", "r18dev"},
+			parsed: &ParsedInput{
+				IsURL:              true,
+				CompatibleScrapers: []string{},
+			},
+			expected: []string{"dmm", "r18dev"},
+		},
+		{
+			name:         "URL with empty user scrapers uses all compatible",
+			userScrapers: []string{},
+			parsed: &ParsedInput{
+				IsURL:              true,
+				CompatibleScrapers: []string{"dmm", "javdb"},
+			},
+			expected: []string{"dmm", "javdb"},
+		},
+		{
+			name:         "URL filters user scrapers to compatible only",
+			userScrapers: []string{"dmm", "r18dev", "javlibrary"},
+			parsed: &ParsedInput{
+				IsURL:              true,
+				CompatibleScrapers: []string{"dmm", "javdb"},
+			},
+			expected: []string{"dmm"},
+		},
+		{
+			name:         "URL with no matching user scrapers falls back to compatible",
+			userScrapers: []string{"javlibrary", "javbus"},
+			parsed: &ParsedInput{
+				IsURL:              true,
+				CompatibleScrapers: []string{"dmm", "javdb"},
+			},
+			expected: []string{"dmm", "javdb"},
+		},
+		{
+			name:         "URL with partial overlap returns filtered list",
+			userScrapers: []string{"dmm", "r18dev", "javdb"},
+			parsed: &ParsedInput{
+				IsURL:              true,
+				CompatibleScrapers: []string{"dmm", "javdb", "libredmm"},
+			},
+			expected: []string{"dmm", "javdb"},
+		},
+		{
+			name:         "nil compatible scrapers returns user scrapers",
+			userScrapers: []string{"dmm", "r18dev"},
+			parsed: &ParsedInput{
+				IsURL:              true,
+				CompatibleScrapers: nil,
+			},
+			expected: []string{"dmm", "r18dev"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := FilterScrapersForURL(tt.userScrapers, tt.parsed)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+func TestFilterScrapersForURL_NilParsed(t *testing.T) {
+	result := FilterScrapersForURL([]string{"dmm", "r18dev"}, nil)
 	assert.Equal(t, []string{"dmm", "r18dev"}, result)
 }

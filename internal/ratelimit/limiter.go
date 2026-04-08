@@ -8,7 +8,7 @@ import (
 
 type Limiter struct {
 	mu              sync.Mutex
-	lastRequestTime time.Time
+	nextAllowedTime time.Time
 	delay           time.Duration
 }
 
@@ -22,18 +22,25 @@ func (l *Limiter) Wait(ctx context.Context) error {
 	}
 
 	l.mu.Lock()
-	defer l.mu.Unlock()
 
-	if !l.lastRequestTime.IsZero() {
-		elapsed := time.Since(l.lastRequestTime)
-		if elapsed < l.delay {
-			select {
-			case <-time.After(l.delay - elapsed):
-			case <-ctx.Done():
-				return ctx.Err()
-			}
-		}
+	now := time.Now()
+	if l.nextAllowedTime.IsZero() || now.After(l.nextAllowedTime) {
+		l.nextAllowedTime = now.Add(l.delay)
+		l.mu.Unlock()
+		return nil
 	}
-	l.lastRequestTime = time.Now()
-	return nil
+
+	waitDuration := l.nextAllowedTime.Sub(now)
+	l.nextAllowedTime = l.nextAllowedTime.Add(l.delay)
+	l.mu.Unlock()
+
+	select {
+	case <-time.After(waitDuration):
+		return nil
+	case <-ctx.Done():
+		l.mu.Lock()
+		l.nextAllowedTime = l.nextAllowedTime.Add(-l.delay)
+		l.mu.Unlock()
+		return ctx.Err()
+	}
 }

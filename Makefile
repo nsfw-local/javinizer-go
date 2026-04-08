@@ -147,8 +147,8 @@ bench:
 coverage:
 	@echo "Running tests and generating coverage report..."
 	@rm -f coverage.out
-	@pkgs=$$(go list ./... | grep -Ev '/(mocks|tui|docs|testutil)(/|$$)'); \
-	go test -covermode=atomic -coverprofile=coverage.out -coverpkg=$$(echo $$pkgs | tr ' ' ',') -count=1 $$pkgs 2>&1 | grep -E "^ok|^github"
+	@pkgs=$$(go list ./... | grep -Ev '(/cmd/coveragecheck$$)|(/internal/coverage$$)|(/(mocks|tui|docs|testutil|web)(/|$$))'); \
+	go test -covermode=atomic -coverprofile=coverage.out -coverpkg=$$(echo $$pkgs | tr ' ' ',') -count=1 $$pkgs 2>&1 | awk '/^(ok|github)/ { print; fflush() }'
 	@echo ""
 	@go run ./cmd/coveragecheck --metric line --profile coverage.out 2>/dev/null
 

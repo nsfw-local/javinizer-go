@@ -2,6 +2,7 @@ package batch
 
 import (
 	"encoding/json"
+	"fmt"
 	"path/filepath"
 
 	"github.com/gin-gonic/gin"
@@ -202,13 +203,15 @@ func deleteBatchJob(deps *ServerDependencies) gin.HandlerFunc {
 			return
 		}
 
-		// Use job's stored TempDir for consistent cleanup path
 		tempDir := job.GetTempDir()
 		if tempDir == "" {
 			tempDir = deps.GetConfig().System.TempDir
 		}
-		// DeleteJob handles both database deletion and filesystem cleanup
-		deps.JobQueue.DeleteJob(jobID, tempDir)
+
+		if err := deps.JobQueue.DeleteJob(jobID, tempDir); err != nil {
+			c.JSON(500, ErrorResponse{Error: fmt.Sprintf("Failed to delete job: %v", err)})
+			return
+		}
 
 		c.JSON(200, gin.H{"message": "Job deleted successfully"})
 	}

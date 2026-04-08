@@ -81,16 +81,11 @@ func validateScanPath(userPath string, cfg *config.SecurityConfig) (string, erro
 		absPath = normalizedUNC
 	}
 
-	info, err := os.Lstat(absPath)
+	canonicalPath, err := filepath.EvalSymlinks(absPath)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return "", apperrors.NewPathError(apperrors.ErrPathNotExist, absPath)
 		}
-		return "", apperrors.ErrPathInvalid
-	}
-
-	canonicalPath, err := filepath.EvalSymlinks(absPath)
-	if err != nil {
 		return "", apperrors.NewPathError(apperrors.ErrPathUnresolvable, absPath)
 	}
 
@@ -99,6 +94,14 @@ func validateScanPath(userPath string, cfg *config.SecurityConfig) (string, erro
 		if err != nil {
 			return "", apperrors.ErrPathInvalid
 		}
+	}
+
+	info, err := os.Stat(canonicalPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return "", apperrors.NewPathError(apperrors.ErrPathNotExist, canonicalPath)
+		}
+		return "", apperrors.ErrPathInvalid
 	}
 
 	// Windows: Normalize path for platform comparison.
@@ -148,7 +151,7 @@ func validateScanPath(userPath string, cfg *config.SecurityConfig) (string, erro
 	}
 
 	for _, denied := range deniedPrefixes {
-		if pathHasPrefix(canonicalPath, denied) {
+		if isPathWithin(canonicalPath, denied) {
 			return "", apperrors.NewPathError(apperrors.ErrPathInDenylist, canonicalPath)
 		}
 	}
@@ -234,15 +237,14 @@ func normalizeWindowsPath(path string) string {
 // pathHasPrefix checks if path starts with prefix, using case-insensitive comparison on Windows
 // This prevents bypassing the denylist with different case (e.g., c:\Windows vs C:\Windows)
 // and extended-path prefixes (e.g., \\?\C:\Windows)
+// NOTE: This uses raw string prefix matching and should NOT be used for denylist checks
+// because it doesn't distinguish between /dev and /devmedia. Use isPathWithin for denylist.
 func pathHasPrefix(path, prefix string) bool {
 	if runtime.GOOS == "windows" {
-		// Normalize both paths to remove extended-path prefixes
 		normalizedPath := normalizeWindowsPath(path)
 		normalizedPrefix := normalizeWindowsPath(prefix)
-		// Windows filesystems are case-insensitive, so we must compare case-insensitively
 		return strings.HasPrefix(strings.ToLower(normalizedPath), strings.ToLower(normalizedPrefix))
 	}
-	// Unix filesystems are case-sensitive
 	return strings.HasPrefix(path, prefix)
 }
 

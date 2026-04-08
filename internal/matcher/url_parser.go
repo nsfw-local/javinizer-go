@@ -35,6 +35,11 @@ func ParseInput(input string, registry *models.ScraperRegistry) (*ParsedInput, e
 	var matchedScraper string
 	var matched bool
 
+	// Track if any scraper claimed to handle the URL but failed extraction
+	var claimedButFailed bool
+	var firstFailedScraper string
+	var firstFailedErr error
+
 	if registry != nil {
 		for _, scraper := range registry.GetAll() {
 			// Defensive nil check - registry should never contain nil scrapers, but be safe
@@ -51,6 +56,11 @@ func ParseInput(input string, registry *models.ScraperRegistry) (*ParsedInput, e
 							matchedID = id
 							matchedScraper = scraper.Name()
 							matched = true
+						} else if !claimedButFailed {
+							// Track first failure for error message
+							claimedButFailed = true
+							firstFailedScraper = scraper.Name()
+							firstFailedErr = err
 						}
 					}
 				}
@@ -66,6 +76,12 @@ func ParseInput(input string, registry *models.ScraperRegistry) (*ParsedInput, e
 			IsURL:              true,
 			CompatibleScrapers: compatibleScrapers,
 		}, nil
+	}
+
+	// If no scraper extracted ID but some claimed to handle, return error
+	if claimedButFailed {
+		return nil, fmt.Errorf("URL matched scraper %q but extraction failed: %w",
+			firstFailedScraper, firstFailedErr)
 	}
 
 	// No scraper handles this URL - treat as plain movie ID
@@ -87,7 +103,7 @@ func ParseInput(input string, registry *models.ScraperRegistry) (*ParsedInput, e
 // Returns filtered scrapers or all compatible scrapers if userScrapers is empty.
 // If no compatible scrapers exist, returns empty slice (caller should handle this case).
 func FilterScrapersForURL(userScrapers []string, parsed *ParsedInput) []string {
-	if !parsed.IsURL || len(parsed.CompatibleScrapers) == 0 {
+	if parsed == nil || !parsed.IsURL || len(parsed.CompatibleScrapers) == 0 {
 		return userScrapers
 	}
 
@@ -179,9 +195,18 @@ func CalculateOptimalScrapers(
 	if len(filteredScrapers) > 0 {
 		scrapersToUse = filteredScrapers
 
-		// Step 4: If user didn't specify custom scrapers, prioritize hinted scraper
-		if len(requestScrapers) == 0 && parsed.ScraperHint != "" {
-			scrapersToUse = ReorderWithPriority(scrapersToUse, parsed.ScraperHint)
+		// Step 4: If user didn't specify custom scrapers, use config priority for hint
+		if len(requestScrapers) == 0 && len(configPriority) > 0 {
+			// Find highest priority scraper that is compatible with the URL
+			for _, prioScraper := range configPriority {
+				for _, compat := range parsed.CompatibleScrapers {
+					if prioScraper == compat {
+						// Reorder with the highest priority compatible scraper as hint
+						scrapersToUse = ReorderWithPriority(scrapersToUse, prioScraper)
+						return scrapersToUse
+					}
+				}
+			}
 		}
 	}
 

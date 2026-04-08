@@ -108,3 +108,58 @@ func TestLimiter_ConcurrentCalls(t *testing.T) {
 		}
 	}
 }
+
+func TestLimiter_CancellationUnderContention(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping slow test in short mode")
+	}
+
+	delay := 100 * time.Millisecond
+	limiter := NewLimiter(delay)
+
+	ctx1 := context.Background()
+	err1 := make(chan error, 1)
+	go func() {
+		err1 <- limiter.Wait(ctx1)
+	}()
+
+	time.Sleep(10 * time.Millisecond)
+
+	ctx2, cancel2 := context.WithCancel(context.Background())
+	err2 := make(chan error, 1)
+	go func() {
+		err2 <- limiter.Wait(ctx2)
+	}()
+
+	ctx3, cancel3 := context.WithCancel(context.Background())
+	err3 := make(chan error, 1)
+	go func() {
+		err3 <- limiter.Wait(ctx3)
+	}()
+
+	time.Sleep(10 * time.Millisecond)
+	cancel2()
+
+	select {
+	case err := <-err2:
+		if err != context.Canceled {
+			t.Errorf("expected context.Canceled, got %v", err)
+		}
+	case <-time.After(50 * time.Millisecond):
+		t.Error("cancellation should be observed quickly, not blocked by first waiter")
+	}
+
+	cancel3()
+	select {
+	case err := <-err3:
+		if err != context.Canceled {
+			t.Errorf("expected context.Canceled, got %v", err)
+		}
+	case <-time.After(50 * time.Millisecond):
+		t.Error("third waiter cancellation should be observed quickly")
+	}
+
+	if err := <-err1; err != nil {
+		t.Errorf("first waiter should complete successfully: %v", err)
+	}
+}
