@@ -88,7 +88,7 @@ func newRunBatchTestEnv(t *testing.T, scraperName string) (*config.Config, *data
 			},
 			NFO: config.NFOConfig{
 				FilenameTemplate: "<ID>.nfo",
-				DisplayName:      "[<ID>] <TITLE>",
+				DisplayTitle:     "[<ID>] <TITLE>",
 			},
 		},
 		Matching: config.MatchingConfig{
@@ -386,7 +386,7 @@ func TestRunBatchScrapeOnce_DefaultModeUsesConfiguredScraperPriority(t *testing.
 
 func TestRunBatchScrapeOnce_UpdateModeMergesExistingNFO(t *testing.T) {
 	cfg, _, movieRepo, agg, fileMatcher := newRunBatchTestEnv(t, "resolver")
-	cfg.Metadata.NFO.DisplayName = "[<ID>] <TITLE>"
+	cfg.Metadata.NFO.DisplayTitle = "[<ID>] <TITLE>"
 
 	registry := models.NewScraperRegistry()
 	registry.Register(&runBatchTestScraper{
@@ -440,8 +440,8 @@ func TestRunBatchScrapeOnce_UpdateModeMergesExistingNFO(t *testing.T) {
 	if movie.Title != "Existing NFO Title" {
 		t.Fatalf("movie.Title = %q", movie.Title)
 	}
-	if movie.DisplayName != "[ABC-123] Existing NFO Title" {
-		t.Fatalf("movie.DisplayName = %q", movie.DisplayName)
+	if movie.DisplayTitle != "[ABC-123] Existing NFO Title" {
+		t.Fatalf("movie.DisplayTitle = %q", movie.DisplayTitle)
 	}
 }
 

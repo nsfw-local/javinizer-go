@@ -178,7 +178,7 @@ func DefaultConfig() *Config {
 			IgnoreGenres: []string{},
 			NFO: NFOConfig{
 				Enabled:              true,
-				DisplayName:          "<TITLE>",
+				DisplayTitle:         "<TITLE>",
 				FilenameTemplate:     "<ID>.nfo",
 				FirstNameOrder:       true,
 				ActressLanguageJA:    false,
@@ -210,6 +210,7 @@ func DefaultConfig() *Config {
 			MaxPathLength:       240,
 			MoveSubtitles:       false,
 			SubtitleExtensions:  []string{".srt", ".ass", ".ssa", ".smi", ".vtt"},
+			OperationMode:       "",
 			RenameFolderInPlace: false,
 			MoveToFolder:        true,  // Move to organized folders by default
 			RenameFile:          true,  // Rename files by default

@@ -388,6 +388,7 @@ func TestOrganizeTask_Execute(t *testing.T) {
 				FolderFormat: "<ID>",
 				FileFormat:   "<ID>",
 				RenameFile:   true,
+				MoveToFolder: true,
 			}
 			org := organizer.NewOrganizer(afero.NewOsFs(), outputCfg)
 
@@ -953,4 +954,34 @@ func TestNewTaskConstructors(t *testing.T) {
 		assert.Contains(t, task.ID(), "process-")
 		assert.Equal(t, TaskType("process"), task.Type())
 	})
+}
+
+func TestLooksLikeTemplatedTitle(t *testing.T) {
+	tests := []struct {
+		name  string
+		title string
+		id    string
+		want  bool
+	}{
+		{"bracket with space", "[ABC-123] Some Title", "ABC-123", true},
+		{"bracket with dash", "[ABC-123]-Some Title", "ABC-123", true},
+		{"bracket with colon", "[ABC-123]: Some Title", "ABC-123", true},
+		{"bracket at EOS", "[ABC-123]", "ABC-123", true},
+		{"no bracket", "Some Title", "ABC-123", false},
+		{"wrong ID", "[XYZ-999] Some Title", "ABC-123", false},
+		{"ID prefix false positive", "[ABP-960] Some Title", "ABP-96", false},
+		{"bracket with tab", "[ABC-123]\tTitle", "ABC-123", true},
+		{"bracket followed by digit", "[ABC-123]4Title", "ABC-123", false},
+		{"bracket followed by letter", "[ABC-123]ATitle", "ABC-123", false},
+		{"bracket followed by hiragana", "[ABC-123]あTitle", "ABC-123", false},
+		{"bracket followed by kanji", "[ABC-123]映画Title", "ABC-123", false},
+		{"bracket followed by CJK space", "[ABC-123]　Title", "ABC-123", true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := LooksLikeTemplatedTitle(tt.title, tt.id)
+			assert.Equal(t, tt.want, got)
+		})
+	}
 }

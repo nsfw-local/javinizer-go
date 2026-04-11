@@ -36,7 +36,7 @@ func testProcessConfig(dbPath string) *config.Config {
 			},
 			NFO: config.NFOConfig{
 				FilenameTemplate: "<ID>.nfo",
-				DisplayName:      "[<ID>] <TITLE>",
+				DisplayTitle:     "[<ID>] <TITLE>",
 				PerFile:          false,
 			},
 		},
@@ -132,7 +132,7 @@ func TestProcessFileTask_MergeWithExistingNFO(t *testing.T) {
 		merged := task.mergeWithExistingNFO(context.Background(), movie)
 		require.NotNil(t, merged)
 		assert.Equal(t, "NFO Preferred Title", merged.Title)
-		assert.Equal(t, "[ABC-123] NFO Preferred Title", merged.DisplayName)
+		assert.Equal(t, "[ABC-123] NFO Preferred Title", merged.DisplayTitle)
 	})
 
 	t.Run("templated NFO title is preserved as display name", func(t *testing.T) {
@@ -147,7 +147,7 @@ func TestProcessFileTask_MergeWithExistingNFO(t *testing.T) {
 		merged := task.mergeWithExistingNFO(context.Background(), movie)
 		require.NotNil(t, merged)
 		assert.Equal(t, "[ABC-123] Existing Templated Title", merged.Title)
-		assert.Equal(t, merged.Title, merged.DisplayName)
+		assert.Equal(t, merged.Title, merged.DisplayTitle)
 	})
 
 	t.Run("legacy per-file path is used for multipart files", func(t *testing.T) {

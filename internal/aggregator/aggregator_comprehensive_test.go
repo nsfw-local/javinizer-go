@@ -1325,8 +1325,8 @@ func TestAggregateRequiredFieldsValidation(t *testing.T) {
 	})
 }
 
-// TestAggregateDisplayNameTemplate tests NFO display name template generation
-func TestAggregateDisplayNameTemplate(t *testing.T) {
+// TestAggregateDisplayTitleTemplate tests NFO display name template generation
+func TestAggregateDisplayTitleTemplate(t *testing.T) {
 	t.Run("valid template", func(t *testing.T) {
 		cfg := &config.Config{
 			Scrapers: config.ScrapersConfig{
@@ -1334,7 +1334,7 @@ func TestAggregateDisplayNameTemplate(t *testing.T) {
 			},
 			Metadata: config.MetadataConfig{
 				NFO: config.NFOConfig{
-					DisplayName: "[<ID>] <TITLE>",
+					DisplayTitle: "[<ID>] <TITLE>",
 				},
 			},
 		}
@@ -1353,7 +1353,7 @@ func TestAggregateDisplayNameTemplate(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, movie)
 
-		assert.Equal(t, "[IPX-001] Test Movie", movie.DisplayName)
+		assert.Equal(t, "[IPX-001] Test Movie", movie.DisplayTitle)
 	})
 
 	t.Run("template with multiple fields", func(t *testing.T) {
@@ -1363,7 +1363,7 @@ func TestAggregateDisplayNameTemplate(t *testing.T) {
 			},
 			Metadata: config.MetadataConfig{
 				NFO: config.NFOConfig{
-					DisplayName: "<TITLE> by <STUDIO> (<YEAR>)",
+					DisplayTitle: "<TITLE> by <STUDIO> (<YEAR>)",
 				},
 			},
 		}
@@ -1385,7 +1385,7 @@ func TestAggregateDisplayNameTemplate(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, movie)
 
-		assert.Equal(t, "Amazing Movie by Idea Pocket (2021)", movie.DisplayName)
+		assert.Equal(t, "Amazing Movie by Idea Pocket (2021)", movie.DisplayTitle)
 	})
 
 	t.Run("empty template - no display name", func(t *testing.T) {
@@ -1395,7 +1395,7 @@ func TestAggregateDisplayNameTemplate(t *testing.T) {
 			},
 			Metadata: config.MetadataConfig{
 				NFO: config.NFOConfig{
-					DisplayName: "",
+					DisplayTitle: "",
 				},
 			},
 		}
@@ -1414,17 +1414,18 @@ func TestAggregateDisplayNameTemplate(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, movie)
 
-		assert.Empty(t, movie.DisplayName)
+		// Empty template falls back to Title
+		assert.Equal(t, "Test Movie", movie.DisplayTitle)
 	})
 
-	t.Run("invalid template - silently ignored", func(t *testing.T) {
+	t.Run("invalid template - falls back to Title", func(t *testing.T) {
 		cfg := &config.Config{
 			Scrapers: config.ScrapersConfig{
 				Priority: []string{"r18dev"},
 			},
 			Metadata: config.MetadataConfig{
 				NFO: config.NFOConfig{
-					DisplayName: "<INVALID_TAG>",
+					DisplayTitle: "<INVALID_TAG>",
 				},
 			},
 		}
@@ -1443,8 +1444,8 @@ func TestAggregateDisplayNameTemplate(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, movie)
 
-		// Invalid template should be silently ignored
-		assert.Empty(t, movie.DisplayName)
+		// Invalid template falls back to Title
+		assert.Equal(t, "Test Movie", movie.DisplayTitle)
 	})
 }
 

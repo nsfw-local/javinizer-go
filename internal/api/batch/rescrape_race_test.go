@@ -35,25 +35,28 @@ func setJobDeleted(job *worker.BatchJob, deleted bool) {
 	// Using a shadow struct to calculate offset:
 
 	type batchJobShadow struct {
-		ID            string
-		Status        worker.JobStatus
-		TotalFiles    int
-		Completed     int
-		Failed        int
-		Excluded      map[string]bool
-		Files         []string
-		Results       map[string]*worker.FileResult
-		FileMatchInfo map[string]worker.FileMatchInfo
-		Progress      float64
-		Destination   string
-		TempDir       string
-		StartedAt     time.Time
-		CompletedAt   *time.Time
-		OrganizedAt   *time.Time
-		CancelFunc    context.CancelFunc
-		Done          chan struct{}
-		Mu            sync.RWMutex
-		Deleted       bool // exported version for offset calculation
+		ID                          string
+		Status                      worker.JobStatus
+		TotalFiles                  int
+		Completed                   int
+		Failed                      int
+		Excluded                    map[string]bool
+		Files                       []string
+		Results                     map[string]*worker.FileResult
+		FileMatchInfo               map[string]worker.FileMatchInfo
+		Progress                    float64
+		Destination                 string
+		TempDir                     string
+		StartedAt                   time.Time
+		CompletedAt                 *time.Time
+		OrganizedAt                 *time.Time
+		MoveToFolderOverride        *bool
+		RenameFolderInPlaceOverride *bool
+		OperationModeOverride       string
+		CancelFunc                  context.CancelFunc
+		Done                        chan struct{}
+		Mu                          sync.RWMutex
+		Deleted                     bool // exported version for offset calculation
 	}
 
 	// Calculate offset to Deleted field
@@ -776,6 +779,12 @@ func TestRescrapeBatchMovie_PosterCleanup(t *testing.T) {
 // P0 PLATFORM - Case-only ID change in overlapping rescrapes should NOT delete poster on macOS/Windows
 // This test verifies the guard logic in the overlapping rescrape cleanup path (lines 493-518)
 func TestRescrapeBatchMovie_OverlappingRescrape_CaseInsensitiveFS(t *testing.T) {
+	// Skip on case-sensitive filesystems (Linux typically uses ext4 which is case-sensitive)
+	tempDir := t.TempDir()
+	if !isCaseInsensitiveFS(tempDir) {
+		t.Skip("Skipping on case-sensitive filesystem - test is for case-insensitive FS behavior")
+	}
+
 	initTestWebSocket(t)
 	gin.SetMode(gin.TestMode)
 

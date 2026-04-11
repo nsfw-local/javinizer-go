@@ -12,6 +12,7 @@ import (
 	"syscall"
 
 	"github.com/javinizer/javinizer-go/internal/config"
+	"github.com/javinizer/javinizer-go/internal/logging"
 	"github.com/javinizer/javinizer-go/internal/matcher"
 	"github.com/javinizer/javinizer-go/internal/models"
 	"github.com/javinizer/javinizer-go/internal/template"
@@ -79,16 +80,17 @@ func (o *Organizer) SetMatcher(m *matcher.Matcher) {
 
 // OrganizeResult represents the result of organizing a file
 type OrganizeResult struct {
-	OriginalPath     string
-	NewPath          string
-	FolderPath       string
-	FileName         string
-	Moved            bool
-	Error            error
-	Subtitles        []SubtitleResult
-	InPlaceRenamed   bool   // Whether an in-place directory rename occurred
-	OldDirectoryPath string // Original directory path (for updating subsequent file paths)
-	NewDirectoryPath string // New directory path after in-place rename
+	OriginalPath           string
+	NewPath                string
+	FolderPath             string
+	FileName               string
+	Moved                  bool
+	Error                  error
+	Subtitles              []SubtitleResult
+	InPlaceRenamed         bool   // Whether an in-place directory rename occurred
+	OldDirectoryPath       string // Original directory path (for updating subsequent file paths)
+	NewDirectoryPath       string // New directory path after in-place rename
+	ShouldGenerateMetadata bool   // Whether NFO/media should be generated for this result
 }
 
 // SubtitleResult represents the result of moving a subtitle file
@@ -231,65 +233,59 @@ func (o *Organizer) Plan(match matcher.MatchResult, movie *models.Movie, destDir
 	targetDir := filepath.Join(pathParts...)
 	targetPath := filepath.Join(targetDir, fileName)
 
-	// In-place rename detection
+	// In-place rename detection - check RenameFolderInPlace FIRST (priority over MoveToFolder)
 	inPlace := false
 	oldDir := ""
 	isDedicated := false
 	skipInPlaceReason := ""
 
 	sourceDir := filepath.Dir(match.File.Path)
+	sourceParent := filepath.Dir(sourceDir)
 
+	// Check RenameFolderInPlace first - this takes priority over MoveToFolder
 	if o.config.RenameFolderInPlace && o.matcher != nil {
-		// Check if source and dest base directories match (same parent location)
-		sourceParent := filepath.Dir(sourceDir)
-
-		// Normalize both paths for accurate comparison (handles symlinks and different path formats)
-		sourceParentAbs, err := filepath.Abs(filepath.Clean(sourceParent))
-		if err == nil {
-			// Resolve symlinks if possible (ignore errors - fall back to non-symlink path)
-			sourceParentAbs, _ = filepath.EvalSymlinks(sourceParentAbs)
-		} else {
-			// If Abs fails, use original path
-			sourceParentAbs = sourceParent
+		// Warn if both configs are enabled (rename takes priority)
+		if o.config.MoveToFolder {
+			logging.Warnf("[%s] Both rename_folder_in_place and move_to_folder enabled; rename takes priority", match.ID)
 		}
 
-		destDirAbs, err := filepath.Abs(filepath.Clean(destDir))
-		if err == nil {
-			// Resolve symlinks if possible (ignore errors - fall back to non-symlink path)
-			destDirAbs, _ = filepath.EvalSymlinks(destDirAbs)
-		} else {
-			// If Abs fails, use original path
-			destDirAbs = destDir
-		}
+		// Check if source folder is dedicated to this ID (unconditional - no path check)
+		isDedicated = o.isDedicatedFolder(sourceDir, match.ID, o.matcher)
 
-		// For in-place, we ignore SubfolderFormat - just check if destDir matches sourceParent
-		if sourceParentAbs == destDirAbs {
-			// Check if source folder is dedicated to this ID
-			isDedicated = o.isDedicatedFolder(sourceDir, match.ID, o.matcher)
-
-			if isDedicated {
-				// Check if folder name already matches target
-				currentFolderName := filepath.Base(sourceDir)
-				if currentFolderName != folderName {
-					// Enable in-place rename
-					inPlace = true
-					oldDir = sourceDir
-					// Override targetDir to rename in-place (ignore subfolders)
-					targetDir = filepath.Join(destDir, folderName)
-					targetPath = filepath.Join(targetDir, fileName)
-				} else {
-					skipInPlaceReason = "folder already has correct name"
-				}
+		if isDedicated {
+			currentFolderName := filepath.Base(sourceDir)
+			if currentFolderName != folderName {
+				inPlace = true
+				oldDir = sourceDir
+				// In-place rename: rename folder in its current location (ignore destDir)
+				targetDir = filepath.Join(filepath.Dir(sourceDir), folderName)
+				targetPath = filepath.Join(targetDir, fileName)
+				logging.Debugf("[%s] In-place folder rename enabled: %s → %s", match.ID, oldDir, targetDir)
 			} else {
-				skipInPlaceReason = "folder contains mixed IDs"
+				skipInPlaceReason = "folder already has correct name"
+				if !o.config.MoveToFolder {
+					targetDir = sourceDir
+					targetPath = filepath.Join(targetDir, fileName)
+				}
 			}
 		} else {
-			skipInPlaceReason = "source and dest directories differ"
+			skipInPlaceReason = "folder contains mixed IDs"
+			if !o.config.MoveToFolder {
+				targetDir = sourceDir
+				targetPath = filepath.Join(targetDir, fileName)
+			}
 		}
 	} else if !o.config.RenameFolderInPlace {
 		skipInPlaceReason = "feature disabled in config"
 	} else if o.matcher == nil {
 		skipInPlaceReason = "matcher not set"
+	}
+
+	// When both configs are false, keep file in current location (no folder changes)
+	// This enables "metadata only" mode where NFO/images are generated but files aren't moved
+	if !o.config.RenameFolderInPlace && !o.config.MoveToFolder {
+		targetDir = sourceDir
+		targetPath = filepath.Join(targetDir, fileName)
 	}
 
 	// Automatically truncate path if it exceeds MaxPathLength
@@ -305,12 +301,9 @@ func (o *Organizer) Plan(match matcher.MatchResult, movie *models.Movie, destDir
 			newFolderByteLen := currentFolderLen - excess
 			folderName = o.templateEngine.TruncateTitleBytes(folderName, newFolderByteLen)
 
-			// Rebuild paths with truncated folder, respecting in-place rename structure
 			if inPlace {
-				// In-place rename: just destDir + folderName (no subfolders)
-				targetDir = filepath.Join(destDir, folderName)
-			} else {
-				// Normal move: destDir + subfolders + folderName
+				targetDir = filepath.Join(sourceParent, folderName)
+			} else if targetDir != sourceDir {
 				pathParts := []string{destDir}
 				pathParts = append(pathParts, subfolderParts...)
 				pathParts = append(pathParts, folderName)
@@ -330,11 +323,17 @@ func (o *Organizer) Plan(match matcher.MatchResult, movie *models.Movie, destDir
 	// Check if move is needed
 	willMove := match.File.Path != targetPath
 
-	// Check for conflicts (skip if forceUpdate is enabled)
+	// Check for conflicts (skip if forceUpdate is enabled or no-op)
 	conflicts := make([]string, 0)
-	if !forceUpdate {
-		if _, err := o.fs.Stat(targetPath); err == nil {
-			conflicts = append(conflicts, fmt.Sprintf("target file exists: %s", targetPath))
+	if !forceUpdate && match.File.Path != targetPath {
+		if stat, err := o.fs.Stat(targetPath); err == nil {
+			// Check if target is actually the same file as source (case-insensitive FS)
+			sourceStat, sourceErr := o.fs.Stat(match.File.Path)
+			if sourceErr == nil && os.SameFile(sourceStat, stat) {
+				// Same file, skip conflict (case-only rename on case-insensitive FS)
+			} else {
+				conflicts = append(conflicts, fmt.Sprintf("target file exists: %s", targetPath))
+			}
 		}
 	}
 
@@ -357,11 +356,12 @@ func (o *Organizer) Plan(match matcher.MatchResult, movie *models.Movie, destDir
 // Execute executes an organization plan
 func (o *Organizer) Execute(plan *OrganizePlan, dryRun bool) (*OrganizeResult, error) {
 	result := &OrganizeResult{
-		OriginalPath: plan.SourcePath,
-		NewPath:      plan.TargetPath,
-		FolderPath:   plan.TargetDir,
-		FileName:     plan.TargetFile,
-		Moved:        false,
+		OriginalPath:           plan.SourcePath,
+		NewPath:                plan.TargetPath,
+		FolderPath:             plan.TargetDir,
+		FileName:               plan.TargetFile,
+		Moved:                  false,
+		ShouldGenerateMetadata: false,
 	}
 
 	// Check for conflicts
@@ -395,8 +395,20 @@ func (o *Organizer) Execute(plan *OrganizePlan, dryRun bool) (*OrganizeResult, e
 
 		// Check if target directory already exists (conflict)
 		if _, err := o.fs.Stat(plan.TargetDir); err == nil {
-			result.Error = fmt.Errorf("target directory already exists: %s", plan.TargetDir)
-			return result, result.Error
+			// Check if it's actually the same directory (case-only rename on case-insensitive FS)
+			oldInfo, oldErr := o.fs.Stat(plan.OldDir)
+			if oldErr == nil {
+				newInfo, newErr := o.fs.Stat(plan.TargetDir)
+				if newErr == nil && os.SameFile(oldInfo, newInfo) {
+					// Same directory with different case — skip conflict, proceed with rename
+				} else {
+					result.Error = fmt.Errorf("target directory already exists: %s", plan.TargetDir)
+					return result, result.Error
+				}
+			} else {
+				result.Error = fmt.Errorf("target directory already exists: %s", plan.TargetDir)
+				return result, result.Error
+			}
 		}
 
 		// Rename the directory
@@ -426,6 +438,7 @@ func (o *Organizer) Execute(plan *OrganizePlan, dryRun bool) (*OrganizeResult, e
 		}
 
 		result.Moved = true
+		result.ShouldGenerateMetadata = true
 	} else {
 		// Normal move: create target directory and move file
 		// Create target directory
@@ -441,6 +454,7 @@ func (o *Organizer) Execute(plan *OrganizePlan, dryRun bool) (*OrganizeResult, e
 		}
 
 		result.Moved = true
+		result.ShouldGenerateMetadata = true
 	}
 
 	// Handle subtitle files if enabled
@@ -611,11 +625,12 @@ func (o *Organizer) Copy(plan *OrganizePlan, dryRun bool) (*OrganizeResult, erro
 // CopyWithLinkMode materializes a file using direct copy, hard link, or soft link.
 func (o *Organizer) CopyWithLinkMode(plan *OrganizePlan, dryRun bool, linkMode LinkMode) (*OrganizeResult, error) {
 	result := &OrganizeResult{
-		OriginalPath: plan.SourcePath,
-		NewPath:      plan.TargetPath,
-		FolderPath:   plan.TargetDir,
-		FileName:     plan.TargetFile,
-		Moved:        false,
+		OriginalPath:           plan.SourcePath,
+		NewPath:                plan.TargetPath,
+		FolderPath:             plan.TargetDir,
+		FileName:               plan.TargetFile,
+		Moved:                  false,
+		ShouldGenerateMetadata: false,
 	}
 
 	// Check for conflicts
@@ -713,6 +728,7 @@ func (o *Organizer) CopyWithLinkMode(plan *OrganizePlan, dryRun bool, linkMode L
 	}
 
 	result.Moved = true // "Moved" means operation succeeded (even though it's a copy)
+	result.ShouldGenerateMetadata = true
 	return result, nil
 }
 
@@ -744,11 +760,6 @@ func (o *Organizer) ValidatePlan(plan *OrganizePlan) []string {
 	// Check source exists
 	if _, err := o.fs.Stat(plan.SourcePath); os.IsNotExist(err) {
 		issues = append(issues, fmt.Sprintf("source file does not exist: %s", plan.SourcePath))
-	}
-
-	// Check target is not the same as source
-	if plan.SourcePath == plan.TargetPath {
-		issues = append(issues, "source and target paths are identical")
 	}
 
 	// Check folder name is not empty

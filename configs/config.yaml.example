@@ -356,7 +356,7 @@ metadata:
     required_fields: []
     nfo:
         enabled: true
-        display_name: <TITLE>
+        display_title: <TITLE>
         filename_template: <ID>.nfo
         first_name_order: true
         actress_language_ja: false

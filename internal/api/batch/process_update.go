@@ -223,6 +223,24 @@ func processUpdateMode(job *worker.BatchJob, cfg *config.Config, db *database.DB
 				} else {
 					movieToWrite = mergeResult.Merged
 					mergeStats = &mergeResult.Stats
+
+					// Determine DisplayTitle: use template or fallback to Title
+					// If Title already looks template-generated (starts with [ID]),
+					// use it directly to avoid double-templating.
+					titleLooksTemplated := worker.LooksLikeTemplatedTitle(movieToWrite.Title, movieToWrite.ID)
+					if titleLooksTemplated {
+						movieToWrite.DisplayTitle = movieToWrite.Title
+					} else if cfg.Metadata.NFO.DisplayTitle != "" {
+						displayTmplCtx := template.NewContextFromMovie(movieToWrite)
+						if displayName, err := templateEngine.ExecuteWithContext(ctx, cfg.Metadata.NFO.DisplayTitle, displayTmplCtx); err == nil {
+							movieToWrite.DisplayTitle = displayName
+						} else {
+							movieToWrite.DisplayTitle = movieToWrite.Title
+						}
+					} else {
+						movieToWrite.DisplayTitle = movieToWrite.Title
+					}
+
 					logging.Infof("NFO merge complete for %s: %d from scraper, %d from NFO, %d conflicts resolved",
 						movie.ID, mergeStats.FromScraper, mergeStats.FromNFO, mergeStats.ConflictsResolved)
 				}

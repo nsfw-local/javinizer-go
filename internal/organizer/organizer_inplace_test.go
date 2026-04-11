@@ -3,6 +3,7 @@ package organizer
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/spf13/afero"
@@ -106,15 +107,19 @@ func TestPlan_InPlaceDetection(t *testing.T) {
 	tests := []struct {
 		name                string
 		renameFolderInPlace bool
+		moveToFolder        bool
 		sourceFolder        string
 		sourceFile          string
 		destDir             string
 		expectedInPlace     bool
 		expectedReason      string
+		expectedTargetDir   string
+		addMixedVideo       bool
 	}{
 		{
 			name:                "In-place enabled, dedicated folder, needs rename",
 			renameFolderInPlace: true,
+			moveToFolder:        true,
 			sourceFolder:        "old_folder_name",
 			sourceFile:          "IPX-535.mp4",
 			destDir:             tmpDir,
@@ -124,6 +129,7 @@ func TestPlan_InPlaceDetection(t *testing.T) {
 		{
 			name:                "In-place disabled",
 			renameFolderInPlace: false,
+			moveToFolder:        true,
 			sourceFolder:        "old_folder_name",
 			sourceFile:          "IPX-535.mp4",
 			destDir:             tmpDir,
@@ -133,6 +139,7 @@ func TestPlan_InPlaceDetection(t *testing.T) {
 		{
 			name:                "Folder already has correct name",
 			renameFolderInPlace: true,
+			moveToFolder:        true,
 			sourceFolder:        "IPX-535 [IdeaPocket] - Beautiful Day",
 			sourceFile:          "IPX-535.mp4",
 			destDir:             tmpDir,
@@ -142,26 +149,48 @@ func TestPlan_InPlaceDetection(t *testing.T) {
 		{
 			name:                "Mixed IDs in folder",
 			renameFolderInPlace: true,
+			moveToFolder:        true,
 			sourceFolder:        "mixed_folder",
 			sourceFile:          "IPX-535.mp4",
 			destDir:             tmpDir,
 			expectedInPlace:     false,
 			expectedReason:      "folder contains mixed IDs",
+			addMixedVideo:       true,
+		},
+		{
+			name:                "Folder already correct, MoveToFolder=false, stays in source",
+			renameFolderInPlace: true,
+			moveToFolder:        false,
+			sourceFolder:        "IPX-535 [IdeaPocket] - Beautiful Day",
+			sourceFile:          "IPX-535.mp4",
+			destDir:             filepath.Join(tmpDir, "dest"),
+			expectedInPlace:     false,
+			expectedReason:      "folder already has correct name",
+		},
+		{
+			name:                "Not dedicated folder, MoveToFolder=false, stays in source",
+			renameFolderInPlace: true,
+			moveToFolder:        false,
+			sourceFolder:        "mixed_folder_no_move",
+			sourceFile:          "IPX-535.mp4",
+			destDir:             filepath.Join(tmpDir, "dest"),
+			expectedInPlace:     false,
+			expectedReason:      "folder contains mixed IDs",
+			addMixedVideo:       true,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Setup
 			orgCfg := &config.OutputConfig{
 				RenameFolderInPlace: tt.renameFolderInPlace,
+				MoveToFolder:        tt.moveToFolder,
 				FolderFormat:        "<ID> [<STUDIO>] - <TITLE>",
 				FileFormat:          "<ID>",
 			}
 			o := NewOrganizer(afero.NewOsFs(), orgCfg)
 			o.SetMatcher(m)
 
-			// Create source directory and file
 			sourceDir := filepath.Join(tmpDir, tt.sourceFolder)
 			if err := os.MkdirAll(sourceDir, 0755); err != nil {
 				t.Fatalf("Failed to create source directory: %v", err)
@@ -172,15 +201,13 @@ func TestPlan_InPlaceDetection(t *testing.T) {
 				t.Fatalf("Failed to create source file: %v", err)
 			}
 
-			// For mixed IDs test, add another video file
-			if tt.sourceFolder == "mixed_folder" {
+			if tt.addMixedVideo {
 				otherFile := filepath.Join(sourceDir, "ABC-123.mp4")
 				if err := os.WriteFile(otherFile, []byte("other video"), 0644); err != nil {
 					t.Fatalf("Failed to create other file: %v", err)
 				}
 			}
 
-			// Create match result
 			match := matcher.MatchResult{
 				ID: "IPX-535",
 				File: scanner.FileInfo{
@@ -190,20 +217,17 @@ func TestPlan_InPlaceDetection(t *testing.T) {
 				},
 			}
 
-			// Create movie metadata
 			movie := &models.Movie{
 				ID:    "IPX-535",
 				Maker: "IdeaPocket",
 				Title: "Beautiful Day",
 			}
 
-			// Plan the organization
 			plan, err := o.Plan(match, movie, tt.destDir, false)
 			if err != nil {
 				t.Fatalf("Plan failed: %v", err)
 			}
 
-			// Verify in-place detection
 			if plan.InPlace != tt.expectedInPlace {
 				t.Errorf("Expected InPlace=%v, got %v", tt.expectedInPlace, plan.InPlace)
 			}
@@ -218,6 +242,12 @@ func TestPlan_InPlaceDetection(t *testing.T) {
 				}
 				if plan.OldDir != sourceDir {
 					t.Errorf("Expected OldDir=%q, got %q", sourceDir, plan.OldDir)
+				}
+			}
+
+			if tt.moveToFolder == false && !tt.expectedInPlace {
+				if plan.TargetDir != sourceDir {
+					t.Errorf("Expected TargetDir=%q (sourceDir), got %q", sourceDir, plan.TargetDir)
 				}
 			}
 		})
@@ -635,5 +665,187 @@ func TestExecute_InPlaceDryRun(t *testing.T) {
 	expectedDir := filepath.Join(tmpDir, "IPX-535")
 	if _, err := os.Stat(expectedDir); !os.IsNotExist(err) {
 		t.Error("New directory should not exist in dry-run")
+	}
+}
+
+func TestPlan_InPlaceTruncation_UsesSourceParent(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	matcherCfg := &config.MatchingConfig{
+		RegexEnabled: false,
+	}
+	m, err := matcher.NewMatcher(matcherCfg)
+	if err != nil {
+		t.Fatalf("Failed to create matcher: %v", err)
+	}
+
+	sourceParent := filepath.Join(tmpDir, "source_parent")
+	sourceDir := filepath.Join(sourceParent, "old_folder")
+	if err := os.MkdirAll(sourceDir, 0755); err != nil {
+		t.Fatalf("Failed to create source directory: %v", err)
+	}
+
+	sourcePath := filepath.Join(sourceDir, "IPX-535.mp4")
+	if err := os.WriteFile(sourcePath, []byte("test video"), 0644); err != nil {
+		t.Fatalf("Failed to create source file: %v", err)
+	}
+
+	destDir := filepath.Join(tmpDir, "dest")
+
+	// Use a MaxPathLength that will trigger truncation but still allow success
+	maxPathLen := 150
+	orgCfg := &config.OutputConfig{
+		RenameFolderInPlace: true,
+		MoveToFolder:        false,
+		FolderFormat:        "<ID> - <TITLE>",
+		FileFormat:          "<ID>",
+		MaxPathLength:       maxPathLen,
+	}
+	o := NewOrganizer(afero.NewOsFs(), orgCfg)
+	o.SetMatcher(m)
+
+	match := matcher.MatchResult{
+		ID: "IPX-535",
+		File: scanner.FileInfo{
+			Path:      sourcePath,
+			Name:      "IPX-535.mp4",
+			Extension: ".mp4",
+		},
+	}
+
+	// Create a very long title to ensure truncation is needed
+	movie := &models.Movie{
+		ID:    "IPX-535",
+		Title: "This is an extremely long movie title that will absolutely require truncation to fit within the maximum path length constraint of one hundred characters total",
+	}
+
+	// Calculate the untruncated path to verify truncation is needed
+	untruncatedFolderName := "IPX-535 - " + movie.Title
+	untruncatedPath := filepath.Join(sourceParent, untruncatedFolderName, "IPX-535.mp4")
+
+	plan, err := o.Plan(match, movie, destDir, false)
+	if err != nil {
+		t.Fatalf("Plan failed: %v", err)
+	}
+
+	if !plan.InPlace {
+		t.Errorf("Expected InPlace=true, got false. SkipReason: %s", plan.SkipInPlaceReason)
+	}
+
+	if !strings.HasPrefix(plan.TargetDir, sourceParent) {
+		t.Errorf("Expected TargetDir to use sourceParent=%q, got %q", sourceParent, plan.TargetDir)
+	}
+
+	if strings.HasPrefix(plan.TargetDir, destDir) {
+		t.Errorf("TargetDir should NOT use destDir=%q, got %q", destDir, plan.TargetDir)
+	}
+
+	// Verify truncation actually happened
+	if len(untruncatedPath) <= maxPathLen {
+		t.Fatalf("Test setup error: untruncated path (%d chars) should exceed MaxPathLength (%d)", len(untruncatedPath), maxPathLen)
+	}
+
+	if len(plan.TargetPath) > maxPathLen {
+		t.Errorf("TargetPath length %d exceeds MaxPathLength %d", len(plan.TargetPath), maxPathLen)
+	}
+
+	// Verify the path was actually shortened
+	if len(plan.TargetPath) >= len(untruncatedPath) {
+		t.Errorf("Expected truncation but path wasn't shortened: before=%d, after=%d", len(untruncatedPath), len(plan.TargetPath))
+	}
+}
+
+func TestExecute_CaseOnlyDirectoryRename(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	caseFile := filepath.Join(tmpDir, "case-test")
+	if err := os.WriteFile(caseFile, []byte("test"), 0644); err != nil {
+		t.Fatalf("Failed to create case test file: %v", err)
+	}
+	upperFile := filepath.Join(tmpDir, "CASE-TEST")
+	lowerStat, lowerErr := os.Stat(caseFile)
+	upperStat, upperErr := os.Stat(upperFile)
+	if lowerErr != nil || upperErr != nil || !os.SameFile(lowerStat, upperStat) {
+		t.Skip("Skipping: filesystem is case-sensitive, test only valid on case-insensitive FS (macOS/Windows)")
+	}
+	os.Remove(caseFile)
+
+	matcherCfg := &config.MatchingConfig{
+		RegexEnabled: false,
+	}
+	m, err := matcher.NewMatcher(matcherCfg)
+	if err != nil {
+		t.Fatalf("Failed to create matcher: %v", err)
+	}
+
+	sourceParent := filepath.Join(tmpDir, "library")
+	sourceDir := filepath.Join(sourceParent, "ipx-535 - beautiful day")
+	if err := os.MkdirAll(sourceDir, 0755); err != nil {
+		t.Fatalf("Failed to create source directory: %v", err)
+	}
+
+	sourcePath := filepath.Join(sourceDir, "ipx-535.mp4")
+	if err := os.WriteFile(sourcePath, []byte("test video"), 0644); err != nil {
+		t.Fatalf("Failed to create source file: %v", err)
+	}
+
+	cfg := &config.OutputConfig{
+		RenameFolderInPlace: true,
+		MoveToFolder:        false,
+		FolderFormat:        "<ID> - <TITLE>",
+		FileFormat:          "<ID>",
+		RenameFile:          true,
+	}
+	o := NewOrganizer(afero.NewOsFs(), cfg)
+	o.SetMatcher(m)
+
+	match := matcher.MatchResult{
+		ID: "IPX-535",
+		File: scanner.FileInfo{
+			Path:      sourcePath,
+			Name:      "ipx-535.mp4",
+			Extension: ".mp4",
+		},
+	}
+
+	movie := &models.Movie{
+		ID:    "IPX-535",
+		Title: "Beautiful Day",
+	}
+
+	plan, err := o.Plan(match, movie, tmpDir, false)
+	if err != nil {
+		t.Fatalf("Plan failed: %v", err)
+	}
+
+	if !plan.InPlace {
+		t.Fatalf("Expected InPlace=true, got false. SkipReason: %s", plan.SkipInPlaceReason)
+	}
+
+	expectedTargetDir := filepath.Join(sourceParent, "IPX-535 - Beautiful Day")
+	if plan.TargetDir != expectedTargetDir {
+		t.Errorf("Expected TargetDir=%q, got %q", expectedTargetDir, plan.TargetDir)
+	}
+
+	result, err := o.Execute(plan, false)
+	if err != nil {
+		t.Fatalf("Execute failed: %v", err)
+	}
+
+	if result.Error != nil {
+		t.Fatalf("Execute returned error: %v", result.Error)
+	}
+
+	if !result.InPlaceRenamed {
+		t.Error("Expected InPlaceRenamed=true")
+	}
+
+	if _, err := os.Stat(result.NewDirectoryPath); err != nil {
+		t.Errorf("New directory path does not exist: %s (error: %v)", result.NewDirectoryPath, err)
+	}
+
+	expectedTargetPath := filepath.Join(result.NewDirectoryPath, "IPX-535.mp4")
+	if _, err := os.Stat(expectedTargetPath); err != nil {
+		t.Errorf("Renamed file does not exist at expected path: %s (error: %v)", expectedTargetPath, err)
 	}
 }

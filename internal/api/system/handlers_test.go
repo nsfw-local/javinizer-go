@@ -204,14 +204,16 @@ func TestGetAvailableScrapers(t *testing.T) {
 			validateFn: func(t *testing.T, resp AvailableScrapersResponse) {
 				require.Len(t, resp.Scrapers, 1)
 				assert.Equal(t, "r18dev", resp.Scrapers[0].Name)
-				assert.Equal(t, "R18.dev", resp.Scrapers[0].DisplayName)
+				assert.Equal(t, "R18.dev", resp.Scrapers[0].DisplayTitle)
 				assert.True(t, resp.Scrapers[0].Enabled)
-				assert.Len(t, resp.Scrapers[0].Options, 6)
+				assert.Len(t, resp.Scrapers[0].Options, 8)
 				optionKeys := make(map[string]bool)
 				for _, opt := range resp.Scrapers[0].Options {
 					optionKeys[opt.Key] = true
 				}
 				assert.True(t, optionKeys["language"])
+				assert.True(t, optionKeys["placeholder_threshold"])
+				assert.True(t, optionKeys["extra_placeholder_hashes"])
 				assert.True(t, optionKeys["user_agent"])
 				assert.True(t, optionKeys["proxy.enabled"])
 				assert.True(t, optionKeys["proxy.profile"])
@@ -228,7 +230,7 @@ func TestGetAvailableScrapers(t *testing.T) {
 			validateFn: func(t *testing.T, resp AvailableScrapersResponse) {
 				require.Len(t, resp.Scrapers, 1)
 				assert.Equal(t, "dmm", resp.Scrapers[0].Name)
-				assert.Equal(t, "DMM/Fanza", resp.Scrapers[0].DisplayName)
+				assert.Equal(t, "DMM/Fanza", resp.Scrapers[0].DisplayTitle)
 				assert.True(t, resp.Scrapers[0].Enabled)
 				assert.Len(t, resp.Scrapers[0].Options, 9)
 
@@ -268,7 +270,7 @@ func TestGetAvailableScrapers(t *testing.T) {
 			validateFn: func(t *testing.T, resp AvailableScrapersResponse) {
 				require.Len(t, resp.Scrapers, 1)
 				assert.Equal(t, "javdb", resp.Scrapers[0].Name)
-				assert.Equal(t, "JavDB", resp.Scrapers[0].DisplayName)
+				assert.Equal(t, "JavDB", resp.Scrapers[0].DisplayTitle)
 				assert.True(t, resp.Scrapers[0].Enabled)
 				assert.Len(t, resp.Scrapers[0].Options, 8)
 
@@ -295,9 +297,9 @@ func TestGetAvailableScrapers(t *testing.T) {
 			validateFn: func(t *testing.T, resp AvailableScrapersResponse) {
 				require.Len(t, resp.Scrapers, 1)
 				assert.Equal(t, "libredmm", resp.Scrapers[0].Name)
-				assert.Equal(t, "LibreDMM", resp.Scrapers[0].DisplayName)
+				assert.Equal(t, "LibreDMM", resp.Scrapers[0].DisplayTitle)
 				assert.True(t, resp.Scrapers[0].Enabled)
-				assert.Len(t, resp.Scrapers[0].Options, 7)
+				assert.Len(t, resp.Scrapers[0].Options, 9)
 
 				optionKeys := make(map[string]bool)
 				for _, opt := range resp.Scrapers[0].Options {
@@ -305,6 +307,8 @@ func TestGetAvailableScrapers(t *testing.T) {
 				}
 				assert.True(t, optionKeys["request_delay"])
 				assert.True(t, optionKeys["base_url"])
+				assert.True(t, optionKeys["placeholder_threshold"])
+				assert.True(t, optionKeys["extra_placeholder_hashes"])
 				assert.True(t, optionKeys["user_agent"])
 				assert.True(t, optionKeys["proxy.enabled"])
 				assert.True(t, optionKeys["proxy.profile"])
@@ -321,7 +325,7 @@ func TestGetAvailableScrapers(t *testing.T) {
 			validateFn: func(t *testing.T, resp AvailableScrapersResponse) {
 				require.Len(t, resp.Scrapers, 1)
 				assert.Equal(t, "caribbeancom", resp.Scrapers[0].Name)
-				assert.Equal(t, "Caribbeancom", resp.Scrapers[0].DisplayName)
+				assert.Equal(t, "Caribbeancom", resp.Scrapers[0].DisplayTitle)
 				assert.True(t, resp.Scrapers[0].Enabled)
 				assert.Len(t, resp.Scrapers[0].Options, 8)
 
@@ -348,7 +352,7 @@ func TestGetAvailableScrapers(t *testing.T) {
 			validateFn: func(t *testing.T, resp AvailableScrapersResponse) {
 				require.Len(t, resp.Scrapers, 1)
 				assert.Equal(t, "fc2", resp.Scrapers[0].Name)
-				assert.Equal(t, "FC2", resp.Scrapers[0].DisplayName)
+				assert.Equal(t, "FC2", resp.Scrapers[0].DisplayTitle)
 				assert.True(t, resp.Scrapers[0].Enabled)
 				assert.Len(t, resp.Scrapers[0].Options, 7)
 

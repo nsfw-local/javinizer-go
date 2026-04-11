@@ -12,17 +12,17 @@
 	import Card from '$lib/components/ui/Card.svelte';
 	import { apiClient } from '$lib/api/client';
 	import { toastStore } from '$lib/stores/toast';
-	import { Play, FolderOutput, FolderOpen, RotateCcw, LoaderCircle, RefreshCw, Settings, ChevronUp, ChevronDown, X } from 'lucide-svelte';
-	import type { Scraper, FileInfo } from '$lib/api/types';
+	import { Play, FolderOutput, FolderOpen, FileEdit, FileText, RotateCcw, LoaderCircle, RefreshCw, Settings, ChevronUp, ChevronDown, X } from 'lucide-svelte';
+	import type { Scraper, FileInfo, Config } from '$lib/api/types';
+	import type { OperationMode } from '$lib/api/types';
 
-	type OperationMode = 'scrape' | 'update';
-
+	type BrowseMode = 'scrape' | 'update';
 	let selectedFiles: string[] = $state([]);
 	let currentJobId: string | null = $state(null);
 	let showProgress = $state(false);
 	let scraping = $state(false);
 	let forceRefresh = $state(false);
-	let operationMode: OperationMode = $state('scrape');
+	let operationMode: BrowseMode = $state('scrape');
 	let scanning = $state(false);
 	let initialPath = $state('');
 	let destinationPath = $state('');
@@ -32,6 +32,7 @@
 	let availableScrapers: Scraper[] = $state([]);
 	let selectedScrapers: string[] = $state([]);
 	let showScraperSelector = $state(false);
+	let config: Config | null = $state(null);
 	type ScalarStrategy = 'prefer-nfo' | 'prefer-scraper' | 'preserve-existing' | 'fill-missing-only';
 	type ArrayStrategy = 'merge' | 'replace';
 
@@ -39,6 +40,20 @@
 	let scalarStrategy: ScalarStrategy = $state('prefer-nfo');  // For scalar fields
 	let arrayStrategy: ArrayStrategy = $state('merge');        // For array fields
 	let showOptionsPanel = $state(false);  // Expandable options panel in sticky bar
+	let operationModeOverride: OperationMode = $state('organize');
+	let operationModeOverrideTouched: boolean = $state(false);
+
+	function getSettingsOperationMode(): OperationMode {
+		if (config) {
+			const mode = config.output?.operation_mode;
+			if (mode && typeof mode === 'string') {
+				return mode as OperationMode;
+			}
+		}
+		return 'organize';
+	}
+
+	let effectiveOperationMode: OperationMode = $derived(operationModeOverrideTouched ? operationModeOverride : getSettingsOperationMode());
 
 	// localStorage keys
 	const STORAGE_KEY_INPUT = 'javinizer_input_path';
@@ -68,6 +83,13 @@
 				.map((s) => s.name);
 		} catch (error) {
 			console.error('Failed to fetch scrapers:', error);
+		}
+
+		// Load config for file operations settings
+		try {
+			config = await apiClient.getConfig();
+		} catch (error) {
+			console.error('Failed to load config:', error);
 		}
 	});
 
@@ -171,11 +193,11 @@
 				selected_scrapers: showScraperSelector ? selectedScrapers : undefined,
 				preset: isUpdateMode ? (selectedPreset as 'conservative' | 'gap-fill' | 'aggressive' | undefined) : undefined,
 				scalar_strategy: isUpdateMode ? scalarStrategy : undefined,
-				array_strategy: isUpdateMode ? arrayStrategy : undefined
+				array_strategy: isUpdateMode ? arrayStrategy : undefined,
+				operation_mode: effectiveOperationMode,
 			});
 			currentJobId = response.job_id;
 
-			// Show success toast
 			const modeText = isUpdateMode ? 'Updating metadata' : 'Batch scraping';
 			toastStore.success(
 				`${modeText} started for ${selectedFiles.length} file${selectedFiles.length !== 1 ? 's' : ''}`,
@@ -407,6 +429,44 @@
 		</Card>
 		</div>
 	{/if}
+	<!-- File Operations Selection (only shown in scrape mode) -->
+	{#if operationMode === 'scrape'}
+		<div transition:slide|local={{ duration: 220, easing: quintOut }}>
+		<Card class="p-4">
+			<div class="space-y-3">
+				<div>
+					<h3 class="font-semibold">File Operations</h3>
+					<p class="text-sm text-muted-foreground">Choose how files are organized during scraping</p>
+				</div>
+				<div class="grid grid-cols-2 gap-2 md:grid-cols-3 lg:grid-cols-4">
+					{#each [
+						{ value: 'organize' as OperationMode, label: 'Organize', desc: 'Move to folder', icon: FolderOutput },
+						{ value: 'in-place' as OperationMode, label: 'Rename in place', desc: 'Keep location, rename folder', icon: FolderOpen },
+						{ value: 'in-place-norenamefolder' as OperationMode, label: 'Rename file only', desc: 'Rename video file, keep folder', icon: FileEdit },
+						{ value: 'metadata-only' as OperationMode, label: 'Metadata only', desc: 'No file changes', icon: FileText },
+					] as mode}
+						<button
+							onclick={() => { operationModeOverride = mode.value; operationModeOverrideTouched = true; }}
+							class="relative flex flex-col items-start gap-1 p-3 rounded-lg border-2 text-sm transition-all {effectiveOperationMode === mode.value ? 'border-primary bg-primary/5 font-medium' : 'border-border hover:border-primary/50'}"
+						>
+							{#if !operationModeOverrideTouched && getSettingsOperationMode() === mode.value}
+								<span class="absolute top-1 right-1 text-[10px] text-primary bg-primary/10 px-1.5 py-0.5 rounded">Default</span>
+							{/if}
+							<div class="font-medium">{mode.label}</div>
+							<div class="text-xs text-muted-foreground">{mode.desc}</div>
+						</button>
+					{/each}
+				</div>
+				{#if operationModeOverrideTouched && effectiveOperationMode !== getSettingsOperationMode()}
+					<p class="text-xs text-primary">
+						Overriding settings for this batch only. <button class="underline" onclick={() => operationModeOverrideTouched = false}>Reset to default</button>
+					</p>
+				{/if}
+			</div>
+		</Card>
+		</div>
+	{/if}
+
 	<!-- Destination Folder (only shown in scrape mode) -->
 	{#if operationMode === 'scrape'}
 		<div transition:slide|local={{ duration: 220, easing: quintOut }}>
@@ -573,6 +633,7 @@
 							<p class="text-xs text-muted-foreground">Choose specific scrapers</p>
 						</div>
 					</label>
+
 				</div>
 
 				<!-- Scraper Selector (if enabled) -->

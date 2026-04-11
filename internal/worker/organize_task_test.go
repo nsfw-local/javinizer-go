@@ -239,11 +239,13 @@ func TestOrganizeTask_Execute_ValidationError(t *testing.T) {
 		progressChan := make(chan ProgressUpdate, 100)
 		tracker := NewProgressTracker(progressChan)
 
-		// Use empty template to potentially cause validation issues
+		// Use empty template with MoveToFolder=true to cause validation issues
 		cfg := &config.OutputConfig{
 			FolderFormat:    "",
-			FileFormat:      "",
+			FileFormat:      "<ID>",
 			SubfolderFormat: []string{},
+			MoveToFolder:    true,
+			RenameFile:      true,
 		}
 		org := organizer.NewOrganizer(afero.NewOsFs(), cfg)
 
@@ -266,8 +268,8 @@ func TestOrganizeTask_Execute_ValidationError(t *testing.T) {
 		ctx := context.Background()
 		err := task.Execute(ctx)
 
-		// Should fail due to validation issues (empty template)
-		require.Error(t, err, "Expected validation error with empty template")
+		// Should fail due to validation issues (empty folder template with MoveToFolder=true)
+		require.Error(t, err, "Expected validation error with empty folder template")
 		assert.Contains(t, err.Error(), "validation", "Error should mention validation")
 	})
 }
@@ -364,6 +366,7 @@ func TestOrganizeTask_Execute_MoveVsCopy(t *testing.T) {
 		cfg := &config.OutputConfig{
 			FolderFormat:    destDir,
 			FileFormat:      "<ID>",
+			MoveToFolder:    true,
 			SubfolderFormat: []string{},
 		}
 		org := organizer.NewOrganizer(afero.NewOsFs(), cfg)
@@ -414,6 +417,7 @@ func TestOrganizeTask_Execute_MoveVsCopy(t *testing.T) {
 		cfg := &config.OutputConfig{
 			FolderFormat:    destDir,
 			FileFormat:      "<ID>",
+			MoveToFolder:    true,
 			SubfolderFormat: []string{},
 		}
 		org := organizer.NewOrganizer(afero.NewOsFs(), cfg)
@@ -508,6 +512,7 @@ func TestOrganizeTask_ConcurrentExecution(t *testing.T) {
 		cfg := &config.OutputConfig{
 			FolderFormat:    tmpDir,
 			FileFormat:      "<ID>",
+			MoveToFolder:    true,
 			SubfolderFormat: []string{},
 		}
 		org := organizer.NewOrganizer(afero.NewOsFs(), cfg)

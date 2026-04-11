@@ -24,7 +24,9 @@ import (
 // If updateMode is true, will also download media files and generate NFOs in place without moving files.
 // scalarStrategy determines how to merge scalar fields (prefer-scraper, prefer-nfo)
 // arrayStrategy determines how to merge array fields (merge, replace)
-func processBatchJob(job *worker.BatchJob, jobQueue *worker.JobQueue, registry *models.ScraperRegistry, agg *aggregator.Aggregator, movieRepo *database.MovieRepository, mat *matcher.Matcher, strict, force, updateMode bool, destination string, cfg *config.Config, selectedScrapers []string, scalarStrategy string, arrayStrategy string, db *database.DB) {
+// moveToFolderOverride and renameFolderInPlaceOverride allow per-job folder mode overrides.
+// operationModeOverride allows per-job operation mode override (organize, in-place, metadata-only, preview).
+func processBatchJob(job *worker.BatchJob, jobQueue *worker.JobQueue, registry *models.ScraperRegistry, agg *aggregator.Aggregator, movieRepo *database.MovieRepository, mat *matcher.Matcher, strict, force, updateMode bool, destination string, cfg *config.Config, selectedScrapers []string, scalarStrategy string, arrayStrategy string, db *database.DB, moveToFolderOverride *bool, renameFolderInPlaceOverride *bool, operationModeOverride string) {
 	// Setup context for cancellation
 	ctx, cancel := context.WithCancel(context.Background())
 	job.SetCancelFunc(cancel)

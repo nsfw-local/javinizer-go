@@ -190,7 +190,7 @@ func MergeMovieMetadata(scraped, nfo *models.Movie, strategy MergeStrategy) (*Me
 	// Merge each field (passing both source timestamps)
 	merged.ContentID = mergeStringField("ContentID", scraped.ContentID, nfo.ContentID, strategy, &stats, provenance, scrapedTS, nfoTS)
 	merged.ID = mergeStringField("ID", scraped.ID, nfo.ID, strategy, &stats, provenance, scrapedTS, nfoTS)
-	merged.DisplayName = mergeStringField("DisplayName", scraped.DisplayName, nfo.DisplayName, strategy, &stats, provenance, scrapedTS, nfoTS)
+	merged.DisplayTitle = mergeStringField("DisplayTitle", scraped.DisplayTitle, nfo.DisplayTitle, strategy, &stats, provenance, scrapedTS, nfoTS)
 	merged.Title = mergeStringField("Title", scraped.Title, nfo.Title, strategy, &stats, provenance, scrapedTS, nfoTS)
 	merged.OriginalTitle = mergeStringField("OriginalTitle", scraped.OriginalTitle, nfo.OriginalTitle, strategy, &stats, provenance, scrapedTS, nfoTS)
 	merged.Description = mergeStringField("Description", scraped.Description, nfo.Description, strategy, &stats, provenance, scrapedTS, nfoTS)
@@ -304,7 +304,7 @@ func MergeMovieMetadataWithOptions(scraped, nfo *models.Movie, scalarStrategy Me
 	// Merge scalar fields using scalarStrategy
 	merged.ContentID = mergeStringField("ContentID", scraped.ContentID, nfo.ContentID, scalarStrategy, &stats, provenance, scrapedTS, nfoTS)
 	merged.ID = mergeStringField("ID", scraped.ID, nfo.ID, scalarStrategy, &stats, provenance, scrapedTS, nfoTS)
-	merged.DisplayName = mergeStringField("DisplayName", scraped.DisplayName, nfo.DisplayName, scalarStrategy, &stats, provenance, scrapedTS, nfoTS)
+	merged.DisplayTitle = mergeStringField("DisplayTitle", scraped.DisplayTitle, nfo.DisplayTitle, scalarStrategy, &stats, provenance, scrapedTS, nfoTS)
 	merged.Title = mergeStringField("Title", scraped.Title, nfo.Title, scalarStrategy, &stats, provenance, scrapedTS, nfoTS)
 	merged.OriginalTitle = mergeStringField("OriginalTitle", scraped.OriginalTitle, nfo.OriginalTitle, scalarStrategy, &stats, provenance, scrapedTS, nfoTS)
 	merged.Description = mergeStringField("Description", scraped.Description, nfo.Description, scalarStrategy, &stats, provenance, scrapedTS, nfoTS)

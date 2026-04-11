@@ -3,6 +3,7 @@ package organizer
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -33,6 +34,7 @@ func TestOrganizer_Plan(t *testing.T) {
 		FolderFormat: "<ID> - <TITLE>",
 		FileFormat:   "<ID>",
 		RenameFile:   true,
+		MoveToFolder: true,
 	}
 
 	org := NewOrganizer(afero.NewOsFs(), cfg)
@@ -89,6 +91,7 @@ func TestOrganizer_Execute_DryRun(t *testing.T) {
 		FolderFormat: "<ID>",
 		FileFormat:   "<ID>",
 		RenameFile:   true,
+		MoveToFolder: true,
 	}
 
 	org := NewOrganizer(afero.NewOsFs(), cfg)
@@ -146,6 +149,7 @@ func TestOrganizer_Execute_ActualMove(t *testing.T) {
 		FolderFormat: "<ID> - <TITLE>",
 		FileFormat:   "<ID>",
 		RenameFile:   true,
+		MoveToFolder: true,
 	}
 
 	org := NewOrganizer(afero.NewOsFs(), cfg)
@@ -210,6 +214,7 @@ func TestOrganizer_Execute_Conflict(t *testing.T) {
 		FolderFormat: "<ID>",
 		FileFormat:   "<ID>",
 		RenameFile:   true,
+		MoveToFolder: true,
 	}
 
 	org := NewOrganizer(afero.NewOsFs(), cfg)
@@ -275,6 +280,7 @@ func TestOrganizer_Copy(t *testing.T) {
 		FolderFormat: "<ID>",
 		FileFormat:   "<ID>",
 		RenameFile:   true,
+		MoveToFolder: true,
 	}
 
 	org := NewOrganizer(afero.NewOsFs(), cfg)
@@ -334,6 +340,7 @@ func TestOrganizer_CopyWithLinkMode_HardLink(t *testing.T) {
 		FolderFormat: "<ID>",
 		FileFormat:   "<ID>",
 		RenameFile:   true,
+		MoveToFolder: true,
 	}
 	org := NewOrganizer(afero.NewOsFs(), cfg)
 	movie := createTestMovie()
@@ -386,6 +393,7 @@ func TestOrganizer_CopyWithLinkMode_SoftLink(t *testing.T) {
 		FolderFormat: "<ID>",
 		FileFormat:   "<ID>",
 		RenameFile:   true,
+		MoveToFolder: true,
 	}
 	org := NewOrganizer(afero.NewOsFs(), cfg)
 	movie := createTestMovie()
@@ -476,6 +484,7 @@ func TestOrganizer_Revert(t *testing.T) {
 		FolderFormat: "<ID>",
 		FileFormat:   "<ID>",
 		RenameFile:   true,
+		MoveToFolder: true,
 	}
 
 	org := NewOrganizer(afero.NewOsFs(), cfg)
@@ -559,17 +568,54 @@ func TestValidatePlan(t *testing.T) {
 		}
 	})
 
-	t.Run("Source and target are same", func(t *testing.T) {
+	t.Run("WillMove consistent with path equality", func(t *testing.T) {
+		// WillMove=true with different paths - valid
+		plan1 := &OrganizePlan{
+			SourcePath: "/source/file.mp4",
+			TargetPath: "/target/file.mp4",
+			TargetDir:  "/target",
+			TargetFile: "file.mp4",
+			WillMove:   true,
+		}
+
+		issues1 := org.ValidatePlan(plan1)
+		for _, issue := range issues1 {
+			if strings.Contains(issue, "WillMove") {
+				t.Errorf("Should not report WillMove issue for different paths, got: %s", issue)
+			}
+		}
+
+		// WillMove=false with same paths - valid (no-op)
+		plan2 := &OrganizePlan{
+			SourcePath: sourceFile,
+			TargetPath: sourceFile,
+			TargetDir:  tmpDir,
+			TargetFile: "source.mp4",
+			WillMove:   false,
+		}
+
+		issues2 := org.ValidatePlan(plan2)
+		for _, issue := range issues2 {
+			if strings.Contains(issue, "identical") {
+				t.Errorf("Should not report identical paths as issue for no-op, got: %s", issue)
+			}
+		}
+	})
+
+	t.Run("Source and target same, WillMove=false - no issue", func(t *testing.T) {
 		plan := &OrganizePlan{
 			SourcePath: sourceFile,
 			TargetPath: sourceFile,
 			TargetDir:  tmpDir,
 			TargetFile: "source.mp4",
+			WillMove:   false,
 		}
 
 		issues := org.ValidatePlan(plan)
-		if len(issues) == 0 {
-			t.Error("Expected issues for identical source and target")
+		for _, issue := range issues {
+			if strings.Contains(issue, "identical") {
+				t.Errorf("Should not report identical paths as issue when WillMove=false, got: %s", issue)
+			}
 		}
 	})
 
@@ -610,6 +656,7 @@ func TestOrganizer_OrganizeBatch(t *testing.T) {
 		FolderFormat: "<ID>",
 		FileFormat:   "<ID>",
 		RenameFile:   true,
+		MoveToFolder: true,
 	}
 
 	org := NewOrganizer(afero.NewOsFs(), cfg)
@@ -737,6 +784,7 @@ func TestOrganizer_Copy_SourceDoesNotExist(t *testing.T) {
 		FolderFormat: "<ID>",
 		FileFormat:   "<ID>",
 		RenameFile:   true,
+		MoveToFolder: true,
 	}
 
 	org := NewOrganizer(afero.NewOsFs(), cfg)
@@ -770,6 +818,7 @@ func TestOrganizer_Plan_WithSubfolderFormat(t *testing.T) {
 		FolderFormat:    "<ID> - <TITLE>",
 		FileFormat:      "<ID>",
 		RenameFile:      true,
+		MoveToFolder:    true,
 		SubfolderFormat: []string{"<STUDIO>", "<YEAR>"},
 	}
 
@@ -826,6 +875,7 @@ func TestOrganizer_Execute_InPlaceRename_DirectoryAlreadyExists(t *testing.T) {
 		FolderFormat: "<ID> - <TITLE>",
 		FileFormat:   "<ID>",
 		RenameFile:   true,
+		MoveToFolder: true,
 	}
 
 	org := NewOrganizer(afero.NewOsFs(), cfg)
@@ -876,6 +926,7 @@ func TestOrganizer_OrganizeBatch_PartialFailure(t *testing.T) {
 		FolderFormat: "<ID>",
 		FileFormat:   "<ID>",
 		RenameFile:   true,
+		MoveToFolder: true,
 	}
 
 	org := NewOrganizer(afero.NewOsFs(), cfg)
@@ -941,6 +992,7 @@ func TestOrganizer_OrganizeBatch_MissingMovieData(t *testing.T) {
 		FolderFormat: "<ID>",
 		FileFormat:   "<ID>",
 		RenameFile:   true,
+		MoveToFolder: true,
 	}
 
 	org := NewOrganizer(afero.NewOsFs(), cfg)
@@ -973,5 +1025,368 @@ func TestOrganizer_OrganizeBatch_MissingMovieData(t *testing.T) {
 	// Should have error for missing movie data
 	if results[0].Error == nil {
 		t.Error("Expected error for missing movie data")
+	}
+}
+
+func TestOrganizer_Plan_RenameFolderInPlace_Priority(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	sourceDir := filepath.Join(tmpDir, "source", "old-folder")
+	if err := os.MkdirAll(sourceDir, 0755); err != nil {
+		t.Fatalf("Failed to create source directory: %v", err)
+	}
+
+	sourceFile := filepath.Join(sourceDir, "ipx-535.mp4")
+	if err := os.WriteFile(sourceFile, []byte("test"), 0644); err != nil {
+		t.Fatalf("Failed to create source file: %v", err)
+	}
+
+	cfg := &config.OutputConfig{
+		FolderFormat:        "<ID> - <TITLE>",
+		FileFormat:          "<ID>",
+		RenameFile:          true,
+		RenameFolderInPlace: true,
+		MoveToFolder:        false,
+	}
+
+	org := NewOrganizer(afero.NewOsFs(), cfg)
+
+	fileMatcher, err := matcher.NewMatcher(&config.MatchingConfig{})
+	if err != nil {
+		t.Fatalf("Failed to create matcher: %v", err)
+	}
+	org.SetMatcher(fileMatcher)
+
+	movie := createTestMovie()
+
+	match := matcher.MatchResult{
+		File: scanner.FileInfo{
+			Path:      sourceFile,
+			Name:      "ipx-535.mp4",
+			Extension: ".mp4",
+			Dir:       sourceDir,
+		},
+		ID: "IPX-535",
+	}
+
+	destDir := filepath.Join(tmpDir, "dest")
+
+	plan, err := org.Plan(match, movie, destDir, false)
+	if err != nil {
+		t.Fatalf("Plan failed: %v", err)
+	}
+
+	if !plan.InPlace {
+		t.Errorf("Expected InPlace=true when RenameFolderInPlace=true, got false. SkipReason: %s", plan.SkipInPlaceReason)
+	}
+
+	expectedOldDir := sourceDir
+	if plan.OldDir != expectedOldDir {
+		t.Errorf("Expected OldDir=%s, got %s", expectedOldDir, plan.OldDir)
+	}
+
+	expectedTargetDir := filepath.Join(tmpDir, "source", "IPX-535 - Beautiful Day")
+	if plan.TargetDir != expectedTargetDir {
+		t.Errorf("Expected TargetDir=%s, got %s", expectedTargetDir, plan.TargetDir)
+	}
+}
+
+func TestOrganizer_Plan_BothConfigsTrue_RenamePriority(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	sourceDir := filepath.Join(tmpDir, "source", "old-folder")
+	if err := os.MkdirAll(sourceDir, 0755); err != nil {
+		t.Fatalf("Failed to create source directory: %v", err)
+	}
+
+	sourceFile := filepath.Join(sourceDir, "ipx-535.mp4")
+	if err := os.WriteFile(sourceFile, []byte("test"), 0644); err != nil {
+		t.Fatalf("Failed to create source file: %v", err)
+	}
+
+	cfg := &config.OutputConfig{
+		FolderFormat:        "<ID> - <TITLE>",
+		FileFormat:          "<ID>",
+		RenameFile:          true,
+		RenameFolderInPlace: true,
+		MoveToFolder:        true, // Both configs true - rename should take priority
+	}
+
+	org := NewOrganizer(afero.NewOsFs(), cfg)
+
+	fileMatcher, err := matcher.NewMatcher(&config.MatchingConfig{})
+	if err != nil {
+		t.Fatalf("Failed to create matcher: %v", err)
+	}
+	org.SetMatcher(fileMatcher)
+
+	movie := createTestMovie()
+
+	match := matcher.MatchResult{
+		File: scanner.FileInfo{
+			Path:      sourceFile,
+			Name:      "ipx-535.mp4",
+			Extension: ".mp4",
+			Dir:       sourceDir,
+		},
+		ID: "IPX-535",
+	}
+
+	destDir := filepath.Join(tmpDir, "dest")
+
+	plan, err := org.Plan(match, movie, destDir, false)
+	if err != nil {
+		t.Fatalf("Plan failed: %v", err)
+	}
+
+	if !plan.InPlace {
+		t.Errorf("Expected InPlace=true when both configs true (rename takes priority), got false. SkipReason: %s", plan.SkipInPlaceReason)
+	}
+
+	expectedTargetDir := filepath.Join(tmpDir, "source", "IPX-535 - Beautiful Day")
+	if plan.TargetDir != expectedTargetDir {
+		t.Errorf("Expected TargetDir=%s (in-place), got %s", expectedTargetDir, plan.TargetDir)
+	}
+}
+
+func TestOrganizer_Plan_BothConfigsFalse_NoFolderChanges(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	sourceDir := filepath.Join(tmpDir, "source", "old-folder")
+	if err := os.MkdirAll(sourceDir, 0755); err != nil {
+		t.Fatalf("Failed to create source directory: %v", err)
+	}
+
+	sourceFile := filepath.Join(sourceDir, "ipx-535.mp4")
+	if err := os.WriteFile(sourceFile, []byte("test"), 0644); err != nil {
+		t.Fatalf("Failed to create source file: %v", err)
+	}
+
+	cfg := &config.OutputConfig{
+		FolderFormat:        "<ID> - <TITLE>",
+		FileFormat:          "<ID>",
+		RenameFile:          true,
+		RenameFolderInPlace: false,
+		MoveToFolder:        false,
+	}
+
+	org := NewOrganizer(afero.NewOsFs(), cfg)
+
+	fileMatcher, err := matcher.NewMatcher(&config.MatchingConfig{})
+	if err != nil {
+		t.Fatalf("Failed to create matcher: %v", err)
+	}
+	org.SetMatcher(fileMatcher)
+
+	movie := createTestMovie()
+
+	match := matcher.MatchResult{
+		File: scanner.FileInfo{
+			Path:      sourceFile,
+			Name:      "ipx-535.mp4",
+			Extension: ".mp4",
+			Dir:       sourceDir,
+		},
+		ID: "IPX-535",
+	}
+
+	destDir := filepath.Join(tmpDir, "dest")
+
+	plan, err := org.Plan(match, movie, destDir, false)
+	if err != nil {
+		t.Fatalf("Plan failed: %v", err)
+	}
+
+	if plan.InPlace {
+		t.Error("Expected InPlace=false when both configs are false")
+	}
+
+	if plan.TargetDir != sourceDir {
+		t.Errorf("Expected TargetDir=%s (no change), got %s", sourceDir, plan.TargetDir)
+	}
+}
+
+func TestOrganizer_Plan_NoOpHasEmptyConflicts(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	sourceDir := filepath.Join(tmpDir, "source", "IPX-535 - Beautiful Day")
+	if err := os.MkdirAll(sourceDir, 0755); err != nil {
+		t.Fatalf("Failed to create source directory: %v", err)
+	}
+
+	sourceFile := filepath.Join(sourceDir, "IPX-535.mp4")
+	if err := os.WriteFile(sourceFile, []byte("test"), 0644); err != nil {
+		t.Fatalf("Failed to create source file: %v", err)
+	}
+
+	cfg := &config.OutputConfig{
+		FolderFormat:        "<ID> - <TITLE>",
+		FileFormat:          "<ID>",
+		RenameFile:          true,
+		RenameFolderInPlace: false,
+		MoveToFolder:        false,
+	}
+
+	org := NewOrganizer(afero.NewOsFs(), cfg)
+	movie := createTestMovie()
+
+	match := matcher.MatchResult{
+		File: scanner.FileInfo{
+			Path:      sourceFile,
+			Name:      "ipx-535.mp4",
+			Extension: ".mp4",
+			Dir:       sourceDir,
+		},
+		ID: "IPX-535",
+	}
+
+	destDir := filepath.Join(tmpDir, "dest")
+
+	plan, err := org.Plan(match, movie, destDir, false)
+	if err != nil {
+		t.Fatalf("Plan failed: %v", err)
+	}
+
+	if plan.WillMove {
+		t.Errorf("Expected WillMove=false for no-op (source == target), got true")
+	}
+
+	if len(plan.Conflicts) > 0 {
+		t.Errorf("Expected empty Conflicts for no-op plan, got: %v", plan.Conflicts)
+	}
+}
+
+func TestOrganizer_Plan_TruncationPreservesInPlaceSkip(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	sourceDir := filepath.Join(tmpDir, "source", "IPX-535 - Beautiful Day")
+	if err := os.MkdirAll(sourceDir, 0755); err != nil {
+		t.Fatalf("Failed to create source directory: %v", err)
+	}
+
+	sourceFile := filepath.Join(sourceDir, "IPX-535.mp4")
+	if err := os.WriteFile(sourceFile, []byte("test"), 0644); err != nil {
+		t.Fatalf("Failed to create source file: %v", err)
+	}
+
+	cfg := &config.OutputConfig{
+		FolderFormat:        "<ID> - <TITLE>",
+		FileFormat:          "<ID>",
+		RenameFile:          true,
+		RenameFolderInPlace: true,
+		MoveToFolder:        false,
+	}
+
+	org := NewOrganizer(afero.NewOsFs(), cfg)
+
+	fileMatcher, err := matcher.NewMatcher(&config.MatchingConfig{})
+	if err != nil {
+		t.Fatalf("Failed to create matcher: %v", err)
+	}
+	org.SetMatcher(fileMatcher)
+
+	movie := createTestMovie()
+
+	match := matcher.MatchResult{
+		File: scanner.FileInfo{
+			Path:      sourceFile,
+			Name:      "IPX-535.mp4",
+			Extension: ".mp4",
+			Dir:       sourceDir,
+		},
+		ID: "IPX-535",
+	}
+
+	destDir := filepath.Join(tmpDir, "dest")
+
+	plan, err := org.Plan(match, movie, destDir, false)
+	if err != nil {
+		t.Fatalf("Plan failed: %v", err)
+	}
+
+	if plan.InPlace {
+		t.Errorf("Expected InPlace=false (folder already correct), got true")
+	}
+
+	if plan.TargetDir != sourceDir {
+		t.Errorf("Expected TargetDir=%s (stay in source), got %s", sourceDir, plan.TargetDir)
+	}
+
+	if strings.HasPrefix(plan.TargetDir, destDir) {
+		t.Errorf("TargetDir should not be under destDir when staying in source, got: %s", plan.TargetDir)
+	}
+
+	if plan.SkipInPlaceReason != "folder already has correct name" {
+		t.Errorf("Expected SkipInPlaceReason='folder already has correct name', got: %s", plan.SkipInPlaceReason)
+	}
+}
+
+func TestOrganizer_Plan_TruncationPreservesMixedIdSkip(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	sourceDir := filepath.Join(tmpDir, "source", "mixed-folder")
+	if err := os.MkdirAll(sourceDir, 0755); err != nil {
+		t.Fatalf("Failed to create source directory: %v", err)
+	}
+
+	sourceFile := filepath.Join(sourceDir, "IPX-535.mp4")
+	if err := os.WriteFile(sourceFile, []byte("test"), 0644); err != nil {
+		t.Fatalf("Failed to create source file: %v", err)
+	}
+
+	otherFile := filepath.Join(sourceDir, "ABC-123.mp4")
+	if err := os.WriteFile(otherFile, []byte("other"), 0644); err != nil {
+		t.Fatalf("Failed to create other file: %v", err)
+	}
+
+	cfg := &config.OutputConfig{
+		FolderFormat:        "<ID> - <TITLE>",
+		FileFormat:          "<ID>",
+		RenameFile:          true,
+		RenameFolderInPlace: true,
+		MoveToFolder:        false,
+	}
+
+	org := NewOrganizer(afero.NewOsFs(), cfg)
+
+	fileMatcher, err := matcher.NewMatcher(&config.MatchingConfig{})
+	if err != nil {
+		t.Fatalf("Failed to create matcher: %v", err)
+	}
+	org.SetMatcher(fileMatcher)
+
+	movie := createTestMovie()
+
+	match := matcher.MatchResult{
+		File: scanner.FileInfo{
+			Path:      sourceFile,
+			Name:      "IPX-535.mp4",
+			Extension: ".mp4",
+			Dir:       sourceDir,
+		},
+		ID: "IPX-535",
+	}
+
+	destDir := filepath.Join(tmpDir, "dest")
+
+	plan, err := org.Plan(match, movie, destDir, false)
+	if err != nil {
+		t.Fatalf("Plan failed: %v", err)
+	}
+
+	if plan.InPlace {
+		t.Errorf("Expected InPlace=false (mixed IDs), got true")
+	}
+
+	if plan.TargetDir != sourceDir {
+		t.Errorf("Expected TargetDir=%s (stay in source for mixed ID), got %s", sourceDir, plan.TargetDir)
+	}
+
+	if strings.HasPrefix(plan.TargetDir, destDir) {
+		t.Errorf("TargetDir should not be under destDir when mixed ID causes stay-in-source, got: %s", plan.TargetDir)
+	}
+
+	if plan.SkipInPlaceReason != "folder contains mixed IDs" {
+		t.Errorf("Expected SkipInPlaceReason='folder contains mixed IDs', got: %s", plan.SkipInPlaceReason)
 	}
 }

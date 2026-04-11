@@ -127,7 +127,7 @@ type TagDatabaseConfig struct {
 // NFOConfig holds NFO generation settings
 type NFOConfig struct {
 	Enabled              bool     `yaml:"enabled" json:"enabled"`
-	DisplayName          string   `yaml:"display_name" json:"display_name"`
+	DisplayTitle         string   `yaml:"display_title" json:"display_title"`
 	FilenameTemplate     string   `yaml:"filename_template" json:"filename_template"`
 	FirstNameOrder       bool     `yaml:"first_name_order" json:"first_name_order"`
 	ActressLanguageJA    bool     `yaml:"actress_language_ja" json:"actress_language_ja"`

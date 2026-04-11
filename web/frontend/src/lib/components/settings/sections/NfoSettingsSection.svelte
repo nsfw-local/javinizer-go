@@ -37,14 +37,14 @@
 			/>
 
 			<FormTemplateInput
-				label="Display name template"
+				label="Display title template"
 				description="Template for the <title> field in NFO files"
-				value={config.metadata.nfo?.display_name ?? '[<ID>] <TITLE>'}
+				value={config.metadata.nfo?.display_title ?? '[<ID>] <TITLE>'}
 				placeholder="[<ID>] <TITLE>"
 				showTagList={true}
 				onchange={(val) => {
 					if (!config.metadata.nfo) config.metadata.nfo = {};
-					config.metadata.nfo.display_name = val;
+					config.metadata.nfo.display_title = val;
 				}}
 			/>
 

@@ -240,6 +240,7 @@ func run(cmd *cobra.Command, args []string) error {
 
 	// Initialize organizer
 	org := organizer.NewOrganizer(afero.NewOsFs(), &cfg.Output)
+	org.SetMatcher(fileMatcher)
 
 	// Initialize NFO generator
 	nfoGen := nfo.NewGenerator(afero.NewOsFs(), nfo.ConfigFromAppConfig(&cfg.Metadata.NFO, &cfg.Output, &cfg.Metadata, db))

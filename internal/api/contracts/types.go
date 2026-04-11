@@ -100,10 +100,10 @@ type ScraperChoice struct {
 
 // ScraperInfo represents information about a scraper
 type ScraperInfo struct {
-	Name        string          `json:"name" example:"r18dev"`
-	DisplayName string          `json:"display_name" example:"R18.dev"`
-	Enabled     bool            `json:"enabled" example:"true"`
-	Options     []ScraperOption `json:"options,omitempty"`
+	Name         string          `json:"name" example:"r18dev"`
+	DisplayTitle string          `json:"display_title" example:"R18.dev"`
+	Enabled      bool            `json:"enabled" example:"true"`
+	Options      []ScraperOption `json:"options,omitempty"`
 }
 
 // AvailableScrapersResponse represents the list of available scrapers
@@ -181,15 +181,18 @@ type FileInfo struct {
 
 // BatchScrapeRequest represents a batch scrape request
 type BatchScrapeRequest struct {
-	Files            []string `json:"files" binding:"required"`
-	Strict           bool     `json:"strict" example:"false"`
-	Force            bool     `json:"force" example:"false"`
-	Destination      string   `json:"destination,omitempty" example:"/path/to/output"`
-	Update           bool     `json:"update" example:"false"` // Update mode: only create/update metadata files without moving video files
-	SelectedScrapers []string `json:"selected_scrapers,omitempty" example:"r18dev,dmm"`
-	Preset           string   `json:"preset,omitempty" example:"conservative"`        // Merge strategy preset: conservative, gap-fill, aggressive (overrides scalar/array strategies)
-	ScalarStrategy   string   `json:"scalar_strategy,omitempty" example:"prefer-nfo"` // For Update mode: prefer-nfo, prefer-scraper, preserve-existing, fill-missing-only
-	ArrayStrategy    string   `json:"array_strategy,omitempty" example:"merge"`       // For Update mode: merge, replace
+	Files               []string `json:"files" binding:"required"`
+	Strict              bool     `json:"strict" example:"false"`
+	Force               bool     `json:"force" example:"false"`
+	Destination         string   `json:"destination,omitempty" example:"/path/to/output"`
+	Update              bool     `json:"update" example:"false"` // Update mode: only create/update metadata files without moving video files
+	SelectedScrapers    []string `json:"selected_scrapers,omitempty" example:"r18dev,dmm"`
+	Preset              string   `json:"preset,omitempty" example:"conservative"`          // Merge strategy preset: conservative, gap-fill, aggressive (overrides scalar/array strategies)
+	ScalarStrategy      string   `json:"scalar_strategy,omitempty" example:"prefer-nfo"`   // For Update mode: prefer-nfo, prefer-scraper, preserve-existing, fill-missing-only
+	ArrayStrategy       string   `json:"array_strategy,omitempty" example:"merge"`         // For Update mode: merge, replace
+	MoveToFolder        *bool    `json:"move_to_folder,omitempty" example:"true"`          // Override config.output.move_to_folder
+	RenameFolderInPlace *bool    `json:"rename_folder_in_place,omitempty" example:"false"` // Override config.output.rename_folder_in_place
+	OperationMode       string   `json:"operation_mode,omitempty" example:"organize"`      // Override config.output.operation_mode: organize, in-place, in-place-norenamefolder, metadata-only, preview
 }
 
 // BatchScrapeResponse represents batch scrape response
@@ -199,16 +202,18 @@ type BatchScrapeResponse struct {
 
 // OrganizeRequest represents an organize request
 type OrganizeRequest struct {
-	Destination string `json:"destination" binding:"required" example:"/path/to/output"`
-	CopyOnly    bool   `json:"copy_only" example:"false"`
-	LinkMode    string `json:"link_mode,omitempty" binding:"omitempty,oneof=hard soft" example:"hard"`
+	Destination   string `json:"destination" binding:"required" example:"/path/to/output"`
+	CopyOnly      bool   `json:"copy_only" example:"false"`
+	LinkMode      string `json:"link_mode,omitempty" binding:"omitempty,oneof=hard soft" example:"hard"`
+	OperationMode string `json:"operation_mode,omitempty" example:"organize"` // organize, in-place, in-place-norenamefolder, metadata-only
 }
 
 // OrganizePreviewRequest represents a preview request
 type OrganizePreviewRequest struct {
-	Destination string `json:"destination" binding:"required" example:"/path/to/output"`
-	CopyOnly    bool   `json:"copy_only" example:"false"`
-	LinkMode    string `json:"link_mode,omitempty" binding:"omitempty,oneof=hard soft" example:"hard"`
+	Destination   string `json:"destination" binding:"required" example:"/path/to/output"`
+	CopyOnly      bool   `json:"copy_only" example:"false"`
+	LinkMode      string `json:"link_mode,omitempty" binding:"omitempty,oneof=hard soft" example:"hard"`
+	OperationMode string `json:"operation_mode,omitempty" example:"organize"` // organize, in-place, in-place-norenamefolder, metadata-only, preview
 }
 
 // OrganizePreviewResponse represents the expected output structure
@@ -223,6 +228,8 @@ type OrganizePreviewResponse struct {
 	FanartPath      string   `json:"fanart_path" example:"/path/to/output/IPX-535 [IdeaPocket] - Beautiful Woman (2021)/IPX-535-fanart.jpg"`
 	ExtrafanartPath string   `json:"extrafanart_path" example:"/path/to/output/IPX-535 [IdeaPocket] - Beautiful Woman (2021)/extrafanart"`
 	Screenshots     []string `json:"screenshots" example:"fanart1.jpg,fanart2.jpg,fanart3.jpg"`
+	SourcePath      string   `json:"source_path,omitempty" example:"/source/folder/ABC-123.mp4"` // Original file path (for in-place modes)
+	OperationMode   string   `json:"operation_mode,omitempty" example:"organize"`                // Which mode was used for preview
 }
 
 // BatchFileResult wraps worker.FileResult with additional API-specific fields
@@ -243,17 +250,18 @@ type BatchFileResult struct {
 
 // BatchJobResponse represents a batch job status
 type BatchJobResponse struct {
-	ID          string                      `json:"id"`
-	Status      string                      `json:"status"`
-	TotalFiles  int                         `json:"total_files"`
-	Completed   int                         `json:"completed"`
-	Failed      int                         `json:"failed"`
-	Excluded    map[string]bool             `json:"excluded"`
-	Progress    float64                     `json:"progress"`
-	Destination string                      `json:"destination"`
-	Results     map[string]*BatchFileResult `json:"results"`
-	StartedAt   string                      `json:"started_at"`
-	CompletedAt *string                     `json:"completed_at,omitempty"`
+	ID                    string                      `json:"id"`
+	Status                string                      `json:"status"`
+	TotalFiles            int                         `json:"total_files"`
+	Completed             int                         `json:"completed"`
+	Failed                int                         `json:"failed"`
+	Excluded              map[string]bool             `json:"excluded"`
+	Progress              float64                     `json:"progress"`
+	Destination           string                      `json:"destination"`
+	Results               map[string]*BatchFileResult `json:"results"`
+	StartedAt             string                      `json:"started_at"`
+	CompletedAt           *string                     `json:"completed_at,omitempty"`
+	OperationModeOverride string                      `json:"operation_mode_override,omitempty"`
 }
 
 type BatchJobListResponse struct {

@@ -128,10 +128,10 @@ func (g *Generator) Generate(movie *models.Movie, outputPath string, partSuffix 
 // MovieToNFO converts a Movie model to NFO format
 // videoFilePath: optional path to video file for extracting stream details (empty string to skip)
 func (g *Generator) MovieToNFO(movie *models.Movie, videoFilePath string) *Movie {
-	// Use DisplayName if available (contains templated title), otherwise fall back to Title
-	title := movie.Title
-	if movie.DisplayName != "" {
-		title = movie.DisplayName
+	// Use DisplayTitle (canonical title), fallback to Title if not set
+	title := movie.DisplayTitle
+	if title == "" {
+		title = movie.Title
 	}
 
 	nfo := &Movie{

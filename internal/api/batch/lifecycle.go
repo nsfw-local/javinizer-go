@@ -68,13 +68,20 @@ func batchScrape(deps *ServerDependencies) gin.HandlerFunc {
 			job.Destination = req.Destination
 		}
 
+		// Set folder mode overrides for the job (used during organization)
+		job.MoveToFolderOverride = req.MoveToFolder
+		job.RenameFolderInPlaceOverride = req.RenameFolderInPlace
+		if req.OperationMode != "" {
+			job.OperationModeOverride = req.OperationMode
+		}
+
 		// Populate file match metadata (multipart info from discovery)
 		for path, info := range fileMatchInfo {
 			job.FileMatchInfo[path] = info
 		}
 
 		// Start processing in background - use getters for thread-safe access
-		go processBatchJob(job, deps.JobQueue, deps.GetRegistry(), deps.GetAggregator(), deps.MovieRepo, deps.GetMatcher(), req.Strict, req.Force, req.Update, req.Destination, deps.GetConfig(), req.SelectedScrapers, req.ScalarStrategy, req.ArrayStrategy, deps.DB)
+		go processBatchJob(job, deps.JobQueue, deps.GetRegistry(), deps.GetAggregator(), deps.MovieRepo, deps.GetMatcher(), req.Strict, req.Force, req.Update, req.Destination, deps.GetConfig(), req.SelectedScrapers, req.ScalarStrategy, req.ArrayStrategy, deps.DB, req.MoveToFolder, req.RenameFolderInPlace, req.OperationMode)
 
 		c.JSON(200, BatchScrapeResponse{
 			JobID: job.ID,
@@ -139,17 +146,18 @@ func getBatchJob(deps *ServerDependencies) gin.HandlerFunc {
 		}
 
 		c.JSON(200, BatchJobResponse{
-			ID:          job.ID,
-			Status:      string(job.Status),
-			TotalFiles:  job.TotalFiles,
-			Completed:   job.Completed,
-			Failed:      job.Failed,
-			Excluded:    job.Excluded,
-			Progress:    job.Progress,
-			Destination: job.Destination,
-			Results:     results,
-			StartedAt:   job.StartedAt.Format("2006-01-02T15:04:05Z07:00"),
-			CompletedAt: completedAt,
+			ID:                    job.ID,
+			Status:                string(job.Status),
+			TotalFiles:            job.TotalFiles,
+			Completed:             job.Completed,
+			Failed:                job.Failed,
+			Excluded:              job.Excluded,
+			Progress:              job.Progress,
+			Destination:           job.Destination,
+			Results:               results,
+			StartedAt:             job.StartedAt.Format("2006-01-02T15:04:05Z07:00"),
+			CompletedAt:           completedAt,
+			OperationModeOverride: job.OperationModeOverride,
 		})
 	}
 }

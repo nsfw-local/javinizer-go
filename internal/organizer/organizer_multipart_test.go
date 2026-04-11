@@ -18,6 +18,7 @@ func TestPlan_AppendsPartSuffix(t *testing.T) {
 		FolderFormat:    "<ID> [<STUDIO>] - <TITLE>",
 		FileFormat:      "<ID><PARTSUFFIX>", // Use <PARTSUFFIX> placeholder for multi-part support
 		RenameFile:      true,
+		MoveToFolder:    true,
 		SubfolderFormat: []string{},
 		MaxTitleLength:  0,
 		MaxPathLength:   260,
@@ -103,6 +104,7 @@ func TestOrganizeBatch_GroupsAndSortsParts(t *testing.T) {
 		FolderFormat:    "<ID>",
 		FileFormat:      "<ID><PARTSUFFIX>", // Use <PARTSUFFIX> placeholder for multi-part support
 		RenameFile:      true,
+		MoveToFolder:    true,
 		SubfolderFormat: []string{},
 	}
 	o := NewOrganizer(afero.NewOsFs(), cfg)

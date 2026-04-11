@@ -111,25 +111,28 @@ func (fr *FileResult) UnmarshalJSON(data []byte) error {
 
 // BatchJob represents a batch processing job
 type BatchJob struct {
-	ID            string                   `json:"id"`
-	Status        JobStatus                `json:"status"`
-	TotalFiles    int                      `json:"total_files"`
-	Completed     int                      `json:"completed"`
-	Failed        int                      `json:"failed"`
-	Excluded      map[string]bool          `json:"excluded"`
-	Files         []string                 `json:"files"`
-	Results       map[string]*FileResult   `json:"results"`
-	FileMatchInfo map[string]FileMatchInfo `json:"file_match_info,omitempty"`
-	Progress      float64                  `json:"progress"`
-	Destination   string                   `json:"destination"`
-	TempDir       string                   `json:"temp_dir"`
-	StartedAt     time.Time                `json:"started_at"`
-	CompletedAt   *time.Time               `json:"completed_at,omitempty"`
-	OrganizedAt   *time.Time               `json:"organized_at,omitempty"`
-	CancelFunc    context.CancelFunc       `json:"-"`
-	Done          chan struct{}            `json:"-"`
-	mu            sync.RWMutex             `json:"-"`
-	deleted       bool                     `json:"-"` // Tombstone flag - prevents persist after deletion
+	ID                          string                   `json:"id"`
+	Status                      JobStatus                `json:"status"`
+	TotalFiles                  int                      `json:"total_files"`
+	Completed                   int                      `json:"completed"`
+	Failed                      int                      `json:"failed"`
+	Excluded                    map[string]bool          `json:"excluded"`
+	Files                       []string                 `json:"files"`
+	Results                     map[string]*FileResult   `json:"results"`
+	FileMatchInfo               map[string]FileMatchInfo `json:"file_match_info,omitempty"`
+	Progress                    float64                  `json:"progress"`
+	Destination                 string                   `json:"destination"`
+	TempDir                     string                   `json:"temp_dir"`
+	StartedAt                   time.Time                `json:"started_at"`
+	CompletedAt                 *time.Time               `json:"completed_at,omitempty"`
+	OrganizedAt                 *time.Time               `json:"organized_at,omitempty"`
+	MoveToFolderOverride        *bool                    `json:"move_to_folder_override,omitempty"`
+	RenameFolderInPlaceOverride *bool                    `json:"rename_folder_in_place_override,omitempty"`
+	OperationModeOverride       string                   `json:"operation_mode_override,omitempty"`
+	CancelFunc                  context.CancelFunc       `json:"-"`
+	Done                        chan struct{}            `json:"-"`
+	mu                          sync.RWMutex             `json:"-"`
+	deleted                     bool                     `json:"-"` // Tombstone flag - prevents persist after deletion
 }
 
 // Lock acquires the job's write lock for exclusive access
@@ -847,21 +850,24 @@ func (job *BatchJob) GetStatus() *BatchJob {
 	}
 
 	return &BatchJob{
-		ID:            job.ID,
-		Status:        job.Status,
-		TotalFiles:    job.TotalFiles,
-		Completed:     job.Completed,
-		Failed:        job.Failed,
-		Excluded:      excluded,
-		Files:         files,
-		Results:       results,
-		FileMatchInfo: fileMatchInfo,
-		Progress:      job.Progress,
-		Destination:   job.Destination,
-		TempDir:       job.TempDir,
-		StartedAt:     job.StartedAt,
-		CompletedAt:   completedAt,
-		OrganizedAt:   organizedAt,
+		ID:                          job.ID,
+		Status:                      job.Status,
+		TotalFiles:                  job.TotalFiles,
+		Completed:                   job.Completed,
+		Failed:                      job.Failed,
+		Excluded:                    excluded,
+		Files:                       files,
+		Results:                     results,
+		FileMatchInfo:               fileMatchInfo,
+		Progress:                    job.Progress,
+		Destination:                 job.Destination,
+		TempDir:                     job.TempDir,
+		StartedAt:                   job.StartedAt,
+		CompletedAt:                 completedAt,
+		OrganizedAt:                 organizedAt,
+		MoveToFolderOverride:        job.MoveToFolderOverride,
+		RenameFolderInPlaceOverride: job.RenameFolderInPlaceOverride,
+		OperationModeOverride:       job.OperationModeOverride,
 	}
 }
 

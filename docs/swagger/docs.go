@@ -1830,6 +1830,9 @@ const docTemplate = `{
                 "id": {
                     "type": "string"
                 },
+                "operation_mode_override": {
+                    "type": "string"
+                },
                 "progress": {
                     "type": "number"
                 },
@@ -1933,10 +1936,25 @@ const docTemplate = `{
                     "type": "boolean",
                     "example": false
                 },
+                "move_to_folder": {
+                    "description": "Override config.output.move_to_folder",
+                    "type": "boolean",
+                    "example": true
+                },
+                "operation_mode": {
+                    "description": "Override config.output.operation_mode: organize, in-place, in-place-norenamefolder, metadata-only, preview",
+                    "type": "string",
+                    "example": "organize"
+                },
                 "preset": {
                     "description": "Merge strategy preset: conservative, gap-fill, aggressive (overrides scalar/array strategies)",
                     "type": "string",
                     "example": "conservative"
+                },
+                "rename_folder_in_place": {
+                    "description": "Override config.output.rename_folder_in_place",
+                    "type": "boolean",
+                    "example": false
                 },
                 "scalar_strategy": {
                     "description": "For Update mode: prefer-nfo, prefer-scraper, preserve-existing, fill-missing-only",
@@ -2032,6 +2050,11 @@ const docTemplate = `{
                         "soft"
                     ],
                     "example": "hard"
+                },
+                "operation_mode": {
+                    "description": "organize, in-place, in-place-norenamefolder, metadata-only, preview",
+                    "type": "string",
+                    "example": "organize"
                 }
             }
         },
@@ -2070,6 +2093,11 @@ const docTemplate = `{
                         "type": "string"
                     }
                 },
+                "operation_mode": {
+                    "description": "Which mode was used for preview",
+                    "type": "string",
+                    "example": "organize"
+                },
                 "poster_path": {
                     "type": "string",
                     "example": "/path/to/output/IPX-535 [IdeaPocket] - Beautiful Woman (2021)/IPX-535-poster.jpg"
@@ -2084,6 +2112,11 @@ const docTemplate = `{
                         "fanart2.jpg",
                         "fanart3.jpg"
                     ]
+                },
+                "source_path": {
+                    "description": "Original file path (for in-place modes)",
+                    "type": "string",
+                    "example": "/source/folder/ABC-123.mp4"
                 },
                 "video_files": {
                     "description": "For multi-part files: all video file paths",
@@ -2115,6 +2148,11 @@ const docTemplate = `{
                         "soft"
                     ],
                     "example": "hard"
+                },
+                "operation_mode": {
+                    "description": "organize, in-place, in-place-norenamefolder, metadata-only",
+                    "type": "string",
+                    "example": "organize"
                 }
             }
         },
@@ -2500,7 +2538,7 @@ const docTemplate = `{
                         "type": "string"
                     }
                 },
-                "display_name": {
+                "display_title": {
                     "type": "string"
                 },
                 "enabled": {
@@ -2648,6 +2686,9 @@ const docTemplate = `{
                 "move_to_folder": {
                     "description": "Move/copy files to organized folders (default: true)",
                     "type": "boolean"
+                },
+                "operation_mode": {
+                    "$ref": "#/definitions/types.OperationMode"
                 },
                 "poster_format": {
                     "type": "string"
@@ -3217,7 +3258,7 @@ const docTemplate = `{
         "contracts.ScraperInfo": {
             "type": "object",
             "properties": {
-                "display_name": {
+                "display_title": {
                     "type": "string",
                     "example": "R18.dev"
                 },
@@ -3578,7 +3619,7 @@ const docTemplate = `{
                 "director": {
                     "type": "string"
                 },
-                "display_name": {
+                "display_title": {
                     "type": "string"
                 },
                 "genres": {
@@ -4200,6 +4241,23 @@ const docTemplate = `{
                     }
                 }
             }
+        },
+        "types.OperationMode": {
+            "type": "string",
+            "enum": [
+                "organize",
+                "in-place",
+                "in-place-norenamefolder",
+                "metadata-only",
+                "preview"
+            ],
+            "x-enum-varnames": [
+                "OperationModeOrganize",
+                "OperationModeInPlace",
+                "OperationModeInPlaceNoRenameFolder",
+                "OperationModeMetadataOnly",
+                "OperationModePreview"
+            ]
         },
         "version.VersionStatusResponse": {
             "type": "object",

@@ -25,7 +25,7 @@ func newCacheHitTestEnv(t *testing.T) (*config.Config, *database.MovieRepository
 	t.Helper()
 	cfg, _, movieRepo, agg, fileMatcher := newRunBatchTestEnv(t, "resolver")
 	cfg.Metadata.NFO.PerFile = true
-	cfg.Metadata.NFO.DisplayName = "[<ID>] <TITLE>"
+	cfg.Metadata.NFO.DisplayTitle = "[<ID>] <TITLE>"
 	cfg.Metadata.NFO.FilenameTemplate = "<ID>.nfo"
 	return cfg, movieRepo, agg, fileMatcher
 }
@@ -71,7 +71,7 @@ func TestRunBatchScrapeOnce_CacheHitReusesPosterAndLegacyPerFileNFO(t *testing.T
 
 	gen := nfo.NewGenerator(afero.NewOsFs(), &nfo.Config{})
 	legacyNFOPath := filepath.Join(sourceDir, "ABC-123-pt1.nfo")
-	if err := gen.WriteNFO(&nfo.Movie{ID: "ABC-123", Title: "[ABC-123] Existing NFO Title"}, legacyNFOPath); err != nil {
+	if err := gen.WriteNFO(&nfo.Movie{ID: "ABC-123", Title: "Existing NFO Title"}, legacyNFOPath); err != nil {
 		t.Fatalf("WriteNFO() error = %v", err)
 	}
 
@@ -111,18 +111,18 @@ func TestRunBatchScrapeOnce_CacheHitReusesPosterAndLegacyPerFileNFO(t *testing.T
 	if movie == nil {
 		t.Fatal("expected movie")
 	}
-	if movie.Title != "[ABC-123] Existing NFO Title" {
+	if movie.Title != "Existing NFO Title" {
 		t.Fatalf("movie.Title = %q", movie.Title)
 	}
-	if movie.DisplayName != "[ABC-123] Existing NFO Title" {
-		t.Fatalf("movie.DisplayName = %q", movie.DisplayName)
+	if movie.DisplayTitle != "[ABC-123] Existing NFO Title" {
+		t.Fatalf("movie.DisplayTitle = %q", movie.DisplayTitle)
 	}
 	if movie.CroppedPosterURL != "/api/v1/temp/posters/"+jobID+"/ABC-123.jpg" {
 		t.Fatalf("movie.CroppedPosterURL = %q", movie.CroppedPosterURL)
 	}
 }
 
-func TestRunBatchScrapeOnce_CacheHitRegeneratesPosterAndAppliesDisplayName(t *testing.T) {
+func TestRunBatchScrapeOnce_CacheHitRegeneratesPosterAndAppliesDisplayTitle(t *testing.T) {
 	cfg, movieRepo, agg, fileMatcher := newCacheHitTestEnv(t)
 	cfg.Metadata.NFO.PerFile = false
 	cfg.Metadata.NFO.FilenameTemplate = "<INVALID"
@@ -190,8 +190,8 @@ func TestRunBatchScrapeOnce_CacheHitRegeneratesPosterAndAppliesDisplayName(t *te
 	if result.Status != JobStatusCompleted {
 		t.Fatalf("result.Status = %q", result.Status)
 	}
-	if movie.DisplayName != "[ABC-123] Existing Plain Title" {
-		t.Fatalf("movie.DisplayName = %q", movie.DisplayName)
+	if movie.DisplayTitle != "[ABC-123] Existing Plain Title" {
+		t.Fatalf("movie.DisplayTitle = %q", movie.DisplayTitle)
 	}
 	if movie.CroppedPosterURL != "/api/v1/temp/posters/"+jobID+"/ABC-123.jpg" {
 		t.Fatalf("movie.CroppedPosterURL = %q", movie.CroppedPosterURL)
@@ -258,8 +258,8 @@ func TestRunBatchScrapeOnce_UpdateModeSkipsDuplicatePosterGenerationForMultipart
 	if !result.IsMultiPart || result.PartNumber != 1 || result.PartSuffix != "-pt1" {
 		t.Fatalf("multipart result = %#v", result)
 	}
-	if movie.DisplayName != "[ABC-123] Existing Plain Title" {
-		t.Fatalf("movie.DisplayName = %q", movie.DisplayName)
+	if movie.DisplayTitle != "[ABC-123] Existing Plain Title" {
+		t.Fatalf("movie.DisplayTitle = %q", movie.DisplayTitle)
 	}
 	if movie.CroppedPosterURL != "/api/v1/temp/posters/"+jobID+"/ABC-123.jpg" {
 		t.Fatalf("movie.CroppedPosterURL = %q", movie.CroppedPosterURL)

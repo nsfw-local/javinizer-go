@@ -21,6 +21,7 @@ func TestParseNFO_MinimalNFO(t *testing.T) {
 
 	movie := result.Movie
 	assert.Equal(t, "Minimal Test Movie", movie.Title)
+	assert.Equal(t, "Minimal Test Movie", result.NFOTitle)
 	assert.Equal(t, "IPX-001", movie.ID)
 	assert.Equal(t, "IPX-001", movie.ContentID)
 	assert.Equal(t, "nfo", movie.SourceName)
@@ -37,6 +38,7 @@ func TestParseNFO_CompleteNFO(t *testing.T) {
 	// Basic fields
 	assert.Equal(t, "Complete Test Movie", movie.Title)
 	assert.Equal(t, "完全なテスト映画", movie.OriginalTitle)
+	assert.Equal(t, "Complete Test Movie", result.NFOTitle)
 	assert.Equal(t, "IPX-123", movie.ID)
 	assert.Equal(t, "IPX-123", movie.ContentID)
 	assert.Equal(t, "This is a complete test movie with all metadata fields populated for comprehensive testing.", movie.Description)

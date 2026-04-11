@@ -191,7 +191,7 @@ func TestNFOGenerationEndToEnd(t *testing.T) {
 func TestConfigFromAppConfig(t *testing.T) {
 	appCfg := &config.NFOConfig{
 		Enabled:              true,
-		DisplayName:          "<ID> - <TITLE>",
+		DisplayTitle:         "<ID> - <TITLE>",
 		FilenameTemplate:     "<ID> [<STUDIO>].nfo",
 		FirstNameOrder:       false,
 		ActressLanguageJA:    true,

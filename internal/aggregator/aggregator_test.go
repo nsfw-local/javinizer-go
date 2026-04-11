@@ -406,14 +406,14 @@ func TestGenreReplacementDisabledIgnoresExistingMappings(t *testing.T) {
 	assert.Equal(t, "Drama", aggDisabled.applyGenreReplacement("Drama"))
 }
 
-func TestDisplayNameFormatting(t *testing.T) {
+func TestDisplayTitleFormatting(t *testing.T) {
 	cfg := &config.Config{
 		Metadata: config.MetadataConfig{
 			Priority: config.PriorityConfig{
 				Priority: []string{"r18dev"},
 			},
 			NFO: config.NFOConfig{
-				DisplayName: "[<ID>] <TITLE>",
+				DisplayTitle: "[<ID>] <TITLE>",
 			},
 		},
 		Scrapers: config.ScrapersConfig{
@@ -436,17 +436,17 @@ func TestDisplayNameFormatting(t *testing.T) {
 	require.NotNil(t, movie)
 
 	// Verify display name was formatted correctly
-	assert.Equal(t, "[IPX-001] Test Movie", movie.DisplayName)
+	assert.Equal(t, "[IPX-001] Test Movie", movie.DisplayTitle)
 }
 
-func TestDisplayNameFormattingWithTemplate(t *testing.T) {
+func TestDisplayTitleFormattingWithTemplate(t *testing.T) {
 	cfg := &config.Config{
 		Metadata: config.MetadataConfig{
 			Priority: config.PriorityConfig{
 				Priority: []string{"r18dev"},
 			},
 			NFO: config.NFOConfig{
-				DisplayName: "<TITLE> by <STUDIO>",
+				DisplayTitle: "<TITLE> by <STUDIO>",
 			},
 		},
 		Scrapers: config.ScrapersConfig{
@@ -470,17 +470,17 @@ func TestDisplayNameFormattingWithTemplate(t *testing.T) {
 	require.NotNil(t, movie)
 
 	// Verify display name was formatted correctly
-	assert.Equal(t, "Amazing Movie by Idea Pocket", movie.DisplayName)
+	assert.Equal(t, "Amazing Movie by Idea Pocket", movie.DisplayTitle)
 }
 
-func TestDisplayNameEmpty(t *testing.T) {
+func TestDisplayTitleEmpty(t *testing.T) {
 	cfg := &config.Config{
 		Metadata: config.MetadataConfig{
 			Priority: config.PriorityConfig{
 				Priority: []string{"r18dev"},
 			},
 			NFO: config.NFOConfig{
-				DisplayName: "", // Empty - should not set DisplayName
+				DisplayTitle: "", // Empty - should not set DisplayTitle
 			},
 		},
 		Scrapers: config.ScrapersConfig{
@@ -501,8 +501,8 @@ func TestDisplayNameEmpty(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, movie)
 
-	// DisplayName should be empty when not configured
-	assert.Empty(t, movie.DisplayName)
+	// DisplayTitle should be empty when not configured
+	assert.Empty(t, movie.DisplayTitle)
 }
 
 func TestRequiredFieldsValidation(t *testing.T) {

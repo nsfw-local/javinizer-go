@@ -5,6 +5,7 @@ import (
 	"net/url"
 	"strings"
 
+	"github.com/javinizer/javinizer-go/internal/types"
 	"gopkg.in/yaml.v3"
 )
 
@@ -152,33 +153,34 @@ type MatchingConfig struct {
 
 // OutputConfig holds output/organization settings
 type OutputConfig struct {
-	FolderFormat        string      `yaml:"folder_format" json:"folder_format"`
-	FileFormat          string      `yaml:"file_format" json:"file_format"`
-	SubfolderFormat     []string    `yaml:"subfolder_format" json:"subfolder_format"`
-	Delimiter           string      `yaml:"delimiter" json:"delimiter"`
-	MaxTitleLength      int         `yaml:"max_title_length" json:"max_title_length"`
-	MaxPathLength       int         `yaml:"max_path_length" json:"max_path_length"`
-	MoveSubtitles       bool        `yaml:"move_subtitles" json:"move_subtitles"`
-	SubtitleExtensions  []string    `yaml:"subtitle_extensions" json:"subtitle_extensions"`
-	RenameFolderInPlace bool        `yaml:"rename_folder_in_place" json:"rename_folder_in_place"`
-	MoveToFolder        bool        `yaml:"move_to_folder" json:"move_to_folder"` // Move/copy files to organized folders (default: true)
-	RenameFile          bool        `yaml:"rename_file" json:"rename_file"`       // Rename files using file_format template (default: true)
-	GroupActress        bool        `yaml:"group_actress" json:"group_actress"`   // Replace multiple actresses with "@Group" in templates (default: false)
-	PosterFormat        string      `yaml:"poster_format" json:"poster_format"`
-	FanartFormat        string      `yaml:"fanart_format" json:"fanart_format"`
-	TrailerFormat       string      `yaml:"trailer_format" json:"trailer_format"`
-	ScreenshotFormat    string      `yaml:"screenshot_format" json:"screenshot_format"`
-	ScreenshotFolder    string      `yaml:"screenshot_folder" json:"screenshot_folder"`
-	ScreenshotPadding   int         `yaml:"screenshot_padding" json:"screenshot_padding"`
-	ActressFolder       string      `yaml:"actress_folder" json:"actress_folder"`
-	ActressFormat       string      `yaml:"actress_format" json:"actress_format"`
-	DownloadCover       bool        `yaml:"download_cover" json:"download_cover"`
-	DownloadPoster      bool        `yaml:"download_poster" json:"download_poster"`
-	DownloadExtrafanart bool        `yaml:"download_extrafanart" json:"download_extrafanart"`
-	DownloadTrailer     bool        `yaml:"download_trailer" json:"download_trailer"`
-	DownloadActress     bool        `yaml:"download_actress" json:"download_actress"`
-	DownloadTimeout     int         `yaml:"download_timeout" json:"download_timeout"` // Timeout in seconds for HTTP downloads (default: 60)
-	DownloadProxy       ProxyConfig `yaml:"download_proxy" json:"download_proxy"`     // Separate proxy for downloads (optional)
+	FolderFormat        string              `yaml:"folder_format" json:"folder_format"`
+	FileFormat          string              `yaml:"file_format" json:"file_format"`
+	SubfolderFormat     []string            `yaml:"subfolder_format" json:"subfolder_format"`
+	Delimiter           string              `yaml:"delimiter" json:"delimiter"`
+	MaxTitleLength      int                 `yaml:"max_title_length" json:"max_title_length"`
+	MaxPathLength       int                 `yaml:"max_path_length" json:"max_path_length"`
+	MoveSubtitles       bool                `yaml:"move_subtitles" json:"move_subtitles"`
+	SubtitleExtensions  []string            `yaml:"subtitle_extensions" json:"subtitle_extensions"`
+	OperationMode       types.OperationMode `yaml:"operation_mode" json:"operation_mode"`
+	RenameFolderInPlace bool                `yaml:"rename_folder_in_place" json:"rename_folder_in_place"`
+	MoveToFolder        bool                `yaml:"move_to_folder" json:"move_to_folder"` // Move/copy files to organized folders (default: true)
+	RenameFile          bool                `yaml:"rename_file" json:"rename_file"`       // Rename files using file_format template (default: true)
+	GroupActress        bool                `yaml:"group_actress" json:"group_actress"`   // Replace multiple actresses with "@Group" in templates (default: false)
+	PosterFormat        string              `yaml:"poster_format" json:"poster_format"`
+	FanartFormat        string              `yaml:"fanart_format" json:"fanart_format"`
+	TrailerFormat       string              `yaml:"trailer_format" json:"trailer_format"`
+	ScreenshotFormat    string              `yaml:"screenshot_format" json:"screenshot_format"`
+	ScreenshotFolder    string              `yaml:"screenshot_folder" json:"screenshot_folder"`
+	ScreenshotPadding   int                 `yaml:"screenshot_padding" json:"screenshot_padding"`
+	ActressFolder       string              `yaml:"actress_folder" json:"actress_folder"`
+	ActressFormat       string              `yaml:"actress_format" json:"actress_format"`
+	DownloadCover       bool                `yaml:"download_cover" json:"download_cover"`
+	DownloadPoster      bool                `yaml:"download_poster" json:"download_poster"`
+	DownloadExtrafanart bool                `yaml:"download_extrafanart" json:"download_extrafanart"`
+	DownloadTrailer     bool                `yaml:"download_trailer" json:"download_trailer"`
+	DownloadActress     bool                `yaml:"download_actress" json:"download_actress"`
+	DownloadTimeout     int                 `yaml:"download_timeout" json:"download_timeout"` // Timeout in seconds for HTTP downloads (default: 60)
+	DownloadProxy       ProxyConfig         `yaml:"download_proxy" json:"download_proxy"`     // Separate proxy for downloads (optional)
 }
 
 // DatabaseConfig holds database configuration

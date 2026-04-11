@@ -68,6 +68,7 @@ func TestOrganizerTemplate_LongTitles(t *testing.T) {
 				FolderFormat:   "<ID> - <TITLE>",
 				FileFormat:     "<ID>",
 				RenameFile:     true,
+				MoveToFolder:   true,
 				MoveSubtitles:  false,
 				MaxTitleLength: tt.maxTitleLength,
 			}
@@ -209,6 +210,7 @@ func TestOrganizerTemplate_CustomFunctions(t *testing.T) {
 				FolderFormat:  tt.template,
 				FileFormat:    "<ID>",
 				RenameFile:    true,
+				MoveToFolder:  true,
 				MoveSubtitles: false,
 			}
 			org := NewOrganizer(fs, cfg)
@@ -284,6 +286,7 @@ func TestOrganizerTemplate_MultipleActresses(t *testing.T) {
 				FolderFormat:  tt.template,
 				FileFormat:    "<ID>",
 				RenameFile:    true,
+				MoveToFolder:  true,
 				MoveSubtitles: false,
 			}
 			org := NewOrganizer(fs, cfg)
@@ -368,6 +371,7 @@ func TestOrganizerTemplate_FilenameTemplates(t *testing.T) {
 				FolderFormat:  tt.folderTemplate,
 				FileFormat:    tt.fileTemplate,
 				RenameFile:    true,
+				MoveToFolder:  true,
 				MoveSubtitles: false,
 			}
 			org := NewOrganizer(fs, cfg)
@@ -406,6 +410,7 @@ func TestOrganizerTemplate_PathLengthValidation(t *testing.T) {
 		FolderFormat:  "<ID> - <TITLE>",
 		FileFormat:    "<ID>",
 		RenameFile:    true,
+		MoveToFolder:  true,
 		MoveSubtitles: false,
 		MaxPathLength: 200, // Set path limit
 	}
@@ -492,6 +497,7 @@ func TestOrganizerTemplate_EdgeCases(t *testing.T) {
 				FolderFormat:  tt.template,
 				FileFormat:    "<ID>",
 				RenameFile:    true,
+				MoveToFolder:  true,
 				MoveSubtitles: false,
 			}
 			org := NewOrganizer(fs, cfg)

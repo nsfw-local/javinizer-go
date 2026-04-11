@@ -48,18 +48,18 @@
 
 	function handleDateChange(e: Event) {
 		const target = e.target as HTMLInputElement;
-		if (target.value) {
-			editedMovie.release_date = target.value;
-			onUpdate(editedMovie);
-		}
+		// Emit undefined when clearing (not empty string - Go's *time.Time rejects "")
+		editedMovie.release_date = target.value || undefined;
+		onUpdate(editedMovie);
 	}
 
-	// Format date for input field
-	const formattedDate = $derived(
-		editedMovie.release_date
-			? new Date(editedMovie.release_date).toISOString().split('T')[0]
-			: ''
-	);
+	// Format date for input field (handle invalid dates safely)
+	const formattedDate = $derived.by(() => {
+		if (!editedMovie.release_date) return '';
+		const date = new Date(editedMovie.release_date);
+		if (isNaN(date.getTime())) return '';
+		return date.toISOString().split('T')[0];
+	});
 
 	// Genre management functions
 	function addGenre() {
@@ -140,20 +140,17 @@
 		<div class="md:col-span-2">
 			<label class="flex items-center gap-2 text-sm font-medium mb-1">
 				Title
-				{#if sourceText('title', 'display_name')}
-					<span class="text-xs font-normal text-muted-foreground">{sourceText('title', 'display_name')}</span>
+				{#if sourceText('display_title')}
+					<span class="text-xs font-normal text-muted-foreground">{sourceText('display_title')}</span>
 				{/if}
-				{#if isModified('title')}
+				{#if isModified('display_title')}
 					<CircleAlert class="h-3 w-3 text-orange-600" />
 				{/if}
 			</label>
 			<input
 				type="text"
-				value={editedMovie.display_name || editedMovie.title}
-				onchange={(e) => {
-					editedMovie.title = e.currentTarget.value;
-					onUpdate(editedMovie);
-				}}
+				bind:value={editedMovie.display_title}
+				onchange={() => onUpdate(editedMovie)}
 				class="w-full px-3 py-2 border rounded-md focus:ring-2 focus:ring-primary focus:border-primary transition-all"
 			/>
 		</div>

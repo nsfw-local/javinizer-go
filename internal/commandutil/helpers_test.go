@@ -321,6 +321,7 @@ func TestGenerateNFOs(t *testing.T) {
 		nfoGen := nfo.NewGenerator(afero.NewOsFs(), nfo.DefaultConfig())
 		outputCfg := &config.OutputConfig{
 			FolderFormat: "<ID>",
+			MoveToFolder: true,
 		}
 		org := organizer.NewOrganizer(afero.NewOsFs(), outputCfg)
 		destPath := filepath.Join(tmpDir, "dest")

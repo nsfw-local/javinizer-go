@@ -1522,8 +1522,8 @@ func TestTranslateMovie_FullFlow(t *testing.T) {
 
 			// Verify actresses translation if configured
 			if tt.cfg.Fields.Actresses && len(tt.movie.Actresses) > 0 {
-				originalActressName := actressDisplayName(tt.movie.Actresses[0])
-				assert.NotEqual(t, originalActressName, actressDisplayName(movieCopy.Actresses[0]))
+				originalActressName := actressDisplayTitle(tt.movie.Actresses[0])
+				assert.NotEqual(t, originalActressName, actressDisplayTitle(movieCopy.Actresses[0]))
 			}
 
 			// Verify genres translation if configured

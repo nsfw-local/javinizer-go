@@ -24,6 +24,7 @@ func TestOrganizer_Copy_ErrorPaths(t *testing.T) {
 		FolderFormat: "<ID>",
 		FileFormat:   "<ID>",
 		RenameFile:   true,
+		MoveToFolder: true,
 	}
 
 	org := NewOrganizer(afero.NewOsFs(), cfg)
@@ -249,6 +250,7 @@ func TestOrganizer_Execute_PermissionErrors(t *testing.T) {
 		FolderFormat: "<ID>",
 		FileFormat:   "<ID>",
 		RenameFile:   true,
+		MoveToFolder: true,
 	}
 
 	org := NewOrganizer(afero.NewOsFs(), cfg)
@@ -456,6 +458,7 @@ func TestOrganizer_Plan_EdgeCases(t *testing.T) {
 			FolderFormat:    "<ID>",
 			FileFormat:      "<ID>",
 			RenameFile:      true,
+			MoveToFolder:    true,
 			SubfolderFormat: []string{"<STUDIO>"}, // Single subfolder for simplicity
 		}
 
@@ -511,6 +514,7 @@ func TestOrganizer_Plan_EdgeCases(t *testing.T) {
 			FolderFormat:   "<ID> - <TITLE>",
 			FileFormat:     "<ID>",
 			RenameFile:     true,
+			MoveToFolder:   true,
 			MaxTitleLength: 10, // Long enough to keep ID but truncate title
 		}
 
@@ -540,8 +544,9 @@ func TestOrganizer_Plan_EdgeCases(t *testing.T) {
 	t.Run("Plan with multi-part file", func(t *testing.T) {
 		cfg := &config.OutputConfig{
 			FolderFormat: "<ID>",
-			FileFormat:   "<ID><PARTSUFFIX>", // Use <PARTSUFFIX> placeholder for multi-part support
+			FileFormat:   "<ID><PARTSUFFIX>",
 			RenameFile:   true,
+			MoveToFolder: true,
 		}
 
 		org := NewOrganizer(afero.NewOsFs(), cfg)
@@ -572,6 +577,7 @@ func TestOrganizer_Plan_EdgeCases(t *testing.T) {
 			FileFormat:      "<ID>",
 			SubfolderFormat: []string{"<STUDIO>", "<YEAR>"},
 			RenameFile:      true,
+			MoveToFolder:    true,
 		}
 
 		org := NewOrganizer(afero.NewOsFs(), cfg)
@@ -626,6 +632,7 @@ func TestOrganizer_Plan_EdgeCases(t *testing.T) {
 			FolderFormat: "<ID>",
 			FileFormat:   "<ID>",
 			RenameFile:   true,
+			MoveToFolder: true,
 		}
 
 		org := NewOrganizer(afero.NewOsFs(), cfg)
@@ -904,9 +911,10 @@ func TestOrganizer_Organize_Integration(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	cfg := &config.OutputConfig{
-		FolderFormat: "<ID> - <TITLE>",
+		FolderFormat: "<ID>",
 		FileFormat:   "<ID>",
 		RenameFile:   true,
+		MoveToFolder: true,
 	}
 
 	org := NewOrganizer(afero.NewOsFs(), cfg)

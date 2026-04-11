@@ -130,10 +130,10 @@ func TestNormalizeLanguage(t *testing.T) {
 }
 
 // =============================================================================
-// actressDisplayName tests
+// actressDisplayTitle tests
 // =============================================================================
 
-func TestActressDisplayName(t *testing.T) {
+func TestActressDisplayTitle(t *testing.T) {
 	tests := []struct {
 		name     string
 		actress  models.Actress
@@ -210,7 +210,7 @@ func TestActressDisplayName(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := actressDisplayName(tt.actress)
+			got := actressDisplayTitle(tt.actress)
 			assert.Equal(t, tt.expected, got)
 		})
 	}

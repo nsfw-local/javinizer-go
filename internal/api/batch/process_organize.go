@@ -14,6 +14,7 @@ import (
 	"github.com/javinizer/javinizer-go/internal/nfo"
 	"github.com/javinizer/javinizer-go/internal/organizer"
 	"github.com/javinizer/javinizer-go/internal/scanner"
+	"github.com/javinizer/javinizer-go/internal/types"
 	ws "github.com/javinizer/javinizer-go/internal/websocket"
 	"github.com/javinizer/javinizer-go/internal/worker"
 	"github.com/spf13/afero"
@@ -21,8 +22,72 @@ import (
 
 // processOrganizeJob processes file organization for a completed scrape job
 func processOrganizeJob(job *worker.BatchJob, jobQueue *worker.JobQueue, destination string, copyOnly bool, linkModeRaw string, db *database.DB, cfg *config.Config, registry *models.ScraperRegistry) {
+	// Determine effective operation mode and apply overrides
+	outputConfig := cfg.Output
+	if job.OperationModeOverride != "" {
+		parsed, err := types.ParseOperationMode(job.OperationModeOverride)
+		if err != nil {
+			logging.Warnf("Invalid operation mode override %q: %v, using config default", job.OperationModeOverride, err)
+		} else {
+			outputConfig.OperationMode = parsed
+			outputConfig.MoveToFolder = parsed == types.OperationModeOrganize
+			outputConfig.RenameFolderInPlace = parsed == types.OperationModeInPlace
+		}
+	} else {
+		// Apply legacy boolean overrides only when no explicit mode override
+		if job.MoveToFolderOverride != nil {
+			outputConfig.MoveToFolder = *job.MoveToFolderOverride
+		}
+		if job.RenameFolderInPlaceOverride != nil {
+			outputConfig.RenameFolderInPlace = *job.RenameFolderInPlaceOverride
+		}
+		effectiveMode := outputConfig.GetOperationMode()
+		outputConfig.OperationMode = effectiveMode
+		outputConfig.MoveToFolder = effectiveMode == types.OperationModeOrganize
+		outputConfig.RenameFolderInPlace = effectiveMode == types.OperationModeInPlace
+	}
+	effectiveMode := outputConfig.GetOperationMode()
+
 	// Initialize organizer, downloader, NFO generator, and history logger
-	org := organizer.NewOrganizer(afero.NewOsFs(), &cfg.Output)
+	org := organizer.NewOrganizer(afero.NewOsFs(), &outputConfig)
+	fileMatcher, err := matcher.NewMatcher(&cfg.Matching)
+	if err != nil {
+		logging.Warnf("Failed to create matcher: %v (in-place rename disabled for this job)", err)
+	} else {
+		org.SetMatcher(fileMatcher)
+	}
+
+	// Select strategy based on effective operation mode
+	var strategy organizer.OperationStrategy
+	fs := afero.NewOsFs()
+	switch effectiveMode {
+	case types.OperationModeOrganize:
+		strategy = organizer.NewOrganizeStrategy(fs, &outputConfig)
+	case types.OperationModeInPlace:
+		if fileMatcher != nil {
+			strategy = organizer.NewInPlaceStrategy(fs, &outputConfig, fileMatcher)
+		} else {
+			logging.Warnf("No matcher available for in-place mode, falling back to organize")
+			strategy = organizer.NewOrganizeStrategy(fs, &outputConfig)
+		}
+	case types.OperationModeInPlaceNoRenameFolder:
+		if fileMatcher != nil {
+			strategy = organizer.NewInPlaceNoRenameFolderStrategy(fs, &outputConfig, fileMatcher)
+		} else {
+			logging.Warnf("No matcher available for in-place-norenamefolder mode, falling back to organize")
+			strategy = organizer.NewOrganizeStrategy(fs, &outputConfig)
+		}
+	case types.OperationModeMetadataOnly:
+		strategy = organizer.NewMetadataOnlyStrategy(fs, &outputConfig)
+	case types.OperationModePreview:
+		// Preview mode wraps organize strategy — shouldn't reach here in organize job
+		// but handle gracefully by falling back to organize
+		logging.Warnf("Preview mode reached in organize job, falling back to organize")
+		strategy = organizer.NewOrganizeStrategy(fs, &outputConfig)
+	default:
+		strategy = organizer.NewOrganizeStrategy(fs, &outputConfig)
+	}
+
 	historyLogger := history.NewLogger(db)
 	linkMode, err := organizer.ParseLinkMode(linkModeRaw)
 	if err != nil {
@@ -105,14 +170,32 @@ func processOrganizeJob(job *worker.BatchJob, jobQueue *worker.JobQueue, destina
 			PartSuffix:  fileResult.PartSuffix,
 		}
 
-		// Organize file
-		result, err := org.OrganizeWithLinkMode(match, movie, destination, false, false, copyOnly, linkMode)
-		if err != nil {
-			logging.Errorf("Failed to organize %s: %v", filePath, err)
+		// Organize file using selected strategy
+		var result *organizer.OrganizeResult
+		var organizeErr error
+
+		if effectiveMode == types.OperationModeOrganize {
+			// Use existing Organizer for organize mode (trusted code path)
+			result, organizeErr = org.OrganizeWithLinkMode(match, movie, destination, false, false, copyOnly, linkMode)
+		} else {
+			// Use strategy for non-organize modes
+			plan, planErr := strategy.Plan(match, movie, destination, false)
+			if planErr != nil {
+				organizeErr = planErr
+			} else {
+				result, organizeErr = strategy.Execute(plan)
+				if result == nil && organizeErr == nil {
+					result = &organizer.OrganizeResult{}
+				}
+			}
+		}
+
+		if organizeErr != nil {
+			logging.Errorf("Failed to organize %s: %v", filePath, organizeErr)
 			failed++
 
 			// Log failed organize operation
-			if logErr := historyLogger.LogOrganize(movie.ID, filePath, "", false, err); logErr != nil {
+			if logErr := historyLogger.LogOrganize(movie.ID, filePath, "", false, organizeErr); logErr != nil {
 				logging.Warnf("Failed to log history for %s: %v", filePath, logErr)
 			}
 
@@ -121,14 +204,18 @@ func processOrganizeJob(job *worker.BatchJob, jobQueue *worker.JobQueue, destina
 				FilePath: filePath,
 				Status:   "failed",
 				Progress: float64(organized+failed) / float64(len(status.Results)) * 100,
-				Error:    err.Error(),
+				Error:    organizeErr.Error(),
 			})
 			continue
 		}
 
-		// Log successful organize operation
-		if result.Moved {
-			if logErr := historyLogger.LogOrganize(movie.ID, filePath, result.NewPath, false, nil); logErr != nil {
+		// Log successful organize operation (includes metadata-only and in-place modes)
+		if result.Moved || result.ShouldGenerateMetadata {
+			newPath := result.NewPath
+			if newPath == "" {
+				newPath = result.OriginalPath // For metadata-only, log original path
+			}
+			if logErr := historyLogger.LogOrganize(movie.ID, filePath, newPath, false, nil); logErr != nil {
 				logging.Warnf("Failed to log history for %s: %v", filePath, logErr)
 			}
 		}
@@ -144,7 +231,7 @@ func processOrganizeJob(job *worker.BatchJob, jobQueue *worker.JobQueue, destina
 		}
 
 		// Copy temp cropped poster and download all media files
-		if result.Moved {
+		if result.ShouldGenerateMetadata {
 			// Create multipart info from match for template conditionals
 			var multipart *downloader.MultipartInfo
 			if match.IsMultiPart {
@@ -163,7 +250,7 @@ func processOrganizeJob(job *worker.BatchJob, jobQueue *worker.JobQueue, destina
 		}
 
 		// Generate NFO file
-		if result.Moved && cfg.Metadata.NFO.Enabled {
+		if result.ShouldGenerateMetadata && cfg.Metadata.NFO.Enabled {
 			// Determine part suffix for multi-part files (only if per_file is enabled)
 			partSuffix := ""
 			if cfg.Metadata.NFO.PerFile && match.IsMultiPart {
@@ -187,7 +274,7 @@ func processOrganizeJob(job *worker.BatchJob, jobQueue *worker.JobQueue, destina
 			if logErr := historyLogger.LogNFO(movie.ID, nfoPath, nfoErr); logErr != nil {
 				logging.Warnf("Failed to log NFO history for %s: %v", movie.ID, logErr)
 			}
-		} else if result.Moved && !cfg.Metadata.NFO.Enabled {
+		} else if result.ShouldGenerateMetadata && !cfg.Metadata.NFO.Enabled {
 			logging.Debugf("NFO generation disabled in config, skipping for %s", movie.ID)
 		}
 
