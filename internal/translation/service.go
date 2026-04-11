@@ -128,7 +128,7 @@ func (s *Service) TranslateMovie(ctx context.Context, movie *models.Movie, setti
 	if fields.Actresses {
 		for i := range movie.Actresses {
 			idx := i
-			name := actressDisplayName(movie.Actresses[idx])
+			name := actressDisplayTitle(movie.Actresses[idx])
 			if strings.TrimSpace(name) == "" {
 				continue
 			}
@@ -174,7 +174,7 @@ func normalizeLanguage(language string) string {
 	return strings.ToLower(strings.TrimSpace(language))
 }
 
-func actressDisplayName(actress models.Actress) string {
+func actressDisplayTitle(actress models.Actress) string {
 	if strings.TrimSpace(actress.JapaneseName) != "" {
 		return actress.JapaneseName
 	}

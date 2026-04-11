@@ -396,21 +396,22 @@ func RunBatchScrapeOnce(
 							logging.Infof("[Batch %s] File %d: NFO merge complete for cached %s: %d from cache, %d from NFO, %d conflicts resolved",
 								job.ID, fileIndex, cached.ID, mergeResult.Stats.FromScraper, mergeResult.Stats.FromNFO, mergeResult.Stats.ConflictsResolved)
 
-							// Handle DisplayName: if Title is already templated (starts with [ID]), use it directly
-							// Otherwise, regenerate DisplayName from Title using the template
-							titleAlreadyTemplated := strings.HasPrefix(movieToReturn.Title, "["+movieToReturn.ID+"]")
-							if titleAlreadyTemplated {
-								// Title already has template applied, use it directly
-								movieToReturn.DisplayName = movieToReturn.Title
-								logging.Debugf("[Batch %s] File %d: Using templated Title as DisplayName: %s", job.ID, fileIndex, movieToReturn.DisplayName)
-							} else if cfg != nil && cfg.Metadata.NFO.DisplayName != "" {
-								// Title not templated, regenerate DisplayName from Title
-								tmplEngine := template.NewEngine()
+							// Determine DisplayTitle: use template or fallback to Title
+							// If Title already looks template-generated (starts with [ID]),
+							// use it directly to avoid double-templating.
+							titleLooksTemplated := LooksLikeTemplatedTitle(movieToReturn.Title, movieToReturn.ID)
+							if titleLooksTemplated {
+								movieToReturn.DisplayTitle = movieToReturn.Title
+							} else if cfg != nil && cfg.Metadata.NFO.DisplayTitle != "" {
+								displayTmplEngine := template.NewEngine()
 								displayCtx := template.NewContextFromMovie(movieToReturn)
-								if displayName, err := tmplEngine.ExecuteWithContext(ctx, cfg.Metadata.NFO.DisplayName, displayCtx); err == nil {
-									movieToReturn.DisplayName = displayName
-									logging.Debugf("[Batch %s] File %d: Regenerated DisplayName from Title: %s", job.ID, fileIndex, displayName)
+								if displayName, err := displayTmplEngine.ExecuteWithContext(ctx, cfg.Metadata.NFO.DisplayTitle, displayCtx); err == nil {
+									movieToReturn.DisplayTitle = displayName
+								} else {
+									movieToReturn.DisplayTitle = movieToReturn.Title
 								}
+							} else {
+								movieToReturn.DisplayTitle = movieToReturn.Title
 							}
 						}
 					}
@@ -822,21 +823,22 @@ func RunBatchScrapeOnce(
 					logging.Infof("[Batch %s] File %d: NFO merge complete for %s: %d from scraper, %d from NFO, %d conflicts resolved",
 						job.ID, fileIndex, movie.ID, mergeResult.Stats.FromScraper, mergeResult.Stats.FromNFO, mergeResult.Stats.ConflictsResolved)
 
-					// Handle DisplayName: if Title is already templated (starts with [ID]), use it directly
-					// Otherwise, regenerate DisplayName from Title using the template
-					titleAlreadyTemplated := strings.HasPrefix(movie.Title, "["+movie.ID+"]")
-					if titleAlreadyTemplated {
-						// Title already has template applied, use it directly
-						movie.DisplayName = movie.Title
-						logging.Debugf("[Batch %s] File %d: Using templated Title as DisplayName: %s", job.ID, fileIndex, movie.DisplayName)
-					} else if cfg != nil && cfg.Metadata.NFO.DisplayName != "" {
-						// Title not templated, regenerate DisplayName from Title
-						tmplEngine := template.NewEngine()
+					// Determine DisplayTitle: use template or fallback to Title
+					// If Title already looks template-generated (starts with [ID]),
+					// use it directly to avoid double-templating.
+					titleLooksTemplated := LooksLikeTemplatedTitle(movie.Title, movie.ID)
+					if titleLooksTemplated {
+						movie.DisplayTitle = movie.Title
+					} else if cfg != nil && cfg.Metadata.NFO.DisplayTitle != "" {
+						displayTmplEngine := template.NewEngine()
 						displayCtx := template.NewContextFromMovie(movie)
-						if displayName, err := tmplEngine.ExecuteWithContext(ctx, cfg.Metadata.NFO.DisplayName, displayCtx); err == nil {
-							movie.DisplayName = displayName
-							logging.Debugf("[Batch %s] File %d: Regenerated DisplayName from Title: %s", job.ID, fileIndex, displayName)
+						if displayName, err := displayTmplEngine.ExecuteWithContext(ctx, cfg.Metadata.NFO.DisplayTitle, displayCtx); err == nil {
+							movie.DisplayTitle = displayName
+						} else {
+							movie.DisplayTitle = movie.Title
 						}
+					} else {
+						movie.DisplayTitle = movie.Title
 					}
 				}
 			}
@@ -915,9 +917,9 @@ func RunBatchScrapeOnce(
 			finalMovie = movie // Fallback to aggregated movie
 		} else {
 			finalMovie = reloadedMovie
-			// Preserve DisplayName from aggregated movie (DB may have stale/empty value)
-			if movie.DisplayName != "" {
-				finalMovie.DisplayName = movie.DisplayName
+			// Preserve DisplayTitle from aggregated movie (DB may have stale/empty value)
+			if movie.DisplayTitle != "" {
+				finalMovie.DisplayTitle = movie.DisplayTitle
 			}
 			// Preserve temp poster URL from Step 7 (DB should never have temp URLs)
 			finalMovie.CroppedPosterURL = movie.CroppedPosterURL

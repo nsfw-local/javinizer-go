@@ -4,6 +4,7 @@
 
 	interface Props {
 		isUpdateMode: boolean;
+		canOrganize: boolean;
 		organizing: boolean;
 		movieResultsLength: number;
 		destinationPath: string;
@@ -14,6 +15,7 @@
 
 	let {
 		isUpdateMode,
+		canOrganize,
 		organizing,
 		movieResultsLength,
 		destinationPath,
@@ -53,7 +55,7 @@
 				{/snippet}
 			</Button>
 		{:else}
-			<Button onclick={onOrganizeAll} disabled={organizing || !destinationPath.trim()}>
+			<Button onclick={onOrganizeAll} disabled={organizing || !canOrganize || !destinationPath.trim()}>
 				{#snippet children()}
 					{#if organizing}
 						<LoaderCircle class="h-4 w-4 mr-2" />

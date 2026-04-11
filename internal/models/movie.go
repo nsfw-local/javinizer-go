@@ -8,7 +8,7 @@ import (
 type Movie struct {
 	ContentID        string     `json:"content_id" gorm:"primaryKey"`
 	ID               string     `json:"id" gorm:"index"`
-	DisplayName      string     `json:"display_name"`
+	DisplayTitle     string     `json:"display_title"`
 	Title            string     `json:"title"`
 	OriginalTitle    string     `json:"original_title"` // Japanese/original language title
 	Description      string     `json:"description" gorm:"type:text"`

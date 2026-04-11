@@ -91,6 +91,8 @@ definitions:
         type: integer
       id:
         type: string
+      operation_mode_override:
+        type: string
       progress:
         type: number
       results:
@@ -163,11 +165,24 @@ definitions:
       force:
         example: false
         type: boolean
+      move_to_folder:
+        description: Override config.output.move_to_folder
+        example: true
+        type: boolean
+      operation_mode:
+        description: 'Override config.output.operation_mode: organize, in-place, in-place-norenamefolder,
+          metadata-only, preview'
+        example: organize
+        type: string
       preset:
         description: 'Merge strategy preset: conservative, gap-fill, aggressive (overrides
           scalar/array strategies)'
         example: conservative
         type: string
+      rename_folder_in_place:
+        description: Override config.output.rename_folder_in_place
+        example: false
+        type: boolean
       scalar_strategy:
         description: 'For Update mode: prefer-nfo, prefer-scraper, preserve-existing,
           fill-missing-only'
@@ -235,6 +250,10 @@ definitions:
         - soft
         example: hard
         type: string
+      operation_mode:
+        description: organize, in-place, in-place-norenamefolder, metadata-only, preview
+        example: organize
+        type: string
     required:
     - destination
     type: object
@@ -264,6 +283,10 @@ definitions:
         items:
           type: string
         type: array
+      operation_mode:
+        description: Which mode was used for preview
+        example: organize
+        type: string
       poster_path:
         example: /path/to/output/IPX-535 [IdeaPocket] - Beautiful Woman (2021)/IPX-535-poster.jpg
         type: string
@@ -275,6 +298,10 @@ definitions:
         items:
           type: string
         type: array
+      source_path:
+        description: Original file path (for in-place modes)
+        example: /source/folder/ABC-123.mp4
+        type: string
       video_files:
         description: 'For multi-part files: all video file paths'
         items:
@@ -294,6 +321,10 @@ definitions:
         - hard
         - soft
         example: hard
+        type: string
+      operation_mode:
+        description: organize, in-place, in-place-norenamefolder, metadata-only
+        example: organize
         type: string
     required:
     - destination
@@ -560,7 +591,7 @@ definitions:
         items:
           type: string
         type: array
-      display_name:
+      display_title:
         type: string
       enabled:
         type: boolean
@@ -662,6 +693,8 @@ definitions:
       move_to_folder:
         description: 'Move/copy files to organized folders (default: true)'
         type: boolean
+      operation_mode:
+        $ref: '#/definitions/types.OperationMode'
       poster_format:
         type: string
       rename_file:
@@ -1060,7 +1093,7 @@ definitions:
     type: object
   contracts.ScraperInfo:
     properties:
-      display_name:
+      display_title:
         example: R18.dev
         type: string
       enabled:
@@ -1307,7 +1340,7 @@ definitions:
         type: string
       director:
         type: string
-      display_name:
+      display_title:
         type: string
       genres:
         items:
@@ -1730,6 +1763,20 @@ definitions:
           type: string
         type: array
     type: object
+  types.OperationMode:
+    enum:
+    - organize
+    - in-place
+    - in-place-norenamefolder
+    - metadata-only
+    - preview
+    type: string
+    x-enum-varnames:
+    - OperationModeOrganize
+    - OperationModeInPlace
+    - OperationModeInPlaceNoRenameFolder
+    - OperationModeMetadataOnly
+    - OperationModePreview
   version.VersionStatusResponse:
     properties:
       build_date:

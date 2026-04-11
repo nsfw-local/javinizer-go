@@ -399,7 +399,7 @@ func TestAggregateWithPriority_AllFields(t *testing.T) {
 	cfg := &config.Config{
 		Metadata: config.MetadataConfig{
 			NFO: config.NFOConfig{
-				DisplayName: "<ID> - <TITLE>",
+				DisplayTitle: "<ID> - <TITLE>",
 			},
 		},
 	}
@@ -471,7 +471,7 @@ func TestAggregateWithPriority_AllFields(t *testing.T) {
 	assert.Len(t, movie.Screenshots, 2)
 	assert.Equal(t, "test-scraper", movie.SourceName)
 	assert.Equal(t, "https://test-scraper.com/movie/123", movie.SourceURL)
-	assert.Equal(t, "TEST-123 - Test Movie Title", movie.DisplayName)
+	assert.Equal(t, "TEST-123 - Test Movie Title", movie.DisplayTitle)
 
 	// Verify timestamps are set
 	assert.False(t, movie.CreatedAt.IsZero())

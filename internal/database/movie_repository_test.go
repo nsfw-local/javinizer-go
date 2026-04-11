@@ -18,7 +18,7 @@ func createTestMovie(id string) *models.Movie {
 	return &models.Movie{
 		ContentID:     strings.ToLower(strings.ReplaceAll(id, "-", "")), // e.g., "ipx064"
 		ID:            id,                                               // e.g., "IPX-064"
-		DisplayName:   "Test Movie " + id,
+		DisplayTitle:  "Test Movie " + id,
 		Title:         "Test Title " + id,
 		OriginalTitle: "テストタイトル" + id,
 		Description:   "Test description for movie " + id,
@@ -66,7 +66,7 @@ func TestMovieRepository_Create(t *testing.T) {
 		found, err := repo.FindByID("IPX-001")
 		require.NoError(t, err)
 		assert.Equal(t, "IPX-001", found.ID)
-		assert.Equal(t, "Test Movie IPX-001", found.DisplayName)
+		assert.Equal(t, "Test Movie IPX-001", found.DisplayTitle)
 	})
 
 	t.Run("Create movie with genres", func(t *testing.T) {

@@ -17,6 +17,7 @@ type ParseResult struct {
 	Movie    *models.Movie
 	Warnings []string // Non-fatal parsing issues
 	Source   string   // File path for debugging
+	NFOTitle string   // Raw <title> from NFO, used for display title preservation
 }
 
 // Maximum NFO file size (1 MB) - prevents memory exhaustion attacks
@@ -53,6 +54,7 @@ func ParseNFO(fs afero.Fs, filePath string) (*ParseResult, error) {
 		Movie:    movie,
 		Warnings: warnings,
 		Source:   filePath,
+		NFOTitle: nfoMovie.Title,
 	}, nil
 }
 

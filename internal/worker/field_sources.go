@@ -84,7 +84,7 @@ func buildFieldSourcesFromScrapeResults(
 		return strings.TrimSpace(r.Title) != ""
 	})
 	assign("title", titleSource, fieldSources)
-	assign("display_name", titleSource, fieldSources)
+	assign("display_title", titleSource, fieldSources)
 
 	assign("original_title", findSource(getPriority("OriginalTitle"), func(r *models.ScraperResult) bool {
 		return strings.TrimSpace(r.OriginalTitle) != ""
@@ -168,7 +168,7 @@ func buildFieldSourcesFromCachedMovie(movie *models.Movie) map[string]string {
 	assign("id", strings.TrimSpace(movie.ID) != "")
 	assign("content_id", strings.TrimSpace(movie.ContentID) != "")
 	assign("title", strings.TrimSpace(movie.Title) != "")
-	assign("display_name", strings.TrimSpace(movie.DisplayName) != "")
+	assign("display_title", strings.TrimSpace(movie.DisplayTitle) != "")
 	assign("original_title", strings.TrimSpace(movie.OriginalTitle) != "")
 	assign("description", strings.TrimSpace(movie.Description) != "")
 	assign("director", strings.TrimSpace(movie.Director) != "")
@@ -208,7 +208,7 @@ func applyNFOMergeProvenance(fieldSources map[string]string, provenance map[stri
 	nfoToFrontendField := map[string]string{
 		"ID":               "id",
 		"ContentID":        "content_id",
-		"DisplayName":      "display_name",
+		"DisplayTitle":     "display_title",
 		"Title":            "title",
 		"OriginalTitle":    "original_title",
 		"Description":      "description",

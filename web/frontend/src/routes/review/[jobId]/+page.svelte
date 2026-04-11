@@ -66,6 +66,11 @@
 	let tempDestinationPath = $state('');
 	let showTrailerModal = $state(false);
 	let preview: OrganizePreviewResponse | null = $state(null);
+	let previewNeedsDestination = $state(false);
+
+	function getEffectiveOperationMode(): string {
+		return job?.operation_mode_override || config?.output?.operation_mode || 'organize';
+	}
 	let isUpdateMode = $derived($page.url.searchParams.get('update') === 'true');
 	let showFieldScraperSources = $state(false);
 	const SHOW_FIELD_SCRAPER_SOURCES_KEY = 'javinizer.review.showFieldScraperSources';
@@ -82,6 +87,15 @@
 	const showPosterPanel = $derived(config?.output?.download_poster ?? true);
 	const showTrailerPanel = $derived(config?.output?.download_trailer ?? true);
 	const showScreenshotsPanel = $derived(config?.output?.download_extrafanart ?? true);
+
+	function getCanOrganize(): boolean {
+		if (isUpdateMode) return false;
+		if (!config) return false;
+		const mode = getEffectiveOperationMode();
+		return mode === 'organize' || mode === 'in-place' || mode === 'in-place-norenamefolder' || mode === 'metadata-only';
+	}
+
+	const canOrganize = $derived(getCanOrganize());
 
 	// Image viewer state (unified for screenshots and cover)
 	let showImageViewer = $state(false);
@@ -221,10 +235,22 @@
 	}
 
 	async function fetchPreview() {
-		if (!destinationPath.trim() || !currentMovie) {
+		if (!currentMovie) {
 			preview = null;
+			previewNeedsDestination = false;
 			return;
 		}
+
+		const operationMode = getEffectiveOperationMode();
+
+		// Only require destination for organize mode — in-place and metadata-only don't need it
+		const needsDestination = operationMode === 'organize';
+		if (needsDestination && !destinationPath.trim()) {
+			preview = null;
+			previewNeedsDestination = true;
+			return;
+		}
+		previewNeedsDestination = false;
 
 		const copyOnly = organizeOperation !== 'move';
 		const linkMode = organizeOperation === 'hardlink'
@@ -237,7 +263,8 @@
 			preview = await apiClient.previewOrganize(jobId, currentMovie.id, {
 				destination: destinationPath,
 				copy_only: copyOnly,
-				link_mode: linkMode
+				link_mode: linkMode,
+				operation_mode: operationMode as 'organize' | 'in-place' | 'in-place-norenamefolder' | 'metadata-only' | 'preview'
 			});
 		} catch (e) {
 			console.error('Failed to fetch preview:', e);
@@ -247,7 +274,9 @@
 
 	// Fetch preview when destination, operation mode, or current movie changes
 	$effect(() => {
-		if (destinationPath && currentMovie) {
+		const operationMode = job?.operation_mode_override || config?.output?.operation_mode;
+		const needsDestination = !operationMode || operationMode === 'organize';
+		if (currentMovie && (needsDestination ? destinationPath : true)) {
 			fetchPreview();
 		} else {
 			preview = null;
@@ -590,6 +619,7 @@
 		{:else if currentMovie && currentResult}
 			<ReviewHeader
 				isUpdateMode={isUpdateMode}
+				canOrganize={canOrganize}
 				organizing={organizing}
 				movieResultsLength={movieResults.length}
 				destinationPath={destinationPath}
@@ -641,12 +671,14 @@
 						bind:showFullSourcePath={showFullSourcePath}
 					/>
 
-					<!-- Destination Path (hidden in update mode) -->
-					{#if !isUpdateMode}
+					<!-- Destination Path (hidden in update mode or when move_to_folder disabled) -->
+					{#if canOrganize}
 						<DestinationSettingsCard
 							bind:destinationPath={destinationPath}
 							bind:organizeOperation={organizeOperation}
 							preview={preview}
+							{previewNeedsDestination}
+							effectiveOperationMode={getEffectiveOperationMode()}
 							bind:showAllPreviewScreenshots={showAllPreviewScreenshots}
 							onOpenDestinationBrowser={reviewPageController.openDestinationBrowser}
 						/>
@@ -682,14 +714,16 @@
 						onUpdateCurrentMovie={updateCurrentMovie}
 					/>
 
-					<ReviewActionBar
-						isUpdateMode={isUpdateMode}
-						organizing={organizing}
-						destinationPath={destinationPath}
-						movieResultsLength={movieResults.length}
-						onCancel={() => goto('/browse')}
-						onOrganizeAll={organizeAll}
-					/>
+					{#if canOrganize}
+						<ReviewActionBar
+							isUpdateMode={isUpdateMode}
+							organizing={organizing}
+							destinationPath={destinationPath}
+							movieResultsLength={movieResults.length}
+							onCancel={() => goto('/browse')}
+							onOrganizeAll={organizeAll}
+						/>
+					{/if}
 				</div>
 				</div>
 			{/key}

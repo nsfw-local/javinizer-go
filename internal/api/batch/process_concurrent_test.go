@@ -237,6 +237,9 @@ func TestProcessBatchJobConcurrent(t *testing.T) {
 			"prefer-scraper", // scalarStrategy
 			"merge",          // arrayStrategy
 			deps.DB,          // db
+			nil,              // moveToFolderOverride
+			nil,              // renameFolderInPlaceOverride
+			"",               // operationModeOverride
 		)
 		close(done)
 	}()
@@ -320,6 +323,9 @@ func TestProcessBatchJobCancellation(t *testing.T) {
 			"prefer-scraper", // scalarStrategy
 			"merge",          // arrayStrategy
 			deps.DB,          // db
+			nil,              // moveToFolderOverride
+			nil,              // renameFolderInPlaceOverride
+			"",               // operationModeOverride
 		)
 		close(done)
 	}()
@@ -400,6 +406,9 @@ func TestProcessBatchJobRaceConditions(t *testing.T) {
 			"prefer-scraper", // scalarStrategy
 			"merge",          // arrayStrategy
 			deps.DB,          // db
+			nil,              // moveToFolderOverride
+			nil,              // renameFolderInPlaceOverride
+			"",               // operationModeOverride
 		)
 		close(done)
 	}()
@@ -599,6 +608,9 @@ func TestBatchScrapeTaskDatabaseSafety(t *testing.T) {
 			"prefer-scraper", // scalarStrategy
 			"merge",          // arrayStrategy
 			deps.DB,          // db
+			nil,              // moveToFolderOverride
+			nil,              // renameFolderInPlaceOverride
+			"",               // operationModeOverride
 		)
 		close(done)
 	}()
@@ -695,6 +707,9 @@ func TestWorkerPoolErrorHandling(t *testing.T) {
 			"prefer-scraper", // scalarStrategy
 			"merge",          // arrayStrategy
 			deps.DB,          // db
+			nil,              // moveToFolderOverride
+			nil,              // renameFolderInPlaceOverride
+			"",               // operationModeOverride
 		)
 		close(done)
 	}()

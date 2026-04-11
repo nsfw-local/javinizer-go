@@ -3,6 +3,7 @@ package organizer
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -32,6 +33,7 @@ func TestOrganizerWithAfero_MoveFile(t *testing.T) {
 		FileFormat:    "<ID>",
 		RenameFile:    true,
 		MoveSubtitles: false,
+		MoveToFolder:  true,
 	}
 	org := NewOrganizer(fs, cfg)
 
@@ -86,6 +88,7 @@ func TestOrganizerWithAfero_MoveWithDirectoryCreation(t *testing.T) {
 		FileFormat:      "<ID>",
 		RenameFile:      true,
 		MoveSubtitles:   false,
+		MoveToFolder:    true,
 	}
 	org := NewOrganizer(fs, cfg)
 
@@ -132,6 +135,7 @@ func TestOrganizerWithAfero_CopyPreservesOriginal(t *testing.T) {
 		FileFormat:    "<ID>",
 		RenameFile:    true,
 		MoveSubtitles: false,
+		MoveToFolder:  true,
 	}
 	org := NewOrganizer(fs, cfg)
 
@@ -190,6 +194,7 @@ func TestOrganizerWithAfero_MoveCollision(t *testing.T) {
 		FileFormat:    "<ID>",
 		RenameFile:    true,
 		MoveSubtitles: false,
+		MoveToFolder:  true,
 	}
 	org := NewOrganizer(fs, cfg)
 
@@ -232,6 +237,7 @@ func TestOrganizerWithAfero_ComplexTemplate(t *testing.T) {
 		FileFormat:    "<ID>",
 		RenameFile:    true,
 		MoveSubtitles: false,
+		MoveToFolder:  true,
 	}
 	org := NewOrganizer(fs, cfg)
 
@@ -286,8 +292,7 @@ func TestOrganizerWithAfero_ValidatePlan(t *testing.T) {
 		assert.Contains(t, issues[0], "double slashes")
 	})
 
-	t.Run("source equals target", func(t *testing.T) {
-		// Create source file
+	t.Run("source equals target, WillMove=true - no issue (dead code removed)", func(t *testing.T) {
 		samePath := "/movies/IPX-123/IPX-123.mp4"
 		err := fs.MkdirAll(filepath.Dir(samePath), 0755)
 		require.NoError(t, err)
@@ -299,12 +304,16 @@ func TestOrganizerWithAfero_ValidatePlan(t *testing.T) {
 			TargetDir:  filepath.Dir(samePath),
 			TargetFile: filepath.Base(samePath),
 			TargetPath: samePath,
+			WillMove:   true,
 			Conflicts:  []string{},
 		}
 
 		issues := org.ValidatePlan(plan)
-		assert.NotEmpty(t, issues, "Should detect identical paths")
-		assert.Contains(t, issues[0], "identical")
+		for _, issue := range issues {
+			if strings.Contains(issue, "identical") {
+				t.Errorf("Should not report identical paths as issue (validation removed), got: %s", issue)
+			}
+		}
 	})
 
 	t.Run("empty target directory", func(t *testing.T) {
@@ -338,6 +347,7 @@ func TestOrganizerWithAfero_DryRun(t *testing.T) {
 		FileFormat:    "<ID>",
 		RenameFile:    true,
 		MoveSubtitles: false,
+		MoveToFolder:  true,
 	}
 	org := NewOrganizer(fs, cfg)
 
@@ -414,6 +424,7 @@ func TestOrganizerWithAfero_Revert(t *testing.T) {
 		FileFormat:    "<ID>",
 		RenameFile:    true,
 		MoveSubtitles: false,
+		MoveToFolder:  true,
 	}
 	org := NewOrganizer(fs, cfg)
 
@@ -506,8 +517,9 @@ func TestOrganizerWithAfero_RenameFileDisabled(t *testing.T) {
 	cfg := &config.OutputConfig{
 		FolderFormat:  "<ID>",
 		FileFormat:    "<ID>",
-		RenameFile:    false, // Disabled
+		RenameFile:    false,
 		MoveSubtitles: false,
+		MoveToFolder:  true,
 	}
 	org := NewOrganizer(fs, cfg)
 

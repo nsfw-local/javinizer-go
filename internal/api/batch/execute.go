@@ -6,6 +6,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/javinizer/javinizer-go/internal/models"
+	"github.com/javinizer/javinizer-go/internal/types"
 	"github.com/javinizer/javinizer-go/internal/worker"
 )
 
@@ -45,8 +46,32 @@ func organizeJob(deps *ServerDependencies) gin.HandlerFunc {
 			return
 		}
 
-		// Security: Validate destination directory against allow/deny lists
 		cfg := deps.GetConfig()
+
+		// Determine effective operation mode from request or config
+		effectiveMode := cfg.Output.GetOperationMode()
+		if req.OperationMode != "" {
+			parsed, err := types.ParseOperationMode(req.OperationMode)
+			if err != nil {
+				c.JSON(400, ErrorResponse{Error: fmt.Sprintf("Invalid operation_mode: %v", err)})
+				return
+			}
+			effectiveMode = parsed
+		}
+
+		// Allow organize for organize and in-place modes only
+		// Preview mode should use the preview endpoint, not organize
+		// Metadata-only mode does not perform file operations
+		if effectiveMode == types.OperationModePreview {
+			c.JSON(400, ErrorResponse{Error: "Preview mode should use the preview endpoint, not organize"})
+			return
+		}
+		if effectiveMode == types.OperationModeMetadataOnly {
+			c.JSON(400, ErrorResponse{Error: "Organize not available in metadata-only mode"})
+			return
+		}
+
+		// Security: Validate destination directory against allow/deny lists
 		if !isDirAllowed(req.Destination, cfg.API.Security.AllowedDirectories, cfg.API.Security.DeniedDirectories) {
 			c.JSON(403, ErrorResponse{Error: "Access denied to requested directory"})
 			return
@@ -54,6 +79,11 @@ func organizeJob(deps *ServerDependencies) gin.HandlerFunc {
 
 		// Reuse the batch job lifecycle for organize progress polling.
 		job.MarkStarted()
+
+		// Set operation mode override on the job for processOrganizeJob
+		if req.OperationMode != "" {
+			job.OperationModeOverride = req.OperationMode
+		}
 
 		// Start organization in background - use getter for thread-safe access
 		go processOrganizeJob(job, deps.JobQueue, req.Destination, req.CopyOnly, req.LinkMode, deps.DB, cfg, deps.GetRegistry())
@@ -124,11 +154,25 @@ func previewOrganize(deps *ServerDependencies) gin.HandlerFunc {
 			return
 		}
 
-		// Security: Validate destination directory against allow/deny lists
 		cfg := deps.GetConfig()
-		if !isDirAllowed(req.Destination, cfg.API.Security.AllowedDirectories, cfg.API.Security.DeniedDirectories) {
-			c.JSON(403, ErrorResponse{Error: "Access denied to requested directory"})
-			return
+
+		// Determine operation mode for preview
+		effectiveMode := cfg.Output.GetOperationMode()
+		if req.OperationMode != "" {
+			parsed, err := types.ParseOperationMode(req.OperationMode)
+			if err != nil {
+				c.JSON(400, ErrorResponse{Error: fmt.Sprintf("Invalid operation_mode: %v", err)})
+				return
+			}
+			effectiveMode = parsed
+		}
+
+		// Security: Validate destination directory for modes that use it
+		if effectiveMode == types.OperationModeOrganize || effectiveMode == types.OperationModePreview {
+			if !isDirAllowed(req.Destination, cfg.API.Security.AllowedDirectories, cfg.API.Security.DeniedDirectories) {
+				c.JSON(403, ErrorResponse{Error: "Access denied to requested directory"})
+				return
+			}
 		}
 
 		// Get the batch job (already a snapshot, don't call GetStatus() again)
@@ -178,7 +222,7 @@ func previewOrganize(deps *ServerDependencies) gin.HandlerFunc {
 		})
 
 		// Use the helper function from processors.go - pass all file results for multi-part support
-		preview := generatePreview(movie, fileResults, req.Destination, deps.GetConfig())
+		preview := generatePreview(movie, fileResults, req.Destination, deps.GetConfig(), effectiveMode)
 		c.JSON(200, preview)
 	}
 }

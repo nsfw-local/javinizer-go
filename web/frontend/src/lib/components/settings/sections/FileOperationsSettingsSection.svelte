@@ -3,23 +3,62 @@
 	import SettingsSubsection from '$lib/components/settings/SettingsSubsection.svelte';
 	import FormTextInput from '$lib/components/settings/FormTextInput.svelte';
 	import FormToggle from '$lib/components/settings/FormToggle.svelte';
+	import { FolderOutput, FolderOpen, FileText, FileEdit } from 'lucide-svelte';
+	import type { OperationMode } from '$lib/api/types';
 
 	interface Props {
 		config: any;
 	}
 
 	let { config }: Props = $props();
+
+	let effectiveMode: OperationMode = $derived(
+		(config?.output?.operation_mode || 'organize') as OperationMode
+	);
+
+	function handleOperationModeChange(mode: OperationMode) {
+		config.output.operation_mode = mode;
+	}
 </script>
 
 <SettingsSection title="File Operations" description="Control how Javinizer organizes and moves your files" defaultExpanded={false}>
-	<FormToggle
-		label="Move to folder"
-		description="Create a dedicated folder for each movie and move files into it"
-		checked={config.output.move_to_folder ?? true}
-		onchange={(val) => {
-			config.output.move_to_folder = val;
-		}}
-	/>
+	<div class="space-y-3">
+		<h4 class="text-sm font-medium">Operation Mode</h4>
+		<p class="text-xs text-muted-foreground">Choose how files are organized during operations</p>
+		<div class="grid grid-cols-2 lg:grid-cols-4 gap-2">
+			<button
+				onclick={() => handleOperationModeChange('organize')}
+				class="flex flex-col items-start gap-1 p-3 rounded-lg border-2 text-sm transition-all {effectiveMode === 'organize' ? 'border-primary bg-primary/5 font-medium' : 'border-border hover:border-primary/50'}"
+			>
+				<div class="font-medium"><FolderOutput size={16} class="inline mr-1" />Organize</div>
+				<div class="text-xs text-muted-foreground">Move to organized folder structure</div>
+			</button>
+
+			<button
+				onclick={() => handleOperationModeChange('in-place')}
+				class="flex flex-col items-start gap-1 p-3 rounded-lg border-2 text-sm transition-all {effectiveMode === 'in-place' ? 'border-primary bg-primary/5 font-medium' : 'border-border hover:border-primary/50'}"
+			>
+				<div class="font-medium"><FolderOpen size={16} class="inline mr-1" />Rename in place</div>
+				<div class="text-xs text-muted-foreground">Keep files, rename parent folder</div>
+			</button>
+
+			<button
+				onclick={() => handleOperationModeChange('in-place-norenamefolder')}
+				class="flex flex-col items-start gap-1 p-3 rounded-lg border-2 text-sm transition-all {effectiveMode === 'in-place-norenamefolder' ? 'border-primary bg-primary/5 font-medium' : 'border-border hover:border-primary/50'}"
+			>
+				<div class="font-medium"><FileEdit size={16} class="inline mr-1" />Rename file only</div>
+				<div class="text-xs text-muted-foreground">Rename video file, keep folder name</div>
+			</button>
+
+			<button
+				onclick={() => handleOperationModeChange('metadata-only')}
+				class="flex flex-col items-start gap-1 p-3 rounded-lg border-2 text-sm transition-all {effectiveMode === 'metadata-only' ? 'border-primary bg-primary/5 font-medium' : 'border-border hover:border-primary/50'}"
+			>
+				<div class="font-medium"><FileText size={16} class="inline mr-1" />Metadata only</div>
+				<div class="text-xs text-muted-foreground">No file or folder changes</div>
+			</button>
+		</div>
+	</div>
 
 	<FormToggle
 		label="Rename file"
@@ -27,15 +66,6 @@
 		checked={config.output.rename_file ?? true}
 		onchange={(val) => {
 			config.output.rename_file = val;
-		}}
-	/>
-
-	<FormToggle
-		label="Rename folder in place"
-		description="Rename the parent folder without moving files to a new location"
-		checked={config.output.rename_folder_in_place ?? false}
-		onchange={(val) => {
-			config.output.rename_folder_in_place = val;
 		}}
 	/>
 

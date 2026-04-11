@@ -56,7 +56,7 @@ func run(cmd *cobra.Command, configFile string) error {
 		if scraper, ok := cfg.Scrapers.Overrides[name]; ok && scraper != nil {
 			displayName := name
 			if provider, exists := scraperutil.GetScraperOptions(name); exists {
-				displayName = provider.DisplayName
+				displayName = provider.DisplayTitle
 			}
 			if _, err := fmt.Fprintf(cmd.OutOrStdout(), "  - %s: %v\n", displayName, scraper.Enabled); err != nil {
 				return err

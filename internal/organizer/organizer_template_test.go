@@ -78,6 +78,7 @@ func TestOrganizerTemplate_SimplePatterns(t *testing.T) {
 				FolderFormat:  tt.template,
 				FileFormat:    "<ID>",
 				RenameFile:    true,
+				MoveToFolder:  true,
 				MoveSubtitles: false,
 			}
 			org := NewOrganizer(fs, cfg)
@@ -174,6 +175,7 @@ func TestOrganizerTemplate_ComplexPatterns(t *testing.T) {
 				FolderFormat:  tt.template,
 				FileFormat:    "<ID>",
 				RenameFile:    true,
+				MoveToFolder:  true,
 				MoveSubtitles: false,
 			}
 			org := NewOrganizer(fs, cfg)
@@ -262,6 +264,7 @@ func TestOrganizerTemplate_ConditionalLogic(t *testing.T) {
 				FolderFormat:  tt.template,
 				FileFormat:    "<ID>",
 				RenameFile:    true,
+				MoveToFolder:  true,
 				MoveSubtitles: false,
 			}
 			org := NewOrganizer(fs, cfg)
@@ -349,6 +352,7 @@ func TestOrganizerTemplate_MissingFields(t *testing.T) {
 				FolderFormat:  tt.template,
 				FileFormat:    "<ID>",
 				RenameFile:    true,
+				MoveToFolder:  true,
 				MoveSubtitles: false,
 			}
 			org := NewOrganizer(fs, cfg)
@@ -448,6 +452,7 @@ func TestOrganizerTemplate_SpecialCharacters(t *testing.T) {
 				FolderFormat:  "<ID> - <TITLE>",
 				FileFormat:    "<ID>",
 				RenameFile:    true,
+				MoveToFolder:  true,
 				MoveSubtitles: false,
 			}
 			org := NewOrganizer(fs, cfg)
@@ -533,6 +538,7 @@ func TestOrganizerTemplate_UnicodeHandling(t *testing.T) {
 				FolderFormat:  "<ID> - <TITLE>",
 				FileFormat:    "<ID>",
 				RenameFile:    true,
+				MoveToFolder:  true,
 				MoveSubtitles: false,
 			}
 			org := NewOrganizer(fs, cfg)

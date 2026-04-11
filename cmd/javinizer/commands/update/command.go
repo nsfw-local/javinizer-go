@@ -120,6 +120,7 @@ func Run(cmd *cobra.Command, args []string, configFile string) error {
 		return fmt.Errorf("failed to create matcher: %w", err)
 	}
 	fileOrganizer := organizer.NewOrganizer(afero.NewOsFs(), &deps.Config.Output)
+	fileOrganizer.SetMatcher(fileMatcher)
 	nfoGenerator := nfo.NewGenerator(afero.NewOsFs(), nfo.ConfigFromAppConfig(&deps.Config.Metadata.NFO, &deps.Config.Output, &deps.Config.Metadata, deps.DB))
 
 	// Initialize HTTP client for downloader

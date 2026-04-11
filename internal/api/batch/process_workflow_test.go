@@ -70,6 +70,54 @@ func TestProcessUpdateMode_GeneratesMergedNFO(t *testing.T) {
 	}
 }
 
+func TestProcessUpdateMode_TemplatedTitleNotDoubleApplied(t *testing.T) {
+	initTestWebSocket(t)
+
+	cfg := config.DefaultConfig()
+	cfg.Output.DownloadCover = false
+	cfg.Output.DownloadPoster = false
+	cfg.Output.DownloadExtrafanart = false
+	cfg.Output.DownloadTrailer = false
+	cfg.Output.DownloadActress = false
+	cfg.Metadata.NFO.FilenameTemplate = "<ID>.nfo"
+	cfg.Metadata.NFO.DisplayTitle = "[<ID>] <TITLE>"
+
+	deps := createTestDeps(t, cfg, "")
+	tempDir := t.TempDir()
+	filePath := filepath.Join(tempDir, "ABC-123.mp4")
+	if err := os.WriteFile(filePath, []byte("video"), 0o644); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+	writeWorkflowNFO(t, filepath.Join(tempDir, "ABC-123.nfo"), "ABC-123", "[ABC-123] Existing Templated Title")
+
+	job := deps.JobQueue.CreateJob([]string{filePath})
+	job.UpdateFileResult(filePath, &worker.FileResult{
+		FilePath: filePath,
+		MovieID:  "ABC-123",
+		Status:   worker.JobStatusCompleted,
+		Data: &models.Movie{
+			ID:        "ABC-123",
+			ContentID: "abc123",
+			Title:     "Scraped Title",
+		},
+	})
+
+	processUpdateMode(job, cfg, deps.DB, deps.Registry, context.Background())
+
+	status := job.GetStatus()
+	if status.Status != worker.JobStatusCompleted {
+		t.Fatalf("job status = %q, want completed", status.Status)
+	}
+
+	parseResult, err := nfo.ParseNFO(afero.NewOsFs(), filepath.Join(tempDir, "ABC-123.nfo"))
+	if err != nil {
+		t.Fatalf("ParseNFO() error = %v", err)
+	}
+	if parseResult.Movie.Title != "[ABC-123] Scraped Title" {
+		t.Fatalf("merged NFO title = %q, want %q", parseResult.Movie.Title, "[ABC-123] Scraped Title")
+	}
+}
+
 func TestProcessUpdateMode_CancelledContextMarksJobCancelled(t *testing.T) {
 	initTestWebSocket(t)
 

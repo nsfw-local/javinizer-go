@@ -521,14 +521,17 @@ func (a *Aggregator) Aggregate(results []*models.ScraperResult) (*models.Movie, 
 
 	a.ApplyConfiguredTranslation(movie)
 
-	// Generate display name from template if configured
-	if a.config.Metadata.NFO.DisplayName != "" {
+	// Generate display title from template if configured, otherwise use title
+	if a.config.Metadata.NFO.DisplayTitle != "" {
 		ctx := template.NewContextFromMovie(movie)
-		displayName, err := a.templateEngine.Execute(a.config.Metadata.NFO.DisplayName, ctx)
-		if err == nil {
-			movie.DisplayName = displayName
+		displayTitle, err := a.templateEngine.Execute(a.config.Metadata.NFO.DisplayTitle, ctx)
+		if err == nil && displayTitle != "" {
+			movie.DisplayTitle = displayTitle
 		}
-		// Silently ignore template errors - display name is optional
+	}
+	// Always ensure DisplayTitle is set (fallback to Title)
+	if movie.DisplayTitle == "" && movie.Title != "" {
+		movie.DisplayTitle = movie.Title
 	}
 
 	// Validate required fields if configured
@@ -669,14 +672,17 @@ func (a *Aggregator) AggregateWithPriority(results []*models.ScraperResult, cust
 
 	a.ApplyConfiguredTranslation(movie)
 
-	// Generate display name from template if configured
-	if a.config.Metadata.NFO.DisplayName != "" {
+	// Generate display title from template if configured, otherwise use title
+	if a.config.Metadata.NFO.DisplayTitle != "" {
 		ctx := template.NewContextFromMovie(movie)
-		displayName, err := a.templateEngine.Execute(a.config.Metadata.NFO.DisplayName, ctx)
-		if err == nil {
-			movie.DisplayName = displayName
+		displayTitle, err := a.templateEngine.Execute(a.config.Metadata.NFO.DisplayTitle, ctx)
+		if err == nil && displayTitle != "" {
+			movie.DisplayTitle = displayTitle
 		}
-		// Silently ignore template errors - display name is optional
+	}
+	// Always ensure DisplayTitle is set (fallback to Title)
+	if movie.DisplayTitle == "" && movie.Title != "" {
+		movie.DisplayTitle = movie.Title
 	}
 
 	// Validate required fields if configured

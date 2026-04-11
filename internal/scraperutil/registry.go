@@ -1,8 +1,8 @@
 package scraperutil
 
 type ScraperOptionsProvider struct {
-	DisplayName string
-	Options     []any
+	DisplayTitle string
+	Options      []any
 }
 
 var scraperOptionsRegistry = make(map[string]ScraperOptionsProvider)

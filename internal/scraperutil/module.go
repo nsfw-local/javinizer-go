@@ -73,8 +73,8 @@ func RegisterModule(module ScraperModule) {
 	if options := module.Options(); options != nil {
 		if o, ok := options.([]any); ok {
 			scraperOptionsRegistry[name] = ScraperOptionsProvider{
-				DisplayName: module.Description(),
-				Options:     o,
+				DisplayTitle: module.Description(),
+				Options:      o,
 			}
 		}
 	}

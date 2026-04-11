@@ -174,7 +174,7 @@ func TestGetAvailableScrapers_AdditionalOptionSets(t *testing.T) {
 
 			scraper := response.Scrapers[0]
 			assert.Equal(t, tt.scraperName, scraper.Name)
-			assert.Equal(t, tt.wantLabel, scraper.DisplayName)
+			assert.Equal(t, tt.wantLabel, scraper.DisplayTitle)
 
 			keys := make(map[string]ScraperOption, len(scraper.Options))
 			for _, option := range scraper.Options {

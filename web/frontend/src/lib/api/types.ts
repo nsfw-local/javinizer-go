@@ -55,6 +55,8 @@ export interface ScrapeRequest {
 	selected_scrapers?: string[];
 }
 
+export type OperationMode = 'organize' | 'in-place' | 'in-place-norenamefolder' | 'metadata-only' | 'preview';
+
 export interface BatchScrapeRequest {
 	files: string[];
 	strict: boolean;
@@ -65,6 +67,9 @@ export interface BatchScrapeRequest {
 	preset?: 'conservative' | 'gap-fill' | 'aggressive'; // Merge strategy preset (overrides scalar/array)
 	scalar_strategy?: 'prefer-nfo' | 'prefer-scraper' | 'preserve-existing' | 'fill-missing-only';
 	array_strategy?: 'merge' | 'replace';
+	move_to_folder?: boolean; // Override config.output.move_to_folder
+	rename_folder_in_place?: boolean; // Override config.output.rename_folder_in_place
+	operation_mode?: OperationMode; // Per-request override of config operation_mode. Takes priority over boolean fields when set.
 }
 
 export interface RescrapeRequest {
@@ -174,6 +179,7 @@ export interface BatchJobResponse {
 	files?: string[];
 	started_at: string;
 	completed_at?: string;
+	operation_mode_override?: string;
 }
 
 export interface ProgressMessage {
@@ -195,7 +201,7 @@ export interface Movie {
 	id: string;
 	content_id?: string;
 	title: string;
-	display_name?: string;
+	display_title?: string;
 	original_title?: string;
 	description?: string;
 	release_date?: string;
@@ -319,6 +325,7 @@ export interface OrganizeRequest {
 	destination: string;
 	copy_only?: boolean;
 	link_mode?: 'hard' | 'soft';
+	operation_mode?: OperationMode;
 }
 
 export interface OrganizeResponse {
@@ -329,6 +336,7 @@ export interface OrganizePreviewRequest {
 	destination: string;
 	copy_only?: boolean;
 	link_mode?: 'hard' | 'soft';
+	operation_mode?: OperationMode;
 }
 
 export interface OrganizePreviewResponse {
@@ -342,6 +350,8 @@ export interface OrganizePreviewResponse {
 	fanart_path?: string; // Empty if fanart download disabled
 	extrafanart_path?: string; // Empty if extrafanart download disabled
 	screenshots?: string[]; // Empty if extrafanart download disabled
+	source_path?: string; // Original file path (for in-place modes)
+	operation_mode?: string;
 }
 
 export interface ScraperOption {

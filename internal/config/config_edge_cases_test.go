@@ -141,7 +141,7 @@ func TestNFOConfigExtended(t *testing.T) {
 metadata:
   nfo:
     enabled: true
-    display_name: <ORIGINAL_TITLE>
+    display_title: <ORIGINAL_TITLE>
     filename_template: <ID>-<YEAR>.nfo
     first_name_order: false
     actress_language_ja: true
@@ -174,7 +174,7 @@ metadata:
 
 	nfo := cfg.Metadata.NFO
 	assert.True(t, nfo.Enabled)
-	assert.Equal(t, "<ORIGINAL_TITLE>", nfo.DisplayName)
+	assert.Equal(t, "<ORIGINAL_TITLE>", nfo.DisplayTitle)
 	assert.Equal(t, "<ID>-<YEAR>.nfo", nfo.FilenameTemplate)
 	assert.False(t, nfo.FirstNameOrder)
 	assert.True(t, nfo.ActressLanguageJA)

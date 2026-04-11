@@ -339,11 +339,11 @@ func TestIntegrationMovieCRUDOperations(t *testing.T) {
 
 	// Create test movie in database
 	movie := &models.Movie{
-		ContentID:   "IPX-123",
-		ID:          "IPX-123",
-		Title:       "Integration Test Movie",
-		DisplayName: "IPX-123 Integration Test Movie",
-		ReleaseYear: 2024,
+		ContentID:    "IPX-123",
+		ID:           "IPX-123",
+		Title:        "Integration Test Movie",
+		DisplayTitle: "IPX-123 Integration Test Movie",
+		ReleaseYear:  2024,
 	}
 	err := deps.DB.Create(movie).Error
 	require.NoError(t, err)
@@ -429,11 +429,11 @@ func TestIntegrationMovieWithRelationships(t *testing.T) {
 
 	// Create movie with relationships
 	movie := &models.Movie{
-		ContentID:   "RELTEST-001",
-		Title:       "Relationship Test Movie",
-		DisplayName: "RELTEST-001 Relationship Test",
-		Actresses:   []models.Actress{*actress},
-		Genres:      []models.Genre{*genre},
+		ContentID:    "RELTEST-001",
+		Title:        "Relationship Test Movie",
+		DisplayTitle: "RELTEST-001 Relationship Test",
+		Actresses:    []models.Actress{*actress},
+		Genres:       []models.Genre{*genre},
 	}
 	err = deps.DB.Create(movie).Error
 	require.NoError(t, err)

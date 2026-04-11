@@ -113,6 +113,7 @@ func Run(cmd *cobra.Command, args []string, configFile string) error {
 		return fmt.Errorf("failed to create matcher: %w", err)
 	}
 	fileOrganizer := organizer.NewOrganizer(afero.NewOsFs(), &deps.Config.Output)
+	fileOrganizer.SetMatcher(fileMatcher)
 	nfoGenerator := nfo.NewGenerator(afero.NewOsFs(), nfo.ConfigFromAppConfig(&deps.Config.Metadata.NFO, &deps.Config.Output, &deps.Config.Metadata, deps.DB))
 
 	// Initialize HTTP client for downloader
@@ -177,91 +178,89 @@ func Run(cmd *cobra.Command, args []string, configFile string) error {
 		}
 	}
 
-	// Step 6: Organize files (skip if move_to_folder is disabled)
+	// Step 6: Organize files (organizer decides action based on both configs)
 	organizedCount := 0
-	if deps.Config.Output.MoveToFolder {
-		fmt.Println("\n📦 Organizing files...")
+	fmt.Println("\n📦 Organizing files...")
 
-		for _, match := range matches {
-			movie, exists := movies[match.ID]
-			if !exists {
-				continue
-			}
-
-			logging.Debugf("[%s] Starting organize for: %s", match.ID, match.File.Path)
-			logging.Debugf("[%s] Destination: %s, Move: %v, ForceUpdate: %v, DryRun: %v",
-				match.ID, destPath, moveFiles, forceUpdate, dryRun)
-
-			plan, err := fileOrganizer.Plan(match, movie, destPath, forceUpdate)
-			if err != nil {
-				logging.Infof("Failed to plan %s: %v", match.File.Name, err)
-				logging.Debugf("[%s] Planning failed: %v", match.ID, err)
-				continue
-			}
-
-			logging.Debugf("[%s] Organization plan created:", match.ID)
-			logging.Debugf("[%s]   Source: %s", match.ID, plan.SourcePath)
-			logging.Debugf("[%s]   Target Dir: %s", match.ID, plan.TargetDir)
-			logging.Debugf("[%s]   Target File: %s", match.ID, plan.TargetFile)
-			logging.Debugf("[%s]   Target Path: %s", match.ID, plan.TargetPath)
-			logging.Debugf("[%s]   Will Move: %v", match.ID, plan.WillMove)
-			logging.Debugf("[%s]   Conflicts: %d", match.ID, len(plan.Conflicts))
-
-			// Validate plan (skip if force update)
-			if !forceUpdate {
-				if issues := fileOrganizer.ValidatePlan(plan); len(issues) > 0 {
-					fmt.Printf("   ⚠️  %s: %v\n", match.File.Name, issues)
-					logging.Debugf("[%s] Validation failed with %d issues: %v", match.ID, len(issues), issues)
-					continue
-				}
-			}
-			logging.Debugf("[%s] Plan validated successfully", match.ID)
-
-			var result *organizer.OrganizeResult
-			operation := "COPY"
-			if moveFiles {
-				operation = "MOVE"
-				logging.Debugf("[%s] Executing MOVE operation", match.ID)
-				result, err = fileOrganizer.Execute(plan, dryRun)
-			} else {
-				switch linkMode {
-				case organizer.LinkModeHard:
-					operation = "HARDLINK"
-				case organizer.LinkModeSoft:
-					operation = "SOFTLINK"
-				}
-				logging.Debugf("[%s] Executing %s operation", match.ID, operation)
-				result, err = fileOrganizer.CopyWithLinkMode(plan, dryRun, linkMode)
-			}
-
-			if err != nil {
-				fmt.Printf("   ❌ %s: %v\n", match.File.Name, err)
-				logging.Debugf("[%s] Organize execution failed: %v", match.ID, err)
-				continue
-			}
-
-			if result.Error != nil {
-				logging.Debugf("[%s] Organize result contains error: %v", match.ID, result.Error)
-			}
-
-			if result.Moved || dryRun {
-				organizedCount++
-				status := "✅"
-				if dryRun {
-					status = "→"
-					logging.Debugf("[%s] DRY RUN mode - would %s file to %s", match.ID, operation, plan.TargetPath)
-				} else {
-					logging.Debugf("[%s] File organized successfully to: %s", match.ID, result.NewPath)
-				}
-				fmt.Printf("   %s %s\n      %s\n", status, match.File.Name, plan.TargetPath)
-			}
+	for _, match := range matches {
+		movie, exists := movies[match.ID]
+		if !exists {
+			continue
 		}
 
-		if dryRun {
-			fmt.Printf("\n   Would organize %d file(s)\n", organizedCount)
+		logging.Debugf("[%s] Starting organize for: %s", match.ID, match.File.Path)
+		logging.Debugf("[%s] Destination: %s, Move: %v, ForceUpdate: %v, DryRun: %v",
+			match.ID, destPath, moveFiles, forceUpdate, dryRun)
+
+		plan, err := fileOrganizer.Plan(match, movie, destPath, forceUpdate)
+		if err != nil {
+			logging.Infof("Failed to plan %s: %v", match.File.Name, err)
+			logging.Debugf("[%s] Planning failed: %v", match.ID, err)
+			continue
+		}
+
+		logging.Debugf("[%s] Organization plan created:", match.ID)
+		logging.Debugf("[%s]   Source: %s", match.ID, plan.SourcePath)
+		logging.Debugf("[%s]   Target Dir: %s", match.ID, plan.TargetDir)
+		logging.Debugf("[%s]   Target File: %s", match.ID, plan.TargetFile)
+		logging.Debugf("[%s]   Target Path: %s", match.ID, plan.TargetPath)
+		logging.Debugf("[%s]   Will Move: %v", match.ID, plan.WillMove)
+		logging.Debugf("[%s]   Conflicts: %d", match.ID, len(plan.Conflicts))
+
+		// Validate plan (skip if force update)
+		if !forceUpdate {
+			if issues := fileOrganizer.ValidatePlan(plan); len(issues) > 0 {
+				fmt.Printf("   ⚠️  %s: %v\n", match.File.Name, issues)
+				logging.Debugf("[%s] Validation failed with %d issues: %v", match.ID, len(issues), issues)
+				continue
+			}
+		}
+		logging.Debugf("[%s] Plan validated successfully", match.ID)
+
+		var result *organizer.OrganizeResult
+		operation := "COPY"
+		if moveFiles {
+			operation = "MOVE"
+			logging.Debugf("[%s] Executing MOVE operation", match.ID)
+			result, err = fileOrganizer.Execute(plan, dryRun)
 		} else {
-			fmt.Printf("\n   Organized %d file(s)\n", organizedCount)
+			switch linkMode {
+			case organizer.LinkModeHard:
+				operation = "HARDLINK"
+			case organizer.LinkModeSoft:
+				operation = "SOFTLINK"
+			}
+			logging.Debugf("[%s] Executing %s operation", match.ID, operation)
+			result, err = fileOrganizer.CopyWithLinkMode(plan, dryRun, linkMode)
 		}
+
+		if err != nil {
+			fmt.Printf("   ❌ %s: %v\n", match.File.Name, err)
+			logging.Debugf("[%s] Organize execution failed: %v", match.ID, err)
+			continue
+		}
+
+		if result.Error != nil {
+			logging.Debugf("[%s] Organize result contains error: %v", match.ID, result.Error)
+		}
+
+		if result.Moved || dryRun {
+			organizedCount++
+			status := "✅"
+			if dryRun {
+				status = "→"
+				logging.Debugf("[%s] DRY RUN mode - would %s file to %s", match.ID, operation, plan.TargetPath)
+			} else {
+				logging.Debugf("[%s] File organized successfully to: %s", match.ID, result.NewPath)
+			}
+			fmt.Printf("   %s %s\n      %s\n", status, match.File.Name, plan.TargetPath)
+		}
+	}
+
+	if dryRun {
+		fmt.Printf("\n   Would organize %d file(s)\n", organizedCount)
+	} else {
+		fmt.Printf("\n   Organized %d file(s)\n", organizedCount)
 	}
 
 	// Summary

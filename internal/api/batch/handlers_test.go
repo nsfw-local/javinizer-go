@@ -505,6 +505,9 @@ func TestOrganizeJob(t *testing.T) {
 				Matching: config.MatchingConfig{
 					RegexEnabled: false,
 				},
+				Output: config.OutputConfig{
+					MoveToFolder: true,
+				},
 				API: config.APIConfig{
 					Security: config.SecurityConfig{
 						AllowedDirectories: []string{"/path", "/output"}, // Allow test paths
@@ -1284,6 +1287,9 @@ func TestOrganizeJobSecurityValidation(t *testing.T) {
 			cfg := &config.Config{
 				Matching: config.MatchingConfig{
 					RegexEnabled: false,
+				},
+				Output: config.OutputConfig{
+					MoveToFolder: true,
 				},
 				API: config.APIConfig{
 					Security: config.SecurityConfig{

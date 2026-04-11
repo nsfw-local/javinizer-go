@@ -4,7 +4,7 @@ import (
 	"github.com/javinizer/javinizer-go/internal/scraperutil"
 )
 
-func scraperDisplayNameAndOptions(name string, profileChoices []ScraperChoice) (string, []ScraperOption) {
+func scraperDisplayTitleAndOptions(name string, profileChoices []ScraperChoice) (string, []ScraperOption) {
 	// Try to get self-registered options from scraper
 	if provider, exists := scraperutil.GetScraperOptions(name); exists {
 		// Convert []any to []ScraperOption
@@ -20,7 +20,7 @@ func scraperDisplayNameAndOptions(name string, profileChoices []ScraperChoice) (
 		options = append(options, scraperProxyOptions(profileChoices)...)
 		options = append(options, scraperDownloadProxyOptions(profileChoices)...)
 
-		return provider.DisplayName, options
+		return provider.DisplayTitle, options
 	}
 
 	// Fallback for scrapers without registered options:

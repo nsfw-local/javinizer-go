@@ -55,13 +55,13 @@ func getAvailableScrapers(deps *ServerDependencies) gin.HandlerFunc {
 
 		for _, name := range orderedNames {
 			scraper := scraperByName[name]
-			displayName, options := scraperDisplayNameAndOptions(name, profileChoices)
+			displayName, options := scraperDisplayTitleAndOptions(name, profileChoices)
 
 			scrapers = append(scrapers, ScraperInfo{
-				Name:        name,
-				DisplayName: displayName,
-				Enabled:     scraper.IsEnabled(),
-				Options:     options,
+				Name:         name,
+				DisplayTitle: displayName,
+				Enabled:      scraper.IsEnabled(),
+				Options:      options,
 			})
 		}
 
