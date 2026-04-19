@@ -137,7 +137,28 @@ jobs:
           exit 1
         fi
 
-  # Job 4: Build verification
+  # Job 4: Windows tests (catches Windows-specific path bugs)
+  test-windows:
+    name: Unit Tests (Windows)
+    runs-on: windows-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v5
+
+    - name: Set up Go
+      uses: actions/setup-go@v6
+      with:
+        go-version-file: ${{ env.GO_VERSION_FILE }}
+        cache: true
+
+    - name: Download dependencies
+      run: go mod download
+
+    - name: Run unit tests
+      run: go test -short ./...
+
+  # Job 5: Build verification
   build:
     name: Build Verification
     runs-on: ubuntu-latest
