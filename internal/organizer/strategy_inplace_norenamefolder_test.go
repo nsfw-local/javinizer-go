@@ -1,6 +1,7 @@
 package organizer
 
 import (
+	"path/filepath"
 	"testing"
 
 	"github.com/javinizer/javinizer-go/internal/config"
@@ -62,9 +63,9 @@ func TestInPlaceNoRenameFolderStrategy_Plan_FileRename(t *testing.T) {
 	assert.False(t, plan.InPlace, "Should never set InPlace=true")
 	assert.Equal(t, "in-place-norenamefolder mode - file rename only", plan.SkipInPlaceReason)
 	assert.True(t, plan.WillMove, "Should move file since filename changes")
-	assert.Equal(t, "/source/some-folder", plan.TargetDir, "Should stay in same directory")
+	assert.Equal(t, filepath.ToSlash("/source/some-folder"), filepath.ToSlash(plan.TargetDir), "Should stay in same directory")
 	assert.Equal(t, "ABC-123 Test Movie.mp4", plan.TargetFile)
-	assert.Contains(t, plan.TargetPath, "/source/some-folder")
+	assert.Contains(t, filepath.ToSlash(plan.TargetPath), "/source/some-folder")
 	assert.False(t, plan.IsDedicated, "Should not check dedicated status")
 }
 
@@ -96,7 +97,7 @@ func TestInPlaceNoRenameFolderStrategy_Plan_NoRenameNeeded(t *testing.T) {
 	plan, err := strategy.Plan(match, movie, "/dest", false)
 	require.NoError(t, err)
 	assert.False(t, plan.WillMove, "Should not move if filename already matches")
-	assert.Equal(t, "/source/some-folder/ABC-123.mp4", plan.TargetPath)
+	assert.Equal(t, filepath.ToSlash("/source/some-folder/ABC-123.mp4"), filepath.ToSlash(plan.TargetPath))
 }
 
 func TestInPlaceNoRenameFolderStrategy_Plan_RenameFileOff(t *testing.T) {
@@ -128,7 +129,7 @@ func TestInPlaceNoRenameFolderStrategy_Plan_RenameFileOff(t *testing.T) {
 	plan, err := strategy.Plan(match, movie, "/dest", false)
 	require.NoError(t, err)
 	assert.False(t, plan.WillMove, "Should not move when RenameFile is off and filename stays the same")
-	assert.Equal(t, "/source/some-folder/old-name.mp4", plan.TargetPath)
+	assert.Equal(t, filepath.ToSlash("/source/some-folder/old-name.mp4"), filepath.ToSlash(plan.TargetPath))
 }
 
 func TestInPlaceNoRenameFolderStrategy_Execute_FileRename(t *testing.T) {
@@ -350,6 +351,6 @@ func TestInPlaceNoRenameFolderStrategy_Plan_StaysInSourceDirectory(t *testing.T)
 
 	plan, err := strategy.Plan(match, movie, "/organized", false)
 	require.NoError(t, err)
-	assert.Equal(t, "/videos/JAV", plan.TargetDir, "Should stay in source directory, not move to destDir")
-	assert.Equal(t, "/videos/JAV/ABC-123.mp4", plan.TargetPath, "Should rename file in source directory")
+	assert.Equal(t, filepath.ToSlash("/videos/JAV"), filepath.ToSlash(plan.TargetDir), "Should stay in source directory, not move to destDir")
+	assert.Equal(t, filepath.ToSlash("/videos/JAV/ABC-123.mp4"), filepath.ToSlash(plan.TargetPath), "Should rename file in source directory")
 }

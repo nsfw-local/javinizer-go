@@ -156,7 +156,7 @@ func TestValidateNFOPath_TildeExpansion(t *testing.T) {
 	require.NoError(t, os.WriteFile(testFile, []byte("<movie></movie>"), 0644))
 
 	// Test with tilde in allowed dirs - use subdirectory path with tilde
-	tildeSubdir := filepath.Join("~", ".javinizer-test-nfo-validation")
+	tildeSubdir := "~/.javinizer-test-nfo-validation"
 	_, err = validateNFOPath(testFile, []string{tildeSubdir})
 	assert.NoError(t, err, "tilde should expand to user home directory")
 }

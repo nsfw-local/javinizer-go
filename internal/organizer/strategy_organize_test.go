@@ -1,6 +1,7 @@
 package organizer
 
 import (
+	"path/filepath"
 	"testing"
 
 	"github.com/javinizer/javinizer-go/internal/config"
@@ -53,9 +54,9 @@ func TestOrganizeStrategy_Plan(t *testing.T) {
 	plan, err := strategy.Plan(match, movie, "/dest", false)
 	require.NoError(t, err)
 	assert.NotNil(t, plan)
-	assert.Equal(t, "/source/ABC-123.mp4", plan.SourcePath)
-	assert.Equal(t, "/dest/ABC-123/ABC-123.mp4", plan.TargetPath)
-	assert.Equal(t, "/dest/ABC-123", plan.TargetDir)
+	assert.Equal(t, filepath.ToSlash("/source/ABC-123.mp4"), filepath.ToSlash(plan.SourcePath))
+	assert.Equal(t, filepath.ToSlash("/dest/ABC-123/ABC-123.mp4"), filepath.ToSlash(plan.TargetPath))
+	assert.Equal(t, filepath.ToSlash("/dest/ABC-123"), filepath.ToSlash(plan.TargetDir))
 	assert.Equal(t, "ABC-123.mp4", plan.TargetFile)
 	assert.False(t, plan.InPlace, "OrganizeStrategy should never set InPlace=true")
 	assert.False(t, plan.IsDedicated, "OrganizeStrategy should never set IsDedicated=true")
@@ -87,7 +88,7 @@ func TestOrganizeStrategy_Plan_WithSubfolders(t *testing.T) {
 
 	plan, err := strategy.Plan(match, movie, "/dest", false)
 	require.NoError(t, err)
-	assert.Equal(t, "/dest/JAV/ABC-123/ABC-123.mp4", plan.TargetPath)
+	assert.Equal(t, filepath.ToSlash("/dest/JAV/ABC-123/ABC-123.mp4"), filepath.ToSlash(plan.TargetPath))
 }
 
 func TestOrganizeStrategy_Plan_NoRename(t *testing.T) {
@@ -112,7 +113,7 @@ func TestOrganizeStrategy_Plan_NoRename(t *testing.T) {
 
 	plan, err := strategy.Plan(match, movie, "/dest", false)
 	require.NoError(t, err)
-	assert.Equal(t, "/dest/ABC-123/original-name.mp4", plan.TargetPath)
+	assert.Equal(t, filepath.ToSlash("/dest/ABC-123/original-name.mp4"), filepath.ToSlash(plan.TargetPath))
 	assert.Equal(t, "original-name.mp4", plan.TargetFile)
 }
 
@@ -142,8 +143,8 @@ func TestOrganizeStrategy_Plan_TitleTruncation(t *testing.T) {
 	plan, err := strategy.Plan(match, movie, "/dest", false)
 	require.NoError(t, err)
 	// TruncateTitle adds ~ to indicate truncation
-	assert.Contains(t, plan.TargetDir, "ABC-123 This is")
-	assert.Contains(t, plan.TargetFile, "ABC-123 This is")
+	assert.Contains(t, filepath.ToSlash(plan.TargetDir), "ABC-123 This is")
+	assert.Contains(t, filepath.ToSlash(plan.TargetFile), "ABC-123 This is")
 	assert.LessOrEqual(t, len(plan.TargetDir), 50)
 }
 
@@ -175,7 +176,14 @@ func TestOrganizeStrategy_Plan_ConflictDetection(t *testing.T) {
 	plan, err := strategy.Plan(match, movie, "/dest", false)
 	require.NoError(t, err)
 	assert.NotEmpty(t, plan.Conflicts, "Should detect existing target file as conflict")
-	assert.Contains(t, plan.Conflicts, "/dest/ABC-123/ABC-123.mp4")
+	var conflictFound bool
+	for _, c := range plan.Conflicts {
+		if filepath.ToSlash(c) == "/dest/ABC-123/ABC-123.mp4" {
+			conflictFound = true
+			break
+		}
+	}
+	assert.True(t, conflictFound, "Expected conflict /dest/ABC-123/ABC-123.mp4, got %v", plan.Conflicts)
 }
 
 func TestOrganizeStrategy_Execute(t *testing.T) {
@@ -201,8 +209,8 @@ func TestOrganizeStrategy_Execute(t *testing.T) {
 	result, err := strategy.Execute(plan)
 	require.NoError(t, err)
 	assert.True(t, result.Moved)
-	assert.Equal(t, "/source/ABC-123.mp4", result.OriginalPath)
-	assert.Equal(t, "/dest/ABC-123/ABC-123.mp4", result.NewPath)
+	assert.Equal(t, filepath.ToSlash("/source/ABC-123.mp4"), filepath.ToSlash(result.OriginalPath))
+	assert.Equal(t, filepath.ToSlash("/dest/ABC-123/ABC-123.mp4"), filepath.ToSlash(result.NewPath))
 
 	// Verify file moved
 	exists, _ := afero.Exists(fs, "/dest/ABC-123/ABC-123.mp4")
@@ -359,7 +367,7 @@ func TestOrganizeStrategy_Plan_SubfolderEmpty(t *testing.T) {
 
 	plan, err := strategy.Plan(match, movie, "/dest", false)
 	require.NoError(t, err)
-	assert.Equal(t, "/dest/ABC-123/ABC-123.mp4", plan.TargetPath, "Empty subfolder should be skipped")
+	assert.Equal(t, filepath.ToSlash("/dest/ABC-123/ABC-123.mp4"), filepath.ToSlash(plan.TargetPath), "Empty subfolder should be skipped")
 }
 
 func TestOrganizeStrategy_Execute_MkdirError(t *testing.T) {
@@ -467,7 +475,7 @@ func TestOrganizeStrategy_Plan_MultiPart(t *testing.T) {
 
 	plan, err := strategy.Plan(match, movie, "/dest", false)
 	require.NoError(t, err)
-	assert.Contains(t, plan.TargetPath, "ABC-123")
+	assert.Contains(t, filepath.ToSlash(plan.TargetPath), "ABC-123")
 }
 
 func TestOrganizeStrategy_Plan_SameFileNoConflict(t *testing.T) {
@@ -522,6 +530,6 @@ func TestOrganizeStrategy_Plan_SubfolderWithMultiple(t *testing.T) {
 
 	plan, err := strategy.Plan(match, movie, "/dest", false)
 	require.NoError(t, err)
-	assert.Contains(t, plan.TargetPath, "JAV")
-	assert.Contains(t, plan.TargetPath, "ABC-123")
+	assert.Contains(t, filepath.ToSlash(plan.TargetPath), "JAV")
+	assert.Contains(t, filepath.ToSlash(plan.TargetPath), "ABC-123")
 }

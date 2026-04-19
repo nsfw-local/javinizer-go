@@ -55,12 +55,12 @@ func TestOrganizer_Plan(t *testing.T) {
 	}
 
 	// Verify plan
-	if plan.SourcePath != "/source/ipx-535.mp4" {
+	if filepath.ToSlash(plan.SourcePath) != filepath.ToSlash("/source/ipx-535.mp4") {
 		t.Errorf("Expected source path /source/ipx-535.mp4, got %s", plan.SourcePath)
 	}
 
 	expectedTargetDir := "/dest/IPX-535 - Beautiful Day"
-	if plan.TargetDir != expectedTargetDir {
+	if filepath.ToSlash(plan.TargetDir) != filepath.ToSlash(expectedTargetDir) {
 		t.Errorf("Expected target dir %s, got %s", expectedTargetDir, plan.TargetDir)
 	}
 
@@ -69,7 +69,7 @@ func TestOrganizer_Plan(t *testing.T) {
 	}
 
 	expectedTargetPath := filepath.Join(expectedTargetDir, "IPX-535.mp4")
-	if plan.TargetPath != expectedTargetPath {
+	if filepath.ToSlash(plan.TargetPath) != filepath.ToSlash(expectedTargetPath) {
 		t.Errorf("Expected target path %s, got %s", expectedTargetPath, plan.TargetPath)
 	}
 
@@ -1081,7 +1081,7 @@ func TestOrganizer_Plan_WithSubfolderFormat(t *testing.T) {
 
 	// Verify subfolder hierarchy is included in target dir
 	expectedTargetDir := filepath.Join(tmpDir, "IdeaPocket", "2020", "IPX-535 - Beautiful Day")
-	if plan.TargetDir != expectedTargetDir {
+	if filepath.ToSlash(plan.TargetDir) != filepath.ToSlash(expectedTargetDir) {
 		t.Errorf("Expected target dir %s, got %s", expectedTargetDir, plan.TargetDir)
 	}
 }
@@ -1316,12 +1316,12 @@ func TestOrganizer_Plan_RenameFolderInPlace_Priority(t *testing.T) {
 	}
 
 	expectedOldDir := sourceDir
-	if plan.OldDir != expectedOldDir {
+	if filepath.ToSlash(plan.OldDir) != filepath.ToSlash(expectedOldDir) {
 		t.Errorf("Expected OldDir=%s, got %s", expectedOldDir, plan.OldDir)
 	}
 
 	expectedTargetDir := filepath.Join(tmpDir, "source", "IPX-535 - Beautiful Day")
-	if plan.TargetDir != expectedTargetDir {
+	if filepath.ToSlash(plan.TargetDir) != filepath.ToSlash(expectedTargetDir) {
 		t.Errorf("Expected TargetDir=%s, got %s", expectedTargetDir, plan.TargetDir)
 	}
 }
@@ -1379,7 +1379,7 @@ func TestOrganizer_Plan_BothConfigsTrue_RenamePriority(t *testing.T) {
 	}
 
 	expectedTargetDir := filepath.Join(tmpDir, "source", "IPX-535 - Beautiful Day")
-	if plan.TargetDir != expectedTargetDir {
+	if filepath.ToSlash(plan.TargetDir) != filepath.ToSlash(expectedTargetDir) {
 		t.Errorf("Expected TargetDir=%s (in-place), got %s", expectedTargetDir, plan.TargetDir)
 	}
 }
@@ -1436,7 +1436,7 @@ func TestOrganizer_Plan_BothConfigsFalse_NoFolderChanges(t *testing.T) {
 		t.Error("Expected InPlace=false when both configs are false")
 	}
 
-	if plan.TargetDir != sourceDir {
+	if filepath.ToSlash(plan.TargetDir) != filepath.ToSlash(sourceDir) {
 		t.Errorf("Expected TargetDir=%s (no change), got %s", sourceDir, plan.TargetDir)
 	}
 }
@@ -1543,11 +1543,11 @@ func TestOrganizer_Plan_TruncationPreservesInPlaceSkip(t *testing.T) {
 		t.Errorf("Expected InPlace=false (folder already correct), got true")
 	}
 
-	if plan.TargetDir != sourceDir {
+	if filepath.ToSlash(plan.TargetDir) != filepath.ToSlash(sourceDir) {
 		t.Errorf("Expected TargetDir=%s (stay in source), got %s", sourceDir, plan.TargetDir)
 	}
 
-	if strings.HasPrefix(plan.TargetDir, destDir) {
+	if strings.HasPrefix(filepath.ToSlash(plan.TargetDir), filepath.ToSlash(destDir)) {
 		t.Errorf("TargetDir should not be under destDir when staying in source, got: %s", plan.TargetDir)
 	}
 
@@ -1613,11 +1613,11 @@ func TestOrganizer_Plan_TruncationPreservesMixedIdSkip(t *testing.T) {
 		t.Errorf("Expected InPlace=false (mixed IDs), got true")
 	}
 
-	if plan.TargetDir != sourceDir {
+	if filepath.ToSlash(plan.TargetDir) != filepath.ToSlash(sourceDir) {
 		t.Errorf("Expected TargetDir=%s (stay in source for mixed ID), got %s", sourceDir, plan.TargetDir)
 	}
 
-	if strings.HasPrefix(plan.TargetDir, destDir) {
+	if strings.HasPrefix(filepath.ToSlash(plan.TargetDir), filepath.ToSlash(destDir)) {
 		t.Errorf("TargetDir should not be under destDir when mixed ID causes stay-in-source, got: %s", plan.TargetDir)
 	}
 

@@ -3,6 +3,7 @@ package fsutil
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 )
 
@@ -171,6 +172,10 @@ func TestCopyFileAtomic_OverwriteExisting(t *testing.T) {
 }
 
 func TestCopyFileAtomic_PreservesPermissions(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows does not support Unix-style file permissions")
+	}
+
 	tmpDir := t.TempDir()
 
 	// Create source file with specific permissions
@@ -281,6 +286,10 @@ func TestCopyFileAtomic_DestinationIsSymlink(t *testing.T) {
 }
 
 func TestCopyFileAtomic_SpecialPermissions(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows does not support Unix-style file permissions")
+	}
+
 	tmpDir := t.TempDir()
 
 	tests := []struct {

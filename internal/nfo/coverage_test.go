@@ -183,6 +183,9 @@ func TestWriteNFO_ErrorPaths(t *testing.T) {
 	})
 
 	t.Run("Read-only directory", func(t *testing.T) {
+		if runtime.GOOS == "windows" {
+			t.Skip("Windows does not enforce Unix-style directory permissions")
+		}
 		if os.Getuid() == 0 {
 			t.Skip("Skipping test when running as root")
 		}

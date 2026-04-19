@@ -65,10 +65,10 @@ type Reverter struct {
 }
 
 func fsPath(p string) string {
-	p = filepath.ToSlash(p)
 	if len(p) >= 3 && p[1] == ':' && (p[2] == '/' || p[2] == '\\') {
 		p = p[2:]
 	}
+	p = filepath.ToSlash(p)
 	return p
 }
 
@@ -459,7 +459,7 @@ func (r *Reverter) cleanupEmptyDir(dirPath string, stopAt string) {
 	current := filepath.Clean(dirPath)
 	stop := filepath.Clean(stopAt)
 
-	for current != "" && current != "." && current != "/" && current != stop {
+	for current != "" && current != "." && current != "/" && current != filepath.ToSlash(filepath.VolumeName(current)+"/") && current != stop {
 		// Read directory entries to check if empty
 		entries, err := afero.ReadDir(r.fs, current)
 		if err != nil {
@@ -530,10 +530,12 @@ func (r *Reverter) handleGeneratedFiles(op *models.BatchFileOperation, stopAt st
 // isDescendant checks if path is inside parentDir (or equal to it).
 // Returns true if path has parentDir as a prefix when both are cleaned.
 func isDescendant(path string, parentDir string) bool {
-	if path == parentDir {
+	normPath := filepath.ToSlash(filepath.Clean(path))
+	normParent := filepath.ToSlash(filepath.Clean(parentDir))
+	if normPath == normParent {
 		return true
 	}
-	if len(path) > len(parentDir) && path[:len(parentDir)+1] == parentDir+string(filepath.Separator) {
+	if len(normPath) > len(normParent) && normPath[:len(normParent)+1] == normParent+"/" {
 		return true
 	}
 	return false
@@ -562,7 +564,7 @@ func (r *Reverter) cleanupEmptyDirDownward(dirPath string, stopAt string) {
 			return
 		}
 		parent := filepath.Dir(current)
-		if parent == current || parent == "." || parent == "/" {
+		if parent == current || parent == "." || parent == "/" || parent == filepath.VolumeName(current)+string(filepath.Separator) {
 			return
 		}
 		current = parent

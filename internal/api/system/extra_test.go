@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/gin-gonic/gin"
@@ -706,6 +707,10 @@ func TestUpdateConfig_SaveAndTranslationFailures(t *testing.T) {
 	})
 
 	t.Run("save failure returns internal error", func(t *testing.T) {
+		if runtime.GOOS == "windows" {
+			t.Skip("Windows does not enforce Unix-style file permissions")
+		}
+
 		tempDir := t.TempDir()
 		deps := createTestDeps(t, config.DefaultConfig(), tempDir)
 

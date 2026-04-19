@@ -17,10 +17,11 @@ import (
 func TestReadNFOSnapshot_ReadsExistingNFO(t *testing.T) {
 	fs := afero.NewMemMapFs()
 	sourceDir := "/src/ABC-123"
+	nfoPath := sourceDir + "/ABC-123.nfo"
 	require.NoError(t, fs.MkdirAll(sourceDir, 0777))
-	require.NoError(t, afero.WriteFile(fs, filepath.Join(sourceDir, "ABC-123.nfo"), []byte("<nfo>content</nfo>"), 0666))
+	require.NoError(t, afero.WriteFile(fs, nfoPath, []byte("<nfo>content</nfo>"), 0666))
 
-	result := ReadNFOSnapshot(fs, filepath.Join(sourceDir, "ABC-123.nfo"))
+	result := ReadNFOSnapshot(fs, nfoPath)
 	assert.Equal(t, "<nfo>content</nfo>", result.Content)
 	assert.NotEmpty(t, result.FoundPath)
 }
@@ -28,13 +29,12 @@ func TestReadNFOSnapshot_ReadsExistingNFO(t *testing.T) {
 func TestReadNFOSnapshot_TriesMultiplePaths(t *testing.T) {
 	fs := afero.NewMemMapFs()
 	sourceDir := "/src/ABC-123"
+	nfoPath1 := sourceDir + "/ABC-123 - Title.nfo"
+	nfoPath2 := sourceDir + "/ABC-123.nfo"
 	require.NoError(t, fs.MkdirAll(sourceDir, 0777))
-	require.NoError(t, afero.WriteFile(fs, filepath.Join(sourceDir, "ABC-123 - Title.nfo"), []byte("<nfo>custom</nfo>"), 0666))
+	require.NoError(t, afero.WriteFile(fs, nfoPath1, []byte("<nfo>custom</nfo>"), 0666))
 
-	result := ReadNFOSnapshot(fs,
-		filepath.Join(sourceDir, "ABC-123 - Title.nfo"),
-		filepath.Join(sourceDir, "ABC-123.nfo"),
-	)
+	result := ReadNFOSnapshot(fs, nfoPath1, nfoPath2)
 	assert.Equal(t, "<nfo>custom</nfo>", result.Content)
 	assert.Contains(t, result.FoundPath, "ABC-123 - Title.nfo")
 }
@@ -42,9 +42,10 @@ func TestReadNFOSnapshot_TriesMultiplePaths(t *testing.T) {
 func TestReadNFOSnapshot_ReturnsEmptyWhenNoNFO(t *testing.T) {
 	fs := afero.NewMemMapFs()
 	sourceDir := "/src/ABC-123"
+	nfoPath := sourceDir + "/ABC-123.nfo"
 	require.NoError(t, fs.MkdirAll(sourceDir, 0777))
 
-	result := ReadNFOSnapshot(fs, filepath.Join(sourceDir, "ABC-123.nfo"))
+	result := ReadNFOSnapshot(fs, nfoPath)
 	assert.Equal(t, "", result.Content)
 	assert.Equal(t, "", result.FoundPath)
 }
@@ -52,8 +53,8 @@ func TestReadNFOSnapshot_ReturnsEmptyWhenNoNFO(t *testing.T) {
 func TestReadNFOSnapshot_FoundPathIsCanonical(t *testing.T) {
 	fs := afero.NewMemMapFs()
 	sourceDir := "/src/ABC-123"
+	nfoPath := sourceDir + "/ABC-123.nfo"
 	require.NoError(t, fs.MkdirAll(sourceDir, 0777))
-	nfoPath := filepath.Join(sourceDir, "ABC-123.nfo")
 	require.NoError(t, afero.WriteFile(fs, nfoPath, []byte("<nfo/>"), 0666))
 
 	result := ReadNFOSnapshot(fs, nfoPath)
