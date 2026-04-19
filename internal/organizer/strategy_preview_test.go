@@ -1,6 +1,7 @@
 package organizer
 
 import (
+	"path/filepath"
 	"testing"
 
 	"github.com/javinizer/javinizer-go/internal/config"
@@ -52,7 +53,7 @@ func TestPreviewStrategy_Plan_DelegatesToOrganizeStrategy(t *testing.T) {
 
 	plan, err := strategy.Plan(match, movie, "/dest", false)
 	require.NoError(t, err)
-	assert.Equal(t, "/dest/ABC-123/ABC-123.mp4", plan.TargetPath)
+	assert.Equal(t, filepath.ToSlash("/dest/ABC-123/ABC-123.mp4"), filepath.ToSlash(plan.TargetPath))
 	assert.False(t, plan.InPlace)
 }
 
@@ -110,7 +111,7 @@ func TestPreviewStrategy_Plan_DelegatesToMetadataOnlyStrategy(t *testing.T) {
 
 	plan, err := strategy.Plan(match, movie, "/dest", false)
 	require.NoError(t, err)
-	assert.Equal(t, "/source", plan.TargetDir, "Should delegate to MetadataOnlyStrategy and keep file in source")
+	assert.Equal(t, filepath.ToSlash("/source"), filepath.ToSlash(plan.TargetDir), "Should delegate to MetadataOnlyStrategy and keep file in source")
 	assert.Contains(t, plan.SkipInPlaceReason, "metadata-only")
 }
 
@@ -159,9 +160,9 @@ func TestPreviewStrategy_Execute_ReturnsCorrectPaths(t *testing.T) {
 
 	result, err := strategy.Execute(plan)
 	require.NoError(t, err)
-	assert.Equal(t, "/source/ABC-123.mp4", result.OriginalPath)
-	assert.Equal(t, "/dest/ABC-123/ABC-123.mp4", result.NewPath)
-	assert.Equal(t, "/dest/ABC-123", result.FolderPath)
+	assert.Equal(t, filepath.ToSlash("/source/ABC-123.mp4"), filepath.ToSlash(result.OriginalPath))
+	assert.Equal(t, filepath.ToSlash("/dest/ABC-123/ABC-123.mp4"), filepath.ToSlash(result.NewPath))
+	assert.Equal(t, filepath.ToSlash("/dest/ABC-123"), filepath.ToSlash(result.FolderPath))
 	assert.Equal(t, "ABC-123.mp4", result.FileName)
 }
 

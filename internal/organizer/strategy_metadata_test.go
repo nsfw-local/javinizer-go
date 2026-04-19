@@ -1,6 +1,7 @@
 package organizer
 
 import (
+	"path/filepath"
 	"testing"
 
 	"github.com/javinizer/javinizer-go/internal/config"
@@ -50,8 +51,8 @@ func TestMetadataOnlyStrategy_Plan(t *testing.T) {
 	plan, err := strategy.Plan(match, movie, "/dest", false)
 	require.NoError(t, err)
 	assert.NotNil(t, plan)
-	assert.Equal(t, "/source", plan.TargetDir, "Should keep file in source directory")
-	assert.Equal(t, "/source/ABC-123.mp4", plan.TargetPath, "Should preserve original filename even with RenameFile=true")
+	assert.Equal(t, filepath.ToSlash("/source"), filepath.ToSlash(plan.TargetDir), "Should keep file in source directory")
+	assert.Equal(t, filepath.ToSlash("/source/ABC-123.mp4"), filepath.ToSlash(plan.TargetPath), "Should preserve original filename even with RenameFile=true")
 	assert.False(t, plan.WillMove, "Metadata-only mode should never set WillMove=true")
 	assert.False(t, plan.InPlace, "MetadataOnlyStrategy should never set InPlace=true")
 	assert.False(t, plan.IsDedicated, "MetadataOnlyStrategy should never set IsDedicated=true")
@@ -79,7 +80,7 @@ func TestMetadataOnlyStrategy_Plan_NoRename(t *testing.T) {
 
 	plan, err := strategy.Plan(match, movie, "/dest", false)
 	require.NoError(t, err)
-	assert.Equal(t, "/source/original-name.mp4", plan.TargetPath)
+	assert.Equal(t, filepath.ToSlash("/source/original-name.mp4"), filepath.ToSlash(plan.TargetPath))
 	assert.False(t, plan.WillMove, "Metadata-only mode should never set WillMove=true")
 }
 
@@ -106,9 +107,9 @@ func TestMetadataOnlyStrategy_Plan_IgnoresRenameFile(t *testing.T) {
 
 	plan, err := strategy.Plan(match, movie, "/dest", false)
 	require.NoError(t, err)
-	assert.Equal(t, "/source/original-name.mp4", plan.TargetPath, "Metadata-only mode should preserve original filename even with RenameFile=true")
+	assert.Equal(t, filepath.ToSlash("/source/original-name.mp4"), filepath.ToSlash(plan.TargetPath), "Metadata-only mode should preserve original filename even with RenameFile=true")
 	assert.False(t, plan.WillMove, "Metadata-only mode should never set WillMove=true")
-	assert.Equal(t, "/source", plan.TargetDir)
+	assert.Equal(t, filepath.ToSlash("/source"), filepath.ToSlash(plan.TargetDir))
 }
 
 func TestMetadataOnlyStrategy_Execute_NoMove(t *testing.T) {
@@ -128,7 +129,7 @@ func TestMetadataOnlyStrategy_Execute_NoMove(t *testing.T) {
 	result, err := strategy.Execute(plan)
 	require.NoError(t, err)
 	assert.False(t, result.Moved, "Metadata-only should not move files")
-	assert.Equal(t, "/source/ABC-123.mp4", result.NewPath)
+	assert.Equal(t, filepath.ToSlash("/source/ABC-123.mp4"), filepath.ToSlash(result.NewPath))
 }
 
 func TestMetadataOnlyStrategy_Execute_RejectsWillMove(t *testing.T) {
@@ -168,8 +169,8 @@ func TestMetadataOnlyStrategy_Execute_NoMoveNoError(t *testing.T) {
 	result, err := strategy.Execute(plan)
 	require.NoError(t, err)
 	assert.False(t, result.Moved, "Metadata-only should not move files")
-	assert.Equal(t, "/source/ABC-123.mp4", result.NewPath)
-	assert.Equal(t, "/source/ABC-123.mp4", result.OriginalPath)
+	assert.Equal(t, filepath.ToSlash("/source/ABC-123.mp4"), filepath.ToSlash(result.NewPath))
+	assert.Equal(t, filepath.ToSlash("/source/ABC-123.mp4"), filepath.ToSlash(result.OriginalPath))
 }
 
 func TestMetadataOnlyStrategy_Plan_AlwaysNoConflicts(t *testing.T) {

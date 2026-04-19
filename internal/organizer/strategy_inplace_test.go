@@ -109,9 +109,9 @@ func TestInPlaceStrategy_Plan_DedicatedFolder(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, plan.InPlace, "Should set InPlace=true for dedicated folder with different name")
 	assert.True(t, plan.IsDedicated, "Should set IsDedicated=true")
-	assert.Equal(t, "/source/old-name", plan.OldDir)
-	assert.Contains(t, plan.TargetDir, "ABC-123 Test Movie")
-	assert.Equal(t, "/source", filepath.Dir(plan.TargetDir), "Target should be in same parent directory")
+	assert.Equal(t, filepath.ToSlash("/source/old-name"), filepath.ToSlash(plan.OldDir))
+	assert.Contains(t, filepath.ToSlash(plan.TargetDir), "ABC-123 Test Movie")
+	assert.Equal(t, filepath.ToSlash("/source"), filepath.ToSlash(filepath.Dir(plan.TargetDir)), "Target should be in same parent directory")
 }
 
 func TestInPlaceStrategy_Plan_FolderAlreadyCorrect(t *testing.T) {
@@ -203,8 +203,8 @@ func TestInPlaceStrategy_Execute(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, result.Moved)
 	assert.True(t, result.InPlaceRenamed)
-	assert.Equal(t, "/source/old-folder", result.OldDirectoryPath)
-	assert.Equal(t, "/source/new-folder", result.NewDirectoryPath)
+	assert.Equal(t, filepath.ToSlash("/source/old-folder"), filepath.ToSlash(result.OldDirectoryPath))
+	assert.Equal(t, filepath.ToSlash("/source/new-folder"), filepath.ToSlash(result.NewDirectoryPath))
 
 	exists, _ := afero.Exists(fs, "/source/new-folder/ABC-123.mp4")
 	assert.True(t, exists, "File should be in renamed directory")
@@ -452,8 +452,8 @@ func TestInPlaceStrategy_Execute_FileRenameAfterDirRename(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, result.Moved)
 	assert.True(t, result.InPlaceRenamed)
-	assert.Equal(t, "/source/old-folder", result.OldDirectoryPath)
-	assert.Equal(t, "/source/new-folder", result.NewDirectoryPath)
+	assert.Equal(t, filepath.ToSlash("/source/old-folder"), filepath.ToSlash(result.OldDirectoryPath))
+	assert.Equal(t, filepath.ToSlash("/source/new-folder"), filepath.ToSlash(result.NewDirectoryPath))
 
 	exists, _ := afero.Exists(fs, "/source/new-folder/new-name.mp4")
 	assert.True(t, exists, "File should be renamed in new directory")

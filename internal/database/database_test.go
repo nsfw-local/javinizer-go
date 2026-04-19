@@ -353,6 +353,8 @@ func TestRunMigrationsOnStartup_FileURIRestoreHintUsesFilesystemPath(t *testing.
 	err = db.RunMigrationsOnStartup(context.Background())
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "restore with: cp")
-	assert.Contains(t, filepath.ToSlash(err.Error()), filepath.ToSlash(dbPath))
+	errNormalized := strings.ReplaceAll(filepath.ToSlash(err.Error()), "//", "/")
+	dbPathNormalized := strings.ReplaceAll(filepath.ToSlash(dbPath), "//", "/")
+	assert.Contains(t, errNormalized, dbPathNormalized)
 	assert.NotContains(t, err.Error(), uriDSN)
 }

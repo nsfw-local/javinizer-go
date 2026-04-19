@@ -333,6 +333,7 @@ func TestCloseLogger(t *testing.T) {
 	if err != nil {
 		t.Fatalf("InitLogger after close failed: %v", err)
 	}
+	defer CloseLogger()
 
 	Info("After close")
 
@@ -428,6 +429,7 @@ func TestInitLogger_ConfigReload(t *testing.T) {
 	if err != nil {
 		t.Fatalf("InitLogger (reload) failed: %v", err)
 	}
+	defer CloseLogger()
 
 	Info("Message to file2")
 

@@ -196,20 +196,14 @@ func TestBuildFileTree_DepthCalculation(t *testing.T) {
 
 	assert.NotEmpty(t, result)
 
-	// Check depths
 	depthMap := make(map[string]int)
 	for _, item := range result {
-		depthMap[item.Path] = item.Depth
+		depthMap[filepath.ToSlash(item.Path)] = item.Depth
 	}
 
-	// Base level file should have depth 0
 	assert.Equal(t, 0, depthMap["/test/path/movie.mp4"])
-
-	// Level1 dir should have depth 0
-	assert.Equal(t, 0, depthMap[filepath.Join("/test/path/level1")])
-
-	// Level2 dir should have depth 1
-	assert.Equal(t, 1, depthMap[filepath.Join("/test/path/level1/level2")])
+	assert.Equal(t, 0, depthMap["/test/path/level1"])
+	assert.Equal(t, 1, depthMap["/test/path/level1/level2"])
 }
 
 func TestBuildFileTree_ParentTracking(t *testing.T) {
@@ -230,7 +224,7 @@ func TestBuildFileTree_ParentTracking(t *testing.T) {
 	// Find the file and check its parent
 	for _, item := range result {
 		if !item.IsDir && item.Name == "movie.mp4" {
-			assert.Equal(t, filepath.Join("/test/path/subdir"), item.Parent)
+			assert.Equal(t, filepath.ToSlash(filepath.Join("/test/path/subdir")), filepath.ToSlash(item.Parent))
 			break
 		}
 	}

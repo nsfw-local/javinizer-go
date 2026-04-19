@@ -484,7 +484,7 @@ func TestGeneratePreview_InPlaceNoRenameFolder(t *testing.T) {
 	// Should use source directory as target, not /library
 	assert.Equal(t, "in-place-norenamefolder", resp.OperationMode)
 	assert.Equal(t, "/source/videos/IPX-535.mp4", resp.SourcePath, "SourcePath should be the original file path")
-	assert.Contains(t, resp.FullPath, "/source/videos/", "In-place-norenamefolder should place files in source directory")
+	assert.Contains(t, filepath.ToSlash(resp.FullPath), "/source/videos/", "In-place-norenamefolder should place files in source directory")
 	assert.NotContains(t, resp.FullPath, "/library/", "In-place-norenamefolder should NOT use destination directory")
 	assert.Empty(t, resp.FolderName, "In-place-norenamefolder should have no folder name (no folder creation)")
 }
@@ -510,7 +510,7 @@ func TestGeneratePreview_InPlace(t *testing.T) {
 
 	assert.Equal(t, "in-place", resp.OperationMode)
 	assert.Equal(t, "/source/videos/IPX-535.mp4", resp.SourcePath, "SourcePath should be the original file path")
-	assert.Contains(t, resp.FullPath, "/source/", "In-place should use parent of source directory")
+	assert.Contains(t, filepath.ToSlash(resp.FullPath), "/source/", "In-place should use parent of source directory")
 	assert.NotEmpty(t, resp.FolderName, "In-place should have a folder name for potential rename")
 }
 
@@ -537,7 +537,7 @@ func TestGeneratePreview_MetadataOnly(t *testing.T) {
 	assert.Equal(t, "/source/videos/IPX-535.mp4", resp.SourcePath)
 	assert.Equal(t, "/source/videos/IPX-535.mp4", resp.FullPath, "Metadata-only should keep original file path")
 	assert.Empty(t, resp.FolderName, "Metadata-only should have no folder name")
-	assert.Contains(t, resp.NFOPath, "/source/videos/", "NFO should be in source directory")
+	assert.Contains(t, filepath.ToSlash(resp.NFOPath), "/source/videos/", "NFO should be in source directory")
 }
 
 // TestGeneratePreview_OrganizeModeDefault tests that organize mode (default) uses destination directory
@@ -560,7 +560,7 @@ func TestGeneratePreview_OrganizeModeDefault(t *testing.T) {
 	resp := generatePreview(movie, fileResults, "/library", cfg, organizer.OperationModeOrganize, false, false)
 
 	assert.Equal(t, "organize", resp.OperationMode)
-	assert.Contains(t, resp.FullPath, "/library/", "Organize mode should use destination directory")
+	assert.Contains(t, filepath.ToSlash(resp.FullPath), "/library/", "Organize mode should use destination directory")
 	assert.NotContains(t, resp.FullPath, "/source/", "Organize mode should NOT use source directory")
 	assert.Equal(t, "", resp.SourcePath, "Organize mode should not set source path")
 	assert.NotEmpty(t, resp.FolderName, "Organize mode should have a folder name")
