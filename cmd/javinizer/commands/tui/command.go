@@ -341,7 +341,11 @@ func BuildFileTree(basePath string, files []scanner.FileInfo, matchMap map[strin
 
 	for _, file := range files {
 		normalizedPath := filepath.FromSlash(file.Path)
-		dir := filepath.Dir(normalizedPath)
+		absPath, err := filepath.Abs(normalizedPath)
+		if err != nil {
+			absPath = normalizedPath
+		}
+		dir := filepath.Dir(absPath)
 		dirFiles[dir] = append(dirFiles[dir], file)
 
 		current := dir
