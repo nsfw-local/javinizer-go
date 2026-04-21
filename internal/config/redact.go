@@ -13,6 +13,7 @@ func (c *Config) Redact() *Config {
 	copy.Database.DSN = redactString(c.Database.DSN)
 
 	copy.Metadata = c.Metadata
+	copy.Metadata.Priority.Fields = deepCopyFieldsMap(c.Metadata.Priority.Fields)
 	copy.Metadata.Translation = c.Metadata.Translation
 	copy.Metadata.Translation.OpenAI = c.Metadata.Translation.OpenAI
 	copy.Metadata.Translation.OpenAI.APIKey = redactString(c.Metadata.Translation.OpenAI.APIKey)
@@ -75,6 +76,23 @@ func redactProxyProfiles(profiles map[string]ProxyProfile) map[string]ProxyProfi
 		p.Username = redactString(v.Username)
 		p.Password = redactString(v.Password)
 		result[k] = p
+	}
+	return result
+}
+
+func deepCopyFieldsMap(m map[string][]string) map[string][]string {
+	if m == nil {
+		return nil
+	}
+	result := make(map[string][]string, len(m))
+	for k, v := range m {
+		if v == nil {
+			result[k] = nil
+			continue
+		}
+		cp := make([]string, len(v))
+		copy(cp, v)
+		result[k] = cp
 	}
 	return result
 }

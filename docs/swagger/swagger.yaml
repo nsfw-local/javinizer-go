@@ -745,7 +745,7 @@ definitions:
         description: |-
           Priority is the global scraper execution order.
           If empty, derived from registered scraper priorities at initialization.
-          If set, used directly for all metadata fields.
+          If set, used directly for all metadata fields that lack a Fields override.
         items:
           type: string
         type: array

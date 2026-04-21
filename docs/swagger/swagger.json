@@ -3136,7 +3136,7 @@
             "type": "object",
             "properties": {
                 "priority": {
-                    "description": "Priority is the global scraper execution order.\nIf empty, derived from registered scraper priorities at initialization.\nIf set, used directly for all metadata fields.",
+                    "description": "Priority is the global scraper execution order.\nIf empty, derived from registered scraper priorities at initialization.\nIf set, used directly for all metadata fields that lack a Fields override.",
                     "type": "array",
                     "items": {
                         "type": "string"

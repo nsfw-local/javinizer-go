@@ -356,7 +356,7 @@
 				</div>
 
 				<!-- Draggable List -->
-				<div>
+				<div class="max-h-[50vh] overflow-y-scroll pr-1">
 					<DraggableList
 						items={filterEnabledScrapers(editingPriority)}
 						onReorder={(newPriority) => { editingPriority = newPriority; }}

@@ -5,6 +5,8 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"strings"
+
+	"gopkg.in/yaml.v3"
 )
 
 // FlareSolverrConfig holds FlareSolverr configuration for bypassing Cloudflare
@@ -97,13 +99,132 @@ type AnthropicTranslationConfig struct {
 }
 
 // PriorityConfig defines scraper priority for metadata aggregation.
-// Field-level priorities are derived from registered scraper priorities at runtime.
-// The Priority field can be set manually to override the derived order.
+// Supports both a global priority list and per-field overrides.
+// When marshaled, per-field entries appear as top-level keys in the priority object:
+//
+//	priority:
+//	  id: [r18dev, dmm]
+//	  title: [dmm, r18dev]
+//
+// The Priority field is the global default; Fields overrides per metadata field.
 type PriorityConfig struct {
 	// Priority is the global scraper execution order.
 	// If empty, derived from registered scraper priorities at initialization.
-	// If set, used directly for all metadata fields.
+	// If set, used directly for all metadata fields that lack a Fields override.
 	Priority []string `yaml:"priority" json:"priority"`
+	// Fields holds per-metadata-field scraper priority overrides.
+	// Keys are snake_case field names matching the API (e.g. "title", "actress", "cover_url").
+	// An empty or nil slice for a field means "use global priority".
+	Fields map[string][]string `yaml:"-" json:"-"`
+}
+
+// GetFieldPriority returns the priority list for a specific metadata field.
+// If the field has no override (or the override is empty), it falls back to
+// the global Priority list. Returns nil if neither is set.
+func (p *PriorityConfig) GetFieldPriority(fieldKey string) []string {
+	if p == nil {
+		return nil
+	}
+	if override, ok := p.Fields[fieldKey]; ok && len(override) > 0 {
+		return override
+	}
+	if len(p.Priority) > 0 {
+		return p.Priority
+	}
+	return nil
+}
+
+// MarshalJSON serializes PriorityConfig as a flat JSON object.
+// The "priority" key holds the global list; per-field keys hold overrides.
+func (p PriorityConfig) MarshalJSON() ([]byte, error) {
+	m := make(map[string]any, 1+len(p.Fields))
+	if p.Priority != nil {
+		m["priority"] = p.Priority
+	}
+	for k, v := range p.Fields {
+		m[k] = v
+	}
+	return json.Marshal(m)
+}
+
+// UnmarshalJSON deserializes PriorityConfig from a flat JSON object.
+// The "priority" key populates the global list; all other array-valued keys
+// populate Fields.
+func (p *PriorityConfig) UnmarshalJSON(data []byte) error {
+	var raw map[string]any
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	return p.decodeFromMap(raw)
+}
+
+// MarshalYAML serializes PriorityConfig as a flat YAML mapping.
+func (p PriorityConfig) MarshalYAML() (interface{}, error) {
+	m := make(map[string]any, 1+len(p.Fields))
+	if p.Priority != nil {
+		m["priority"] = p.Priority
+	}
+	for k, v := range p.Fields {
+		m[k] = v
+	}
+	return m, nil
+}
+
+// UnmarshalYAML deserializes PriorityConfig from a YAML mapping node.
+func (p *PriorityConfig) UnmarshalYAML(node *yaml.Node) error {
+	if node == nil || node.Kind == 0 {
+		return nil
+	}
+	var raw map[string]any
+	if err := node.Decode(&raw); err != nil {
+		return err
+	}
+	return p.decodeFromMap(raw)
+}
+
+// decodeFromMap populates Priority and Fields from a generic map.
+// "priority" key → Priority; all other string-array keys → Fields.
+func (p *PriorityConfig) decodeFromMap(raw map[string]any) error {
+	p.Fields = make(map[string][]string)
+	for key, value := range raw {
+		if key == "priority" {
+			if value == nil {
+				p.Priority = nil
+				continue
+			}
+			arr, ok := value.([]any)
+			if !ok {
+				continue
+			}
+			p.Priority = make([]string, 0, len(arr))
+			for _, elem := range arr {
+				s, ok := elem.(string)
+				if !ok {
+					continue
+				}
+				p.Priority = append(p.Priority, s)
+			}
+			continue
+		}
+		// Per-field override
+		if value == nil {
+			continue
+		}
+		arr, ok := value.([]any)
+		if !ok {
+			continue
+		}
+		fieldPriority := make([]string, 0, len(arr))
+		for _, elem := range arr {
+			s, ok := elem.(string)
+			if !ok {
+				continue
+			}
+			fieldPriority = append(fieldPriority, s)
+		}
+		p.Fields[key] = fieldPriority
+	}
+	return nil
 }
 
 // ActressDatabaseConfig holds actress image database configuration

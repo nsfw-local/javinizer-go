@@ -319,7 +319,7 @@ func isRegexPattern(s string) bool {
 }
 
 // resolvePriorities resolves all field priorities at initialization time
-// With simplified priorities, all fields use the same global priority derived from scraper registrations
+// Supports per-field overrides from config; fields without overrides use global priority.
 func (a *Aggregator) resolvePriorities() {
 	a.resolvedPriorities = make(map[string][]string)
 
@@ -345,7 +345,13 @@ func (a *Aggregator) resolvePriorities() {
 	}
 
 	for _, field := range fields {
-		// All fields now use the same global priority
+		// Check for per-field override from config
+		if a.config != nil {
+			if fp := a.config.Metadata.Priority.GetFieldPriority(toSnakeCase(field)); len(fp) > 0 {
+				a.resolvedPriorities[field] = copySlice(fp)
+				continue
+			}
+		}
 		a.resolvedPriorities[field] = copySlice(globalPriority)
 	}
 }
@@ -357,8 +363,7 @@ func (a *Aggregator) GetResolvedPriorities() map[string][]string {
 }
 
 // getFieldPriorityFromConfig returns the scraper priority list.
-// With simplified priorities, this always returns one global priority.
-// User can override via cfg.Metadata.Priority.Priority; otherwise falls back to cfg.Scrapers.Priority.
+// Checks per-field override first, then global metadata priority, then scrapers priority.
 func getFieldPriorityFromConfig(cfg *config.Config, fieldKey string) []string {
 	if cfg == nil {
 		if priorities := scraperutil.GetPriorities(); len(priorities) > 0 {
@@ -367,9 +372,9 @@ func getFieldPriorityFromConfig(cfg *config.Config, fieldKey string) []string {
 		return nil
 	}
 
-	// If user explicitly set priority, use it
-	if len(cfg.Metadata.Priority.Priority) > 0 {
-		return cfg.Metadata.Priority.Priority
+	// Check per-field override via GetFieldPriority (handles fallback internally)
+	if fp := cfg.Metadata.Priority.GetFieldPriority(fieldKey); len(fp) > 0 {
+		return fp
 	}
 
 	// Fall back to configured global scraper priority.
@@ -385,6 +390,33 @@ func copySlice(src []string) []string {
 	dst := make([]string, len(src))
 	copy(dst, src)
 	return dst
+}
+
+// toSnakeCase converts CamelCase field names to snake_case for config lookup.
+// e.g. "OriginalTitle" → "original_title", "ID" → "id", "PosterURL" → "poster_url"
+func toSnakeCase(s string) string {
+	var result []byte
+	runes := []rune(s)
+	for i, r := range runes {
+		if r >= 'A' && r <= 'Z' {
+			// Add underscore before this uppercase letter if:
+			// - it's not the first character AND
+			// - the previous character is lowercase OR
+			// - the next character is lowercase (end of acronym like "URL" → next is end or lowercase)
+			if i > 0 {
+				prev := runes[i-1]
+				if prev >= 'a' && prev <= 'z' {
+					result = append(result, '_')
+				} else if prev >= 'A' && prev <= 'Z' && i+1 < len(runes) && runes[i+1] >= 'a' && runes[i+1] <= 'z' {
+					result = append(result, '_')
+				}
+			}
+			result = append(result, byte(r+32))
+		} else {
+			result = append(result, byte(r))
+		}
+	}
+	return string(result)
 }
 
 // Aggregate combines multiple scraper results into a single Movie
