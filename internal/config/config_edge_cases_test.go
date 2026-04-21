@@ -1,6 +1,7 @@
 package config
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -571,4 +572,120 @@ metadata:
 
 	// Test simplified priority
 	assert.Equal(t, []string{"r18dev", "dmm"}, priority.Priority)
+}
+
+func TestPerFieldPriorityYAMLRoundTrip(t *testing.T) {
+	yamlContent := `
+scrapers:
+  priority:
+    - r18dev
+    - dmm
+  timeout_seconds: 30
+  request_timeout_seconds: 60
+metadata:
+  priority:
+    title:
+      - dmm
+      - r18dev
+    actress:
+      - javbus
+      - r18dev
+`
+	tmpDir := t.TempDir()
+	cfgPath := filepath.Join(tmpDir, "per_field_priority.yaml")
+
+	err := os.WriteFile(cfgPath, []byte(yamlContent), 0644)
+	require.NoError(t, err)
+
+	cfg, err := Load(cfgPath)
+	require.NoError(t, err)
+
+	// Per-field priorities should be populated
+	assert.Equal(t, []string{"dmm", "r18dev"}, cfg.Metadata.Priority.Fields["title"])
+	assert.Equal(t, []string{"javbus", "r18dev"}, cfg.Metadata.Priority.Fields["actress"])
+
+	// Global priority should not be set (not in YAML)
+	assert.Nil(t, cfg.Metadata.Priority.Priority)
+
+	// Save and reload
+	cfgPath2 := filepath.Join(tmpDir, "per_field_priority_saved.yaml")
+	err = Save(cfg, cfgPath2)
+	require.NoError(t, err)
+
+	cfg2, err := Load(cfgPath2)
+	require.NoError(t, err)
+
+	assert.Equal(t, []string{"dmm", "r18dev"}, cfg2.Metadata.Priority.Fields["title"])
+	assert.Equal(t, []string{"javbus", "r18dev"}, cfg2.Metadata.Priority.Fields["actress"])
+}
+
+func TestPerFieldPriorityJSONRoundTrip(t *testing.T) {
+	// Simulate what the frontend sends when per-field priorities are set
+	frontendJSON := `{
+		"scrapers": {
+			"priority": ["r18dev", "dmm", "javbus"],
+			"timeout_seconds": 30,
+			"request_timeout_seconds": 60
+		},
+		"output": {"operation_mode": "metadata-only"},
+		"database": {"type": "sqlite", "dsn": "test.db"},
+		"metadata": {
+			"priority": {
+				"priority": [],
+				"title": ["dmm", "r18dev"],
+				"actress": ["javbus", "r18dev"],
+				"cover_url": ["r18dev", "dmm"]
+			}
+		},
+		"logging": {},
+		"matching": {},
+		"performance": {"max_workers": 1, "worker_timeout": 60, "update_interval": 100}
+	}`
+
+	var cfg Config
+	err := json.Unmarshal([]byte(frontendJSON), &cfg)
+	require.NoError(t, err)
+
+	// Per-field priorities should survive JSON unmarshal
+	assert.Equal(t, []string{"dmm", "r18dev"}, cfg.Metadata.Priority.Fields["title"])
+	assert.Equal(t, []string{"javbus", "r18dev"}, cfg.Metadata.Priority.Fields["actress"])
+	assert.Equal(t, []string{"r18dev", "dmm"}, cfg.Metadata.Priority.Fields["cover_url"])
+
+	// Global priority is empty
+	assert.Empty(t, cfg.Metadata.Priority.Priority)
+
+	// JSON marshal should produce the same structure
+	data, err := json.Marshal(cfg.Metadata.Priority)
+	require.NoError(t, err)
+
+	var roundTripped PriorityConfig
+	err = json.Unmarshal(data, &roundTripped)
+	require.NoError(t, err)
+
+	assert.Equal(t, []string{"dmm", "r18dev"}, roundTripped.Fields["title"])
+	assert.Equal(t, []string{"javbus", "r18dev"}, roundTripped.Fields["actress"])
+	assert.Equal(t, []string{"r18dev", "dmm"}, roundTripped.Fields["cover_url"])
+}
+
+func TestGetFieldPriority(t *testing.T) {
+	p := PriorityConfig{
+		Priority: []string{"r18dev", "dmm"},
+		Fields: map[string][]string{
+			"title":   {"dmm", "r18dev"},
+			"actress": {},
+		},
+	}
+
+	// Field with override uses the override
+	assert.Equal(t, []string{"dmm", "r18dev"}, p.GetFieldPriority("title"))
+
+	// Field with empty override falls back to global
+	assert.Equal(t, []string{"r18dev", "dmm"}, p.GetFieldPriority("actress"))
+
+	// Field without override falls back to global
+	assert.Equal(t, []string{"r18dev", "dmm"}, p.GetFieldPriority("genre"))
+
+	// Nil PriorityConfig
+	var nilP *PriorityConfig
+	assert.Nil(t, nilP.GetFieldPriority("title"))
 }
