@@ -178,6 +178,8 @@ type OrganizePlan struct {
 	OldDir            string // Original directory path (for in-place renames)
 	IsDedicated       bool   // Whether source folder is dedicated to this ID
 	SkipInPlaceReason string // Reason why in-place was not used
+	FolderName        string // Resolved folder name (empty if no folder created)
+	SubfolderPath     string // Resolved subfolder path relative to destination (empty if none)
 }
 
 // isDedicatedFolder checks if a folder is dedicated to a single movie ID
@@ -371,6 +373,11 @@ func (o *Organizer) Plan(match matcher.MatchResult, movie *models.Movie, destDir
 	// Check if move is needed
 	willMove := filepath.ToSlash(match.File.Path) != filepath.ToSlash(targetPath)
 
+	var subfolderPath string
+	if len(subfolderParts) > 0 {
+		subfolderPath = filepath.Join(subfolderParts...)
+	}
+
 	conflicts := checkTargetConflict(o.fs, match.File.Path, targetPath, forceUpdate, willMove)
 
 	return &OrganizePlan{
@@ -386,6 +393,8 @@ func (o *Organizer) Plan(match matcher.MatchResult, movie *models.Movie, destDir
 		OldDir:            oldDir,
 		IsDedicated:       isDedicated,
 		SkipInPlaceReason: skipInPlaceReason,
+		FolderName:        folderName,
+		SubfolderPath:     subfolderPath,
 	}, nil
 }
 

@@ -133,6 +133,7 @@ func TestMultipartPreviewLetterPatternDiscoveryFlow(t *testing.T) {
 		Output: config.OutputConfig{
 			FolderFormat:     "<ID>",
 			FileFormat:       "<ID><IF:MULTIPART>-pt<PART></IF>",
+			RenameFile:       true,
 			PosterFormat:     "<ID><IF:MULTIPART>-pt<PART></IF>-poster.jpg",
 			ScreenshotFolder: "extrafanart",
 			DownloadCover:    true,
@@ -267,6 +268,7 @@ func TestMultipartPreviewLetterPatternFiles(t *testing.T) {
 		Output: config.OutputConfig{
 			FolderFormat:     "<ID>",
 			FileFormat:       "<ID><IF:MULTIPART>-pt<PART></IF>", // Uses IsMultiPart conditional
+			RenameFile:       true,
 			PosterFormat:     "<ID><IF:MULTIPART>-pt<PART></IF>-poster.jpg",
 			FanartFormat:     "<ID><IF:MULTIPART>-pt<PART></IF>-fanart.jpg",
 			ScreenshotFolder: "extrafanart",

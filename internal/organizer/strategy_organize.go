@@ -108,6 +108,11 @@ func (s *OrganizeStrategy) Plan(match matcher.MatchResult, movie *models.Movie, 
 
 	conflicts := checkTargetConflict(s.fs, match.File.Path, targetPath, forceUpdate, willMove)
 
+	var subfolderPath string
+	if len(subfolderParts) > 0 {
+		subfolderPath = filepath.Join(subfolderParts...)
+	}
+
 	return &OrganizePlan{
 		Match:             match,
 		Movie:             movie,
@@ -121,6 +126,8 @@ func (s *OrganizeStrategy) Plan(match matcher.MatchResult, movie *models.Movie, 
 		OldDir:            "",
 		IsDedicated:       false,
 		SkipInPlaceReason: "organize mode - always move to destination",
+		FolderName:        folderName,
+		SubfolderPath:     subfolderPath,
 	}, nil
 }
 

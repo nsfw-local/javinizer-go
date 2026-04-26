@@ -154,6 +154,8 @@ func (s *InPlaceStrategy) Plan(match matcher.MatchResult, movie *models.Movie, d
 		OldDir:            oldDir,
 		IsDedicated:       isDedicated,
 		SkipInPlaceReason: skipInPlaceReason,
+		FolderName:        folderName,
+		SubfolderPath:     "",
 	}, nil
 }
 

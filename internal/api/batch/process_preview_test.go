@@ -1,16 +1,23 @@
 package batch
 
 import (
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/javinizer/javinizer-go/internal/config"
+	"github.com/javinizer/javinizer-go/internal/matcher"
 	"github.com/javinizer/javinizer-go/internal/models"
 	"github.com/javinizer/javinizer-go/internal/organizer"
+	"github.com/javinizer/javinizer-go/internal/scanner"
+	"github.com/javinizer/javinizer-go/internal/template"
+	"github.com/javinizer/javinizer-go/internal/types"
 	"github.com/javinizer/javinizer-go/internal/worker"
+	"github.com/spf13/afero"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestGeneratePreview_MultipartFallbackPaths(t *testing.T) {
@@ -542,6 +549,116 @@ func TestGeneratePreview_InPlaceNoRenameFolder_WindowsSourcePath(t *testing.T) {
 	assert.Equal(t, []string{`C:\Users\me\test-videos\folder4\ABF-345.mkv`}, resp.VideoFiles)
 }
 
+func TestGeneratePreview_UNCSourcePath(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.Output.FolderFormat = "<ID>"
+	cfg.Output.FileFormat = "<ID>"
+
+	movie := &models.Movie{
+		ID:    "ABC-123",
+		Title: "Test Movie",
+	}
+
+	fileResults := []*worker.FileResult{
+		{
+			FilePath: `\\nas\media\videos\ABC-123.mp4`,
+			MovieID:  "ABC-123",
+			Status:   worker.JobStatusCompleted,
+		},
+	}
+
+	t.Run("metadata-only preserves UNC source path", func(t *testing.T) {
+		resp := generatePreview(movie, fileResults, `\\nas\output`, cfg, organizer.OperationModeMetadataOnly, true, true)
+		assert.Equal(t, `\\nas\media\videos\ABC-123.mp4`, resp.SourcePath)
+		assert.Equal(t, `\\nas\media\videos\ABC-123.mp4`, resp.FullPath)
+		assert.Equal(t, "ABC-123", resp.FileName)
+	})
+
+	t.Run("in-place-norenamefolder preserves UNC source dir", func(t *testing.T) {
+		resp := generatePreview(movie, fileResults, `\\nas\output`, cfg, organizer.OperationModeInPlaceNoRenameFolder, true, true)
+		assert.Equal(t, `\\nas\media\videos\ABC-123.mp4`, resp.SourcePath)
+		assert.Equal(t, `\\nas\media\videos\ABC-123.mp4`, resp.FullPath)
+		assert.Equal(t, "ABC-123", resp.FileName)
+	})
+
+	t.Run("in-place computes folder rename under UNC parent", func(t *testing.T) {
+		resp := generatePreview(movie, fileResults, `\\nas\output`, cfg, organizer.OperationModeInPlace, true, true)
+		assert.Equal(t, `\\nas\media\videos\ABC-123.mp4`, resp.SourcePath)
+		assert.Equal(t, "ABC-123", resp.FolderName)
+		assert.Contains(t, resp.FullPath, `\\nas\media`)
+	})
+
+	t.Run("organize computes folder and subfolder under UNC destination", func(t *testing.T) {
+		cfgOrganize := config.DefaultConfig()
+		cfgOrganize.Output.FolderFormat = "<ID>"
+		cfgOrganize.Output.FileFormat = "<ID>"
+		cfgOrganize.Output.SubfolderFormat = []string{"<STUDIO>"}
+		movieOrg := &models.Movie{ID: "ABC-123", Title: "Test", Maker: "StudioA"}
+		fileResultsOrg := []*worker.FileResult{
+			{FilePath: `\\nas\media\ABC-123.mp4`, MovieID: "ABC-123", Status: worker.JobStatusCompleted},
+		}
+		resp := generatePreview(movieOrg, fileResultsOrg, `\\nas\output`, cfgOrganize, organizer.OperationModeOrganize, true, true)
+		assert.Equal(t, "ABC-123", resp.FolderName)
+		assert.Equal(t, "StudioA", resp.SubfolderPath)
+		assert.Contains(t, resp.FullPath, `\\nas\output`)
+		assert.Contains(t, resp.FullPath, "ABC-123")
+	})
+}
+
+func TestGeneratePreview_UNCShareRoot(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.Output.FolderFormat = "<ID>"
+	cfg.Output.FileFormat = "<ID>"
+
+	movie := &models.Movie{
+		ID:    "XYZ-789",
+		Title: "Test Movie",
+	}
+
+	t.Run("in-place preserves UNC share root", func(t *testing.T) {
+		fileResults := []*worker.FileResult{
+			{FilePath: `\\nas\share\XYZ-789.mp4`, MovieID: "XYZ-789", Status: worker.JobStatusCompleted},
+		}
+		resp := generatePreview(movie, fileResults, `\\nas\output`, cfg, organizer.OperationModeInPlace, true, true)
+		assert.Equal(t, `\\nas\share\XYZ-789.mp4`, resp.SourcePath)
+		assert.Contains(t, resp.FullPath, `\\nas\share`)
+		assert.NotContains(t, resp.FullPath, `\\nas\XYZ-789`)
+	})
+
+	t.Run("metadata-only preserves UNC share root dir", func(t *testing.T) {
+		fileResults := []*worker.FileResult{
+			{FilePath: `\\nas\share\XYZ-789.mp4`, MovieID: "XYZ-789", Status: worker.JobStatusCompleted},
+		}
+		resp := generatePreview(movie, fileResults, `\\nas\output`, cfg, organizer.OperationModeMetadataOnly, true, true)
+		assert.Equal(t, `\\nas\share\XYZ-789.mp4`, resp.SourcePath)
+		assert.Equal(t, `\\nas\share\XYZ-789.mp4`, resp.FullPath)
+	})
+}
+
+func TestGeneratePreview_UNCMultipart(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.Output.FolderFormat = "<ID>"
+	cfg.Output.FileFormat = "<ID><PARTSUFFIX>"
+
+	movie := &models.Movie{
+		ID:    "MUL-001",
+		Title: "Multipart Test",
+	}
+
+	fileResults := []*worker.FileResult{
+		{FilePath: `\\nas\media\MUL-001-pt1.mp4`, MovieID: "MUL-001", IsMultiPart: true, PartNumber: 1, PartSuffix: "-pt1", Status: worker.JobStatusCompleted},
+		{FilePath: `\\nas\media\MUL-001-pt2.mp4`, MovieID: "MUL-001", IsMultiPart: true, PartNumber: 2, PartSuffix: "-pt2", Status: worker.JobStatusCompleted},
+	}
+
+	t.Run("each part gets its own filename", func(t *testing.T) {
+		resp := generatePreview(movie, fileResults, `\\nas\output`, cfg, organizer.OperationModeInPlaceNoRenameFolder, true, true)
+		assert.Len(t, resp.VideoFiles, 2)
+		assert.Contains(t, resp.VideoFiles[0], "MUL-001-pt1")
+		assert.Contains(t, resp.VideoFiles[1], "MUL-001-pt2")
+		assert.NotEqual(t, resp.VideoFiles[0], resp.VideoFiles[1])
+	})
+}
+
 // TestGeneratePreview_InPlace tests that in-place preview shows folder rename in source parent
 func TestGeneratePreview_InPlace(t *testing.T) {
 	cfg := config.DefaultConfig()
@@ -816,4 +933,151 @@ func TestGeneratePreview_SubfolderPath(t *testing.T) {
 			assert.Contains(t, filepath.ToSlash(vf), "StudioB/", "All video file paths should include subfolder")
 		}
 	})
+}
+
+func TestGeneratePreview_StrategyParity(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.Output.FolderFormat = "<ID>"
+	cfg.Output.FileFormat = "<ID>"
+	cfg.Output.RenameFile = true
+
+	modes := []organizer.OperationMode{
+		organizer.OperationModeOrganize,
+		organizer.OperationModeInPlace,
+		organizer.OperationModeInPlaceNoRenameFolder,
+		organizer.OperationModeMetadataOnly,
+	}
+
+	for _, mode := range modes {
+		t.Run(string(mode)+"_parity", func(t *testing.T) {
+			movie := &models.Movie{
+				ID:    "PARITY-001",
+				Title: "Parity Test",
+			}
+
+			fileResults := []*worker.FileResult{
+				{FilePath: "/source/PARITY-001.mp4", MovieID: "PARITY-001"},
+			}
+
+			destination := "/library"
+			resp := generatePreview(movie, fileResults, destination, cfg, mode, true, true)
+
+			outputConfig := cfg.Output
+			outputConfig.OperationMode = mode
+			outputConfig.MoveToFolder = mode == types.OperationModeOrganize
+			outputConfig.RenameFolderInPlace = mode == types.OperationModeInPlace
+			outputConfig.MaxPathLength = 0
+
+			fs := afero.NewOsFs()
+			sharedEngine := template.NewEngine()
+			fileMatcher, _ := matcher.NewMatcher(&cfg.Matching)
+
+			var strategy organizer.OperationStrategy
+			switch mode {
+			case types.OperationModeOrganize:
+				strategy = organizer.NewOrganizeStrategy(fs, &outputConfig, sharedEngine)
+			case types.OperationModeInPlace:
+				if fileMatcher != nil {
+					strategy = organizer.NewInPlaceStrategy(fs, &outputConfig, fileMatcher, sharedEngine)
+				} else {
+					strategy = organizer.NewOrganizeStrategy(fs, &outputConfig, sharedEngine)
+				}
+			case types.OperationModeInPlaceNoRenameFolder:
+				if fileMatcher != nil {
+					strategy = organizer.NewInPlaceNoRenameFolderStrategy(fs, &outputConfig, fileMatcher, sharedEngine)
+				} else {
+					strategy = organizer.NewOrganizeStrategy(fs, &outputConfig, sharedEngine)
+				}
+			case types.OperationModeMetadataOnly:
+				strategy = organizer.NewMetadataOnlyStrategy(fs, &outputConfig)
+			default:
+				strategy = organizer.NewOrganizeStrategy(fs, &outputConfig, sharedEngine)
+			}
+
+			match := matcher.MatchResult{
+				File: scanner.FileInfo{
+					Path:      "/source/PARITY-001.mp4",
+					Name:      "PARITY-001.mp4",
+					Extension: ".mp4",
+					Dir:       "/source",
+				},
+				ID: "PARITY-001",
+			}
+
+			plan, err := strategy.Plan(match, movie, destination, false)
+			require.NoError(t, err)
+
+			assert.Equal(t, filepath.ToSlash(plan.TargetPath), filepath.ToSlash(resp.FullPath),
+				"preview FullPath should match strategy TargetPath for mode %s", mode)
+
+			if mode != types.OperationModeOrganize {
+				assert.Equal(t, filepath.ToSlash(plan.SourcePath), filepath.ToSlash(resp.SourcePath),
+					"preview SourcePath should match strategy SourcePath for mode %s", mode)
+			}
+
+			assert.Equal(t, plan.FolderName, resp.FolderName,
+				"preview FolderName should match plan FolderName for mode %s", mode)
+			assert.Equal(t, filepath.ToSlash(plan.SubfolderPath), filepath.ToSlash(resp.SubfolderPath),
+				"preview SubfolderPath should match plan SubfolderPath for mode %s", mode)
+		})
+	}
+}
+
+func TestGeneratePreview_StrategyParity_InPlaceRename(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.Output.FolderFormat = "<ID> [<STUDIO>]"
+	cfg.Output.FileFormat = "<ID>"
+	cfg.Output.RenameFile = true
+
+	tmpDir := t.TempDir()
+	dedicatedDir := filepath.Join(tmpDir, "old-folder-name")
+	require.NoError(t, os.MkdirAll(dedicatedDir, 0755))
+
+	movie := &models.Movie{
+		ID:    "INPLACE-001",
+		Title: "In-Place Rename Test",
+		Maker: "StudioA",
+	}
+
+	sourceFile := filepath.Join(dedicatedDir, "INPLACE-001.mp4")
+	require.NoError(t, os.WriteFile(sourceFile, []byte("test"), 0644))
+
+	fileResults := []*worker.FileResult{
+		{FilePath: sourceFile, MovieID: "INPLACE-001"},
+	}
+
+	destination := "/library"
+	resp := generatePreview(movie, fileResults, destination, cfg, organizer.OperationModeInPlace, true, true)
+
+	outputConfig := cfg.Output
+	outputConfig.OperationMode = organizer.OperationModeInPlace
+	outputConfig.MoveToFolder = false
+	outputConfig.RenameFolderInPlace = true
+	outputConfig.MaxPathLength = 0
+
+	fs := afero.NewOsFs()
+	sharedEngine := template.NewEngine()
+	fileMatcher, _ := matcher.NewMatcher(&cfg.Matching)
+	require.NotNil(t, fileMatcher, "matcher required for in-place rename test")
+
+	strategy := organizer.NewInPlaceStrategy(fs, &outputConfig, fileMatcher, sharedEngine)
+
+	match := matcher.MatchResult{
+		File: scanner.FileInfo{
+			Path:      sourceFile,
+			Name:      "INPLACE-001.mp4",
+			Extension: ".mp4",
+			Dir:       dedicatedDir,
+		},
+		ID: "INPLACE-001",
+	}
+
+	plan, err := strategy.Plan(match, movie, destination, false)
+	require.NoError(t, err)
+
+	assert.True(t, plan.InPlace, "plan should detect in-place rename with dedicated folder")
+	assert.Equal(t, filepath.ToSlash(plan.TargetPath), filepath.ToSlash(resp.FullPath),
+		"preview FullPath should match strategy TargetPath for in-place rename")
+	assert.Equal(t, plan.FolderName, resp.FolderName,
+		"preview FolderName should match plan FolderName for in-place rename")
 }

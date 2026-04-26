@@ -229,15 +229,6 @@ func firstValidFileResult(fileResults []*worker.FileResult) *worker.FileResult {
 	return nil
 }
 
-func resolveSourceExt(fileResults []*worker.FileResult) string {
-	for _, result := range fileResults {
-		if result != nil && result.FilePath != "" {
-			return previewPathExt(result.FilePath)
-		}
-	}
-	return ".mp4"
-}
-
 func resolvePreviewFallbackName(movie *models.Movie, fileResults []*worker.FileResult) string {
 	if movie.ID != "" {
 		if sanitized := template.SanitizeFilename(movie.ID); sanitized != "" {
@@ -254,7 +245,7 @@ func resolvePreviewFallbackName(movie *models.Movie, fileResults []*worker.FileR
 	for _, result := range fileResults {
 		if result != nil && result.FilePath != "" {
 			base := previewPathBase(result.FilePath)
-			ext := previewPathExt(result.FilePath)
+			ext := previewPathExt(base)
 			nameWithoutExt := strings.TrimSuffix(base, ext)
 			if sanitized := template.SanitizeFilename(nameWithoutExt); sanitized != "" {
 				return sanitized
@@ -295,25 +286,40 @@ func previewPathDir(path string) string {
 	case idx == 2 && len(trimmed) >= 3 && trimmed[1] == ':' && (trimmed[2] == '\\' || trimmed[2] == '/'):
 		return trimmed[:3]
 	default:
-		return trimmed[:idx]
+		dir := trimmed[:idx]
+		if isUNCPath(trimmed) {
+			uncRoot := uncShareRoot(trimmed)
+			if uncRoot != "" && len(dir) < len(uncRoot) {
+				return uncRoot
+			}
+		}
+		return dir
 	}
+}
+
+func isUNCPath(path string) bool {
+	return strings.HasPrefix(path, `\\`) || strings.HasPrefix(path, `//`)
+}
+
+func uncShareRoot(path string) string {
+	if !isUNCPath(path) {
+		return ""
+	}
+	rest := path[2:]
+	idx := strings.IndexAny(rest, `/\`)
+	if idx == -1 {
+		return path
+	}
+	shareRest := rest[idx+1:]
+	shareEnd := strings.IndexAny(shareRest, `/\`)
+	if shareEnd == -1 {
+		return path
+	}
+	return path[:2+idx+1+shareEnd]
 }
 
 func previewPathExt(path string) string {
 	return filepath.Ext(previewPathBase(path))
-}
-
-func previewJoinParts(parts ...string) string {
-	if len(parts) == 0 {
-		return ""
-	}
-
-	joined := parts[0]
-	for _, part := range parts[1:] {
-		joined = previewJoinPath(joined, part)
-	}
-
-	return joined
 }
 
 func previewJoinPath(base string, elems ...string) string {
@@ -369,5 +375,5 @@ func trimPreviewPath(path string) string {
 }
 
 func isWindowsPathLike(path string) bool {
-	return len(path) >= 2 && path[1] == ':' || strings.HasPrefix(path, `\\`)
+	return (len(path) >= 2 && path[1] == ':') || strings.HasPrefix(path, `\\`)
 }

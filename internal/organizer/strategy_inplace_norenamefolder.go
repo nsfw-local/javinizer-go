@@ -77,6 +77,8 @@ func (s *InPlaceNoRenameFolderStrategy) Plan(match matcher.MatchResult, movie *m
 		OldDir:            "",
 		IsDedicated:       false,
 		SkipInPlaceReason: "in-place-norenamefolder mode - file rename only",
+		FolderName:        "",
+		SubfolderPath:     "",
 	}, nil
 }
 

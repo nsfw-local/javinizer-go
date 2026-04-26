@@ -709,6 +709,7 @@ func TestPreviewOrganize(t *testing.T) {
 				Output: config.OutputConfig{
 					FolderFormat: "<ID>",
 					FileFormat:   "<ID>",
+					RenameFile:   true,
 					// Use multipart conditional templates for testing
 					PosterFormat:     "<ID><IF:MULTIPART>-pt<PART></IF>-poster.jpg",
 					FanartFormat:     "<ID><IF:MULTIPART>-pt<PART></IF>-fanart.jpg",

@@ -43,6 +43,8 @@ func (s *MetadataOnlyStrategy) Plan(match matcher.MatchResult, movie *models.Mov
 		OldDir:            "",
 		IsDedicated:       false,
 		SkipInPlaceReason: "metadata-only mode",
+		FolderName:        "",
+		SubfolderPath:     "",
 	}, nil
 }
 
