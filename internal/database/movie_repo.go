@@ -10,11 +10,17 @@ import (
 )
 
 type MovieRepository struct {
-	db *DB
+	*BaseRepository[models.Movie, string]
 }
 
 func NewMovieRepository(db *DB) *MovieRepository {
-	return &MovieRepository{db: db}
+	return &MovieRepository{
+		BaseRepository: NewBaseRepository[models.Movie, string](
+			db, "movie",
+			func(m models.Movie) string { return movieEntityID(&m) },
+			WithNewEntity[models.Movie, string](func() models.Movie { return models.Movie{} }),
+		),
+	}
 }
 
 func movieEntityID(movie *models.Movie) string {
@@ -25,14 +31,11 @@ func movieEntityID(movie *models.Movie) string {
 }
 
 func (r *MovieRepository) Create(movie *models.Movie) error {
-	if err := r.db.Create(movie).Error; err != nil {
-		return wrapDBErr("create", fmt.Sprintf("movie %s", movieEntityID(movie)), err)
-	}
-	return nil
+	return r.BaseRepository.Create(movie)
 }
 
 func (r *MovieRepository) Update(movie *models.Movie) error {
-	if err := r.db.Save(movie).Error; err != nil {
+	if err := r.GetDB().Save(movie).Error; err != nil {
 		return wrapDBErr("update", fmt.Sprintf("movie %s", movieEntityID(movie)), err)
 	}
 	return nil
@@ -40,7 +43,7 @@ func (r *MovieRepository) Update(movie *models.Movie) error {
 
 func (r *MovieRepository) Upsert(movie *models.Movie) (*models.Movie, error) {
 	var result *models.Movie
-	err := r.db.Transaction(func(tx *gorm.DB) error {
+	err := r.GetDB().Transaction(func(tx *gorm.DB) error {
 		if strings.TrimSpace(movie.ContentID) == "" {
 			if strings.TrimSpace(movie.ID) == "" {
 				return fmt.Errorf("content_id is required when using ContentID as primary key")
@@ -97,7 +100,7 @@ func (r *MovieRepository) Upsert(movie *models.Movie) (*models.Movie, error) {
 
 		translations := movie.Translations
 		movie.Translations = nil
-		if err := upsertMovieCore(tx, r.db, movie, translations); err != nil {
+		if err := upsertMovieCore(tx, r.GetDB(), movie, translations); err != nil {
 			return wrapDBErr("save", fmt.Sprintf("movie %s", movie.ContentID), err)
 		}
 
@@ -121,7 +124,7 @@ func (r *MovieRepository) saveMovieWithAssociations(tx *gorm.DB, movie *models.M
 
 	translations := movie.Translations
 	movie.Translations = nil
-	if err := upsertMovieCore(tx, r.db, movie, translations); err != nil {
+	if err := upsertMovieCore(tx, r.GetDB(), movie, translations); err != nil {
 		return fmt.Errorf("save associations for movie %s: upsert core: %w", movie.ContentID, err)
 	}
 	return nil
@@ -353,7 +356,7 @@ func (r *MovieRepository) ensureActressesExistTx(tx *gorm.DB, actresses []models
 
 func (r *MovieRepository) FindByID(id string) (*models.Movie, error) {
 	var movie models.Movie
-	err := r.db.Preload("Actresses").Preload("Genres").Preload("Translations", func(db *gorm.DB) *gorm.DB { return db.Order("language ASC") }).First(&movie, "id = ?", id).Error
+	err := r.GetDB().Preload("Actresses").Preload("Genres").Preload("Translations", func(db *gorm.DB) *gorm.DB { return db.Order("language ASC") }).First(&movie, "id = ?", id).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, fmt.Errorf("find movie by id %s: %w", id, ErrNotFound)
@@ -365,7 +368,7 @@ func (r *MovieRepository) FindByID(id string) (*models.Movie, error) {
 
 func (r *MovieRepository) FindByContentID(contentID string) (*models.Movie, error) {
 	var movie models.Movie
-	err := r.db.Preload("Actresses").Preload("Genres").Preload("Translations", func(db *gorm.DB) *gorm.DB { return db.Order("language ASC") }).First(&movie, "content_id = ?", contentID).Error
+	err := r.GetDB().Preload("Actresses").Preload("Genres").Preload("Translations", func(db *gorm.DB) *gorm.DB { return db.Order("language ASC") }).First(&movie, "content_id = ?", contentID).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, fmt.Errorf("find movie %s: %w", contentID, ErrNotFound)
@@ -376,7 +379,7 @@ func (r *MovieRepository) FindByContentID(contentID string) (*models.Movie, erro
 }
 
 func (r *MovieRepository) Delete(id string) error {
-	return r.db.Transaction(func(tx *gorm.DB) error {
+	return r.GetDB().Transaction(func(tx *gorm.DB) error {
 		var movie models.Movie
 		if err := tx.Model(&models.Movie{}).
 			Select("content_id").
@@ -417,7 +420,7 @@ func (r *MovieRepository) Delete(id string) error {
 
 func (r *MovieRepository) List(limit, offset int) ([]models.Movie, error) {
 	var movies []models.Movie
-	err := r.db.Preload("Actresses").Preload("Genres").Limit(limit).Offset(offset).Find(&movies).Error
+	err := r.GetDB().Preload("Actresses").Preload("Genres").Limit(limit).Offset(offset).Find(&movies).Error
 	if err != nil {
 		return nil, wrapDBErr("find", "movies", err)
 	}
