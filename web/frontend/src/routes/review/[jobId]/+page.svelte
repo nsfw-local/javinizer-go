@@ -86,6 +86,7 @@
 	let isUpdateMode = $derived($page.url.searchParams.get('update') === 'true');
 	let showFieldScraperSources = $state(false);
 	const SHOW_FIELD_SCRAPER_SOURCES_KEY = 'javinizer.review.showFieldScraperSources';
+	let posterCropStatesStorageKey = $derived(`javinizer.review.posterCropStates.${jobId}`);
 
 	// Organize operation state
 	let organizeProgress = $state(0);
@@ -316,6 +317,16 @@
 			SHOW_FIELD_SCRAPER_SOURCES_KEY,
 			showFieldScraperSources ? 'true' : 'false'
 		);
+	});
+
+	$effect(() => {
+		if (!browser) return;
+		if (posterCropStates.size === 0) return;
+		const entries: Record<string, PosterCropState> = {};
+		posterCropStates.forEach((v, k) => {
+			entries[k] = v;
+		});
+		localStorage.setItem(posterCropStatesStorageKey, JSON.stringify(entries));
 	});
 
 	// Subscribe to WebSocket messages during organize operation
@@ -590,6 +601,19 @@
 		if (browser) {
 			showFieldScraperSources =
 				localStorage.getItem(SHOW_FIELD_SCRAPER_SOURCES_KEY) === 'true';
+			const savedCrops = localStorage.getItem(posterCropStatesStorageKey);
+			if (savedCrops) {
+				try {
+					const parsed = JSON.parse(savedCrops) as Record<string, PosterCropState>;
+					const restored = new Map<string, PosterCropState>();
+					for (const [k, v] of Object.entries(parsed)) {
+						restored.set(k, v);
+					}
+					posterCropStates = restored;
+				} catch {
+					localStorage.removeItem(posterCropStatesStorageKey);
+				}
+			}
 		}
 		// Get destination from URL params if provided
 		const urlDestination = $page.url.searchParams.get('destination');

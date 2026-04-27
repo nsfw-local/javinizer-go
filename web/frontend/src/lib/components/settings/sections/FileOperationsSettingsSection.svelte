@@ -42,8 +42,8 @@
 				onclick={() => handleOperationModeChange('in-place')}
 				class="flex flex-col items-start gap-1 p-3 rounded-lg border-2 text-sm transition-all {effectiveMode === 'in-place' ? 'border-primary bg-primary/5 font-medium' : 'border-border hover:border-primary/50'}"
 			>
-				<div class="font-medium"><FolderOpen size={16} class="inline mr-1" />Rename in place</div>
-				<div class="text-xs text-muted-foreground">Keep files, rename parent folder</div>
+				<div class="font-medium"><FolderOpen size={16} class="inline mr-1" />Reorganize in place</div>
+				<div class="text-xs text-muted-foreground">Keep location, rename folder and file</div>
 			</button>
 
 			<button

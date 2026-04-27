@@ -5,6 +5,7 @@ import (
 	"image"
 	_ "image/jpeg"
 	_ "image/png"
+	"io"
 	"net/http"
 	"regexp"
 	"strings"
@@ -15,12 +16,11 @@ import (
 )
 
 const (
-	// MinPosterWidth is the minimum acceptable width for a poster image
-	// If the poster is smaller than this, we'll fall back to cropping the cover
 	MinPosterWidth = 800
 
-	// MinPosterHeight is the minimum acceptable height for a poster image
 	MinPosterHeight = 1000
+
+	maxDimensionReadBytes = 256 * 1024
 )
 
 // GetOptimalPosterURL attempts to find the highest quality poster URL
@@ -131,8 +131,8 @@ func getImageDimensions(url string, client *http.Client) (width, height int, err
 		return 0, 0, fmt.Errorf("image not found (status %d)", resp.StatusCode)
 	}
 
-	// Decode image to get dimensions (only reads header, not full image)
-	img, _, err := image.DecodeConfig(resp.Body)
+	lr := io.LimitReader(resp.Body, maxDimensionReadBytes)
+	img, _, err := image.DecodeConfig(lr)
 	if err != nil {
 		return 0, 0, fmt.Errorf("failed to decode image: %w", err)
 	}

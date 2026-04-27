@@ -118,28 +118,27 @@ func decodePosterSource(fs afero.Fs, coverPath string) (image.Image, int, int, e
 }
 
 func cropAndWritePoster(fs afero.Fs, img image.Image, posterPath string, left, top, right, bottom int) error {
-	// Create cropped image
-	croppedBounds := image.Rect(0, 0, right-left, bottom-top)
-	cropped := image.NewRGBA(croppedBounds)
+	cropRect := image.Rect(left, top, right, bottom)
+	croppedWidth := right - left
+	croppedHeight := bottom - top
 
-	// Copy the cropped portion
-	for y := top; y < bottom; y++ {
-		for x := left; x < right; x++ {
-			cropped.Set(x-left, y-top, img.At(x, y))
-		}
+	var cropped image.Image
+	if sub, ok := img.(interface {
+		SubImage(r image.Rectangle) image.Image
+	}); ok {
+		cropped = sub.SubImage(cropRect)
+	} else {
+		rgba := image.NewRGBA(image.Rect(0, 0, croppedWidth, croppedHeight))
+		draw.Draw(rgba, rgba.Bounds(), img, image.Pt(left, top), draw.Src)
+		cropped = rgba
 	}
 
-	// Resize if the cropped poster height exceeds MaxPosterHeight
-	var finalImage image.Image = cropped
-	croppedHeight := bottom - top
+	var finalImage = cropped
 	if croppedHeight > MaxPosterHeight {
-		// Calculate new dimensions maintaining aspect ratio
-		croppedWidth := right - left
 		scale := float64(MaxPosterHeight) / float64(croppedHeight)
 		newWidth := int(float64(croppedWidth) * scale)
 		newHeight := MaxPosterHeight
 
-		// Create resized image using high-quality bilinear interpolation
 		resizedBounds := image.Rect(0, 0, newWidth, newHeight)
 		resized := image.NewRGBA(resizedBounds)
 		draw.BiLinear.Scale(resized, resizedBounds, cropped, cropped.Bounds(), draw.Over, nil)

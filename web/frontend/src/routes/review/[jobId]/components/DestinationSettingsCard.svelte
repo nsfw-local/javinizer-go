@@ -38,7 +38,7 @@
 
 	function getOperationLabel(mode?: string): string {
 		switch (mode) {
-			case 'in-place': return 'Rename in place';
+			case 'in-place': return 'Reorganize in place';
 			case 'in-place-norenamefolder': return 'Rename file only';
 			case 'metadata-only': return 'Metadata only';
 			case 'organize': return 'Organize';

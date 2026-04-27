@@ -293,6 +293,9 @@ func processUpdateMode(job *worker.BatchJob, cfg *config.Config, db *database.DB
 		var posterPath string
 		if !opts.SkipDownload {
 			posterPath = copyTempCroppedPoster(job, movieToWrite, sourceDir, cfg, "Update", multipart)
+			if posterPath != "" {
+				movieToWrite.ShouldCropPoster = false
+			}
 		}
 
 		snapshotResult := history.ReadNFOSnapshot(afero.NewOsFs(),

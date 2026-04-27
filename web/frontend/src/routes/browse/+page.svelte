@@ -487,7 +487,7 @@
 				<div class="grid grid-cols-2 gap-2 md:grid-cols-3 lg:grid-cols-4">
 					{#each [
 						{ value: 'organize' as OperationMode, label: 'Organize', desc: 'Move to folder', icon: FolderOutput },
-						{ value: 'in-place' as OperationMode, label: 'Rename in place', desc: 'Keep location, rename folder', icon: FolderOpen },
+						{ value: 'in-place' as OperationMode, label: 'Reorganize in place', desc: 'Keep location, rename folder and file', icon: FolderOpen },
 						{ value: 'in-place-norenamefolder' as OperationMode, label: 'Rename file only', desc: 'Rename video file, keep folder', icon: FileEdit },
 						{ value: 'metadata-only' as OperationMode, label: 'Metadata only', desc: 'No file changes', icon: FileText },
 					] as mode}
@@ -507,7 +507,7 @@
 				</div>
 				{#if isInPlaceImplied}
 					<p class="text-xs text-muted-foreground">
-						Output destination matches source path with no folder/subfolder format — Organize and Rename in place are unavailable. <button class="underline text-primary" onclick={() => { destinationPath = ''; localStorage.removeItem(STORAGE_KEY_OUTPUT); }}>Change destination</button>
+						Output destination matches source path with no folder/subfolder format — Organize and Reorganize in place are unavailable. <button class="underline text-primary" onclick={() => { destinationPath = ''; localStorage.removeItem(STORAGE_KEY_OUTPUT); }}>Change destination</button>
 					</p>
 				{:else if operationModeOverrideTouched && effectiveOperationMode !== getSettingsOperationMode()}
 					<p class="text-xs text-primary">

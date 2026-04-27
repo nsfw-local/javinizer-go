@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"path/filepath"
+	"runtime"
 	"strings"
 
 	"github.com/javinizer/javinizer-go/internal/config"
@@ -131,6 +132,7 @@ func processOrganizeJob(ctx context.Context, job *worker.BatchJob, jobQueue *wor
 	status := job.GetStatus()
 	organized := 0
 	failed := 0
+	totalFiles := len(status.Results)
 
 	for filePath, fileResult := range status.Results {
 		select {
@@ -138,8 +140,8 @@ func processOrganizeJob(ctx context.Context, job *worker.BatchJob, jobQueue *wor
 			broadcastProgress(&ws.ProgressMessage{
 				JobID:    job.ID,
 				Status:   "cancelled",
-				Progress: float64(organized+failed) / float64(len(status.Results)) * 100,
-				Message:  fmt.Sprintf("Organize cancelled (%d/%d files processed)", organized, len(status.Results)),
+				Progress: float64(organized+failed) / float64(totalFiles) * 100,
+				Message:  fmt.Sprintf("Organize cancelled (%d/%d files processed)", organized, totalFiles),
 			})
 			if emitter != nil {
 				if err := emitter.EmitOrganizeEvent("batch", fmt.Sprintf("Organize job %s cancelled", job.ID), models.SeverityWarn, map[string]interface{}{"job_id": job.ID, "organized": organized, "failed": failed}); err != nil {
@@ -248,7 +250,7 @@ func processOrganizeJob(ctx context.Context, job *worker.BatchJob, jobQueue *wor
 				JobID:    job.ID,
 				FilePath: filePath,
 				Status:   "failed",
-				Progress: float64(organized+failed) / float64(len(status.Results)) * 100,
+				Progress: float64(organized+failed) / float64(totalFiles) * 100,
 				Error:    organizeErr.Error(),
 			})
 			continue
@@ -289,6 +291,7 @@ func processOrganizeJob(ctx context.Context, job *worker.BatchJob, jobQueue *wor
 			posterPath := copyTempCroppedPoster(job, movie, result.FolderPath, cfg, "Organize", multipart)
 			if posterPath != "" {
 				downloadPaths = append(downloadPaths, posterPath)
+				movie.ShouldCropPoster = false
 			}
 
 			dlPaths := downloadMediaFilesWithHistory(ctx, dl, movie, result.FolderPath, cfg, historyLogger, multipart)
@@ -306,6 +309,14 @@ func processOrganizeJob(ctx context.Context, job *worker.BatchJob, jobQueue *wor
 			if videoFilePath == "" {
 				videoFilePath = result.OriginalPath
 			}
+
+			if (organized+failed)%10 == 0 {
+				var m runtime.MemStats
+				runtime.ReadMemStats(&m)
+				logging.Debugf("[memory] movie=%s before_nfo alloc=%.1fMB sys=%.1fMB numGC=%d",
+					movie.ID, float64(m.Alloc)/1024/1024, float64(m.Sys)/1024/1024, m.NumGC)
+			}
+
 			nfoErr := nfoGen.Generate(movie, result.FolderPath, partSuffix, videoFilePath)
 			if nfoErr != nil {
 				postMoveIssueCount++
@@ -367,9 +378,13 @@ func processOrganizeJob(ctx context.Context, job *worker.BatchJob, jobQueue *wor
 			JobID:    job.ID,
 			FilePath: filePath,
 			Status:   "organized",
-			Progress: float64(organized+failed) / float64(len(status.Results)) * 100,
+			Progress: float64(organized+failed) / float64(totalFiles) * 100,
 			Message:  fmt.Sprintf("Organized %s", movie.ID),
 		})
+
+		// Release per-file references to allow GC of large movie data between iterations
+		result = nil
+		delete(status.Results, filePath)
 	}
 
 	// Broadcast final completion
