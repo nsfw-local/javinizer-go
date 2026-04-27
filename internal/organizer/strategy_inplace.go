@@ -78,19 +78,7 @@ func (s *InPlaceStrategy) Plan(match matcher.MatchResult, movie *models.Movie, d
 	ctx.PartSuffix = match.PartSuffix
 	ctx.IsMultiPart = match.IsMultiPart
 
-	folderName, err := s.templateEngine.Execute(s.config.FolderFormat, ctx)
-	if err != nil {
-		return nil, fmt.Errorf("failed to generate folder name: %w", err)
-	}
-
-	folderName = template.SanitizeFolderPath(folderName)
-	if folderName == "" {
-		folderName = template.SanitizeFolderPath(match.ID)
-		if folderName == "" {
-			folderName = "unknown"
-		}
-	}
-
+	var err error
 	var fileName string
 	if s.config.RenameFile {
 		fileName, err = resolveFileName(s.config, s.templateEngine, ctx, match)
@@ -105,6 +93,35 @@ func (s *InPlaceStrategy) Plan(match matcher.MatchResult, movie *models.Movie, d
 	}
 
 	sourceDir := filepath.Dir(match.File.Path)
+	parentDir := filepath.Dir(sourceDir)
+	baseDirLen := len(parentDir)
+	if len(destDir) > baseDirLen {
+		baseDirLen = len(destDir)
+	}
+	overheadBytes := baseDirLen + 2 + len(fileName)
+	folderMaxBytes := 0
+	if s.config.MaxPathLength > 0 && overheadBytes < s.config.MaxPathLength {
+		folderMaxBytes = s.config.MaxPathLength - overheadBytes
+	}
+
+	var folderName string
+	if folderMaxBytes > 0 {
+		folderName, err = s.templateEngine.ExecuteWithMaxBytes(s.config.FolderFormat, ctx, folderMaxBytes)
+	} else {
+		folderName, err = s.templateEngine.Execute(s.config.FolderFormat, ctx)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate folder name: %w", err)
+	}
+
+	folderName = template.SanitizeFolderPath(folderName)
+	if folderName == "" {
+		folderName = template.SanitizeFolderPath(match.ID)
+		if folderName == "" {
+			folderName = "unknown"
+		}
+	}
+
 	var targetDir string
 	targetPath := ""
 	willMove := false
@@ -147,33 +164,6 @@ func (s *InPlaceStrategy) Plan(match matcher.MatchResult, movie *models.Movie, d
 		targetDir = sourceDir
 		targetPath = filepath.Join(targetDir, fileName)
 		willMove = filepath.ToSlash(match.File.Path) != filepath.ToSlash(targetPath)
-	}
-
-	if s.config.MaxPathLength > 0 && len(targetPath) > s.config.MaxPathLength {
-		excess := len(targetPath) - s.config.MaxPathLength
-		currentFolderLen := len(folderName)
-		if currentFolderLen > excess {
-			newFolderByteLen := currentFolderLen - excess
-			if newFolderByteLen > 0 {
-				truncated := s.templateEngine.TruncateTitleBytes(folderName, newFolderByteLen)
-				if truncated != "" {
-					folderName = template.SanitizeFolderPath(truncated)
-				}
-			}
-			if inPlace {
-				targetDir = filepath.Join(filepath.Dir(sourceDir), folderName)
-			} else if s.config.GetOperationMode() == types.OperationModeOrganize {
-				pathParts := []string{destDir}
-				if folderName != "" {
-					pathParts = append(pathParts, folderName)
-				}
-				targetDir = filepath.Join(pathParts...)
-			} else {
-				targetDir = sourceDir
-			}
-			targetPath = filepath.Join(targetDir, fileName)
-			willMove = filepath.ToSlash(match.File.Path) != filepath.ToSlash(targetPath)
-		}
 	}
 
 	if s.config.MaxPathLength > 0 {

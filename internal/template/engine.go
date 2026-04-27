@@ -85,6 +85,40 @@ func (e *Engine) Execute(template string, ctx *Context) (string, error) {
 	return e.ExecuteWithContext(context.Background(), template, ctx)
 }
 
+func (e *Engine) ExecuteWithMaxBytes(tmpl string, ctx *Context, maxBytes int) (string, error) {
+	sentinel := "\x00MAXBYTES\x00"
+	frameCtx := ctx.Clone()
+	frameCtx.Title = sentinel
+	frameCtx.OriginalTitle = sentinel
+
+	frame, err := e.Execute(tmpl, frameCtx)
+	if err != nil {
+		return e.Execute(tmpl, ctx)
+	}
+
+	frameBytes := len(frame) - strings.Count(frame, sentinel)*len(sentinel)
+	titleBudget := maxBytes - frameBytes
+	if titleBudget <= 0 {
+		return e.Execute(tmpl, ctx)
+	}
+
+	titleBytes := len(ctx.Title)
+	if titleBytes <= titleBudget {
+		return e.Execute(tmpl, ctx)
+	}
+
+	truncatedCtx := ctx.Clone()
+	truncated := e.TruncateTitleBytes(ctx.Title, titleBudget)
+	truncatedCtx.Title = truncated
+	if ctx.OriginalTitle == ctx.Title {
+		truncatedCtx.OriginalTitle = truncated
+	} else {
+		truncatedCtx.OriginalTitle = e.TruncateTitleBytes(ctx.OriginalTitle, titleBudget)
+	}
+
+	return e.Execute(tmpl, truncatedCtx)
+}
+
 // ExecuteWithContext processes a template string with cancellation support and output limits.
 func (e *Engine) ExecuteWithContext(execCtx context.Context, template string, ctx *Context) (string, error) {
 	if execCtx == nil {

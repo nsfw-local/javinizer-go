@@ -53,19 +53,7 @@ func (s *OrganizeStrategy) Plan(match matcher.MatchResult, movie *models.Movie, 
 		}
 	}
 
-	folderName, err := s.templateEngine.Execute(s.config.FolderFormat, ctx)
-	if err != nil {
-		return nil, fmt.Errorf("failed to generate folder name: %w", err)
-	}
-
-	folderName = template.SanitizeFolderPath(folderName)
-	if folderName == "" {
-		folderName = template.SanitizeFolderPath(match.ID)
-		if folderName == "" {
-			folderName = "unknown"
-		}
-	}
-
+	var err error
 	var fileName string
 	if s.config.RenameFile {
 		fileName, err = resolveFileName(s.config, s.templateEngine, ctx, match)
@@ -81,33 +69,33 @@ func (s *OrganizeStrategy) Plan(match matcher.MatchResult, movie *models.Movie, 
 
 	pathParts := []string{destDir}
 	pathParts = append(pathParts, subfolderParts...)
-	if folderName != "" {
-		pathParts = append(pathParts, folderName)
+	overheadBytes := len(filepath.Join(pathParts...)) + 2 + len(fileName)
+	folderMaxBytes := 0
+	if s.config.MaxPathLength > 0 && overheadBytes < s.config.MaxPathLength {
+		folderMaxBytes = s.config.MaxPathLength - overheadBytes
 	}
-	targetDir := filepath.Join(pathParts...)
-	targetPath := filepath.Join(targetDir, fileName)
 
-	if s.config.MaxPathLength > 0 && len(targetPath) > s.config.MaxPathLength {
-		excess := len(targetPath) - s.config.MaxPathLength
-		currentFolderLen := len(folderName)
-		if currentFolderLen > excess {
-			newFolderByteLen := currentFolderLen - excess
-			if newFolderByteLen > 0 {
-				truncated := s.templateEngine.TruncateTitleBytes(folderName, newFolderByteLen)
-				if truncated != "" {
-					folderName = template.SanitizeFolderPath(truncated)
-				}
-			}
+	var folderName string
+	if folderMaxBytes > 0 {
+		folderName, err = s.templateEngine.ExecuteWithMaxBytes(s.config.FolderFormat, ctx, folderMaxBytes)
+	} else {
+		folderName, err = s.templateEngine.Execute(s.config.FolderFormat, ctx)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate folder name: %w", err)
+	}
 
-			pathParts := []string{destDir}
-			pathParts = append(pathParts, subfolderParts...)
-			if folderName != "" {
-				pathParts = append(pathParts, folderName)
-			}
-			targetDir = filepath.Join(pathParts...)
-			targetPath = filepath.Join(targetDir, fileName)
+	folderName = template.SanitizeFolderPath(folderName)
+	if folderName == "" {
+		folderName = template.SanitizeFolderPath(match.ID)
+		if folderName == "" {
+			folderName = "unknown"
 		}
 	}
+
+	pathParts = append(pathParts, folderName)
+	targetDir := filepath.Join(pathParts...)
+	targetPath := filepath.Join(targetDir, fileName)
 
 	if s.config.MaxPathLength > 0 {
 		if err := s.templateEngine.ValidatePathLength(targetPath, s.config.MaxPathLength); err != nil {

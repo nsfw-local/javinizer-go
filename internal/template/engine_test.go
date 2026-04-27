@@ -1617,6 +1617,61 @@ func isValidUTF8(s string) bool {
 	return string(runes) == s || len(s) == 0
 }
 
+func TestExecuteWithMaxBytes(t *testing.T) {
+	engine := NewEngine()
+
+	t.Run("no truncation needed", func(t *testing.T) {
+		ctx := &Context{ID: "ABC-123", Maker: "Studio", Title: "Short", ReleaseYear: 2024}
+		got, err := engine.ExecuteWithMaxBytes("<ID> [<STUDIO>] - <TITLE> (<YEAR>)", ctx, 200)
+		require.NoError(t, err)
+		assert.Equal(t, "ABC-123 [Studio] - Short (2024)", got)
+	})
+
+	t.Run("title truncated but suffixes preserved", func(t *testing.T) {
+		ctx := &Context{ID: "ABC-123", Maker: "Studio", Title: "Very Long Title That Should Be Truncated", ReleaseYear: 2024}
+		got, err := engine.ExecuteWithMaxBytes("<ID> [<STUDIO>] - <TITLE> (<YEAR>)", ctx, 40)
+		require.NoError(t, err)
+		assert.Contains(t, got, "(2024)")
+		assert.Contains(t, got, "ABC-123 [Studio]")
+	})
+
+	t.Run("CJK title with year preserved", func(t *testing.T) {
+		ctx := &Context{
+			ID:          "WAAA-445",
+			Maker:       "\u30ef\u30f3\u30ba\u30d5\u30a1\u30af\u30c8\u30ea\u30fc",
+			Title:       "\u300c\u3053\u3093\u306a\u304a\u3070\u3055\u3093\u3067\u3044\u3044\u306e\u2026\uff1f\u300d \u5973\u3068\u3057\u3066\u306e\u81ea\u4fe1\u3092\u5931\u3063\u3066\u3044\u305f\u5de8\u4e73\u4eba\u59bb\u306f\u4e00\u9014\u306a\u30d0\u30a4\u30c8\u7537\u5b50\u3068\u306e\u4e0d\u502b\u4e2d\u51fa\u3057\u306b\u6eba\u308c",
+			ReleaseYear: 2024,
+		}
+		got, err := engine.ExecuteWithMaxBytes("<ID> [<STUDIO>] - <TITLE> (<YEAR>)", ctx, 100)
+		require.NoError(t, err)
+		assert.Contains(t, got, "(2024)")
+		assert.Contains(t, got, "WAAA-445")
+	})
+
+	t.Run("template without TITLE falls back to Execute", func(t *testing.T) {
+		ctx := &Context{ID: "ABC-123", Maker: "Studio", ReleaseYear: 2024}
+		got, err := engine.ExecuteWithMaxBytes("<ID> [<STUDIO>] (<YEAR>)", ctx, 30)
+		require.NoError(t, err)
+		assert.Equal(t, "ABC-123 [Studio] (2024)", got)
+	})
+
+	t.Run("multiple TITLE tags handled correctly", func(t *testing.T) {
+		ctx := &Context{ID: "ABC-123", Title: "Very Long Title That Should Be Truncated", ReleaseYear: 2024}
+		got, err := engine.ExecuteWithMaxBytes("<ID> - <TITLE> / <TITLE> (<YEAR>)", ctx, 50)
+		require.NoError(t, err)
+		assert.Contains(t, got, "(2024)")
+		assert.Contains(t, got, "ABC-123 -")
+	})
+
+	t.Run("TITLE and ORIGINALTITLE handled correctly", func(t *testing.T) {
+		ctx := &Context{ID: "ABC-123", Title: "Very Long Title", OriginalTitle: "Very Long Original Title", ReleaseYear: 2024}
+		got, err := engine.ExecuteWithMaxBytes("<ID> - <TITLE> (<ORIGINALTITLE>) (<YEAR>)", ctx, 50)
+		require.NoError(t, err)
+		assert.Contains(t, got, "(2024)")
+		assert.Contains(t, got, "ABC-123 -")
+	})
+}
+
 func TestValidatePathLength(t *testing.T) {
 	engine := NewEngine()
 
