@@ -652,6 +652,16 @@ func normalizeNameKey(name string) string {
 	return strings.Join(strings.Fields(strings.ToLower(strings.TrimSpace(name))), " ")
 }
 
+func resolveNameKey(japaneseName, firstName, lastName string) string {
+	if k := normalizeNameKey(japaneseName); k != "" {
+		return k
+	}
+	if k := normalizeNameKey(firstName + " " + lastName); k != "" {
+		return k
+	}
+	return normalizeNameKey(lastName + " " + firstName)
+}
+
 // getActressesByPriority retrieves actresses based on priority and merges data from multiple sources
 func (a *Aggregator) getActressesByPriority(
 	results map[string]*models.ScraperResult,
@@ -670,13 +680,7 @@ func (a *Aggregator) getActressesByPriority(
 		}
 
 		for _, info := range result.Actresses {
-			nameKey := normalizeNameKey(info.JapaneseName)
-			if nameKey == "" {
-				nameKey = normalizeNameKey(info.FirstName + " " + info.LastName)
-			}
-			if nameKey == "" {
-				nameKey = normalizeNameKey(info.LastName + " " + info.FirstName)
-			}
+			nameKey := resolveNameKey(info.JapaneseName, info.FirstName, info.LastName)
 
 			var existing *models.Actress
 			var foundInDMMIDMap bool
@@ -687,13 +691,7 @@ func (a *Aggregator) getActressesByPriority(
 
 			if existing == nil && nameKey != "" {
 				for _, actress := range actressByDMMID {
-					actressNameKey := normalizeNameKey(actress.JapaneseName)
-					if actressNameKey == "" {
-						actressNameKey = normalizeNameKey(actress.FirstName + " " + actress.LastName)
-					}
-					if actressNameKey == "" {
-						actressNameKey = normalizeNameKey(actress.LastName + " " + actress.FirstName)
-					}
+					actressNameKey := resolveNameKey(actress.JapaneseName, actress.FirstName, actress.LastName)
 					if actressNameKey == nameKey {
 						existing = actress
 						foundInDMMIDMap = true
