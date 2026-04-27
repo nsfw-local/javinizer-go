@@ -47,12 +47,11 @@ func processOrganizeJob(ctx context.Context, job *worker.BatchJob, jobQueue *wor
 			outputConfig.RenameFolderInPlace = *renameFolderInPlace
 			outputConfig.OperationMode = ""
 		}
-		effectiveMode := outputConfig.GetOperationMode()
-		outputConfig.OperationMode = effectiveMode
-		outputConfig.MoveToFolder = effectiveMode == types.OperationModeOrganize
-		outputConfig.RenameFolderInPlace = effectiveMode == types.OperationModeInPlace
 	}
 	effectiveMode := outputConfig.GetOperationMode()
+	outputConfig.OperationMode = effectiveMode
+	outputConfig.MoveToFolder = effectiveMode == types.OperationModeOrganize
+	outputConfig.RenameFolderInPlace = effectiveMode == types.OperationModeInPlace
 
 	// Create a single shared template engine for all strategies and components
 	sharedEngine := template.NewEngine()

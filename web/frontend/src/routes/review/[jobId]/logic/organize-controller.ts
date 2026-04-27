@@ -1,4 +1,4 @@
-import type { BatchJobResponse, Movie, ProgressMessage, UpdateRequest } from '$lib/api/types';
+import type { BatchJobResponse, Movie, OperationMode, ProgressMessage, UpdateRequest } from '$lib/api/types';
 
 export type OrganizeOperation = 'move' | 'copy' | 'hardlink' | 'softlink';
 export type OrganizeStatus = 'idle' | 'organizing' | 'completed' | 'failed';
@@ -15,6 +15,7 @@ interface OrganizeControllerDeps {
 	setJob: (job: BatchJobResponse) => void;
 	getDestinationPath: () => string;
 	getOrganizeOperation: () => OrganizeOperation;
+	getOperationMode: () => string;
 	getEditedMovies: () => Map<string, Movie>;
 	saveAllEdits: () => Promise<void>;
 	getOrganizeStatus: () => OrganizeStatus;
@@ -34,7 +35,7 @@ interface OrganizeControllerDeps {
 		getBatchJob: (jobId: string, includeData?: boolean) => Promise<BatchJobResponse>;
 		organizeBatchJob: (
 			jobId: string,
-			request: { destination: string; copy_only: boolean; link_mode?: 'hard' | 'soft'; skip_nfo?: boolean; skip_download?: boolean }
+			request: { destination: string; copy_only: boolean; link_mode?: 'hard' | 'soft'; operation_mode?: OperationMode; skip_nfo?: boolean; skip_download?: boolean }
 		) => Promise<unknown>;
 		updateBatchJob: (jobId: string, request?: UpdateRequest) => Promise<unknown>;
 	};
@@ -223,6 +224,7 @@ export function createOrganizeController(deps: OrganizeControllerDeps) {
 				destination: deps.getDestinationPath(),
 				copy_only: copyOnly,
 				link_mode: linkMode,
+				operation_mode: deps.getOperationMode() as OperationMode,
 				skip_nfo: skipNfo || false,
 				skip_download: skipDownload || false
 			});

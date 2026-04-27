@@ -379,6 +379,7 @@
 		},
 		getDestinationPath: () => destinationPath,
 		getOrganizeOperation: () => organizeOperation,
+		getOperationMode: () => getEffectiveOperationMode(),
 		getEditedMovies: () => editedMovies,
 		saveAllEdits,
 		getOrganizeStatus: () => organizeStatus,

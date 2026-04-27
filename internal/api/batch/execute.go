@@ -82,6 +82,8 @@ func organizeJob(deps *ServerDependencies) gin.HandlerFunc {
 			return
 		}
 
+		logging.Infof("Organize job %s: copy_only=%v operation_mode=%q link_mode=%q destination=%q", jobID, req.CopyOnly, req.OperationMode, req.LinkMode, req.Destination)
+
 		// Reuse the batch job lifecycle for organize progress polling.
 		job.MarkStarted()
 
