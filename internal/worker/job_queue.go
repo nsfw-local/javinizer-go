@@ -82,6 +82,103 @@ type FileResult struct {
 	PartSuffix         string            `json:"part_suffix,omitempty"`
 }
 
+func deepCopyFileResult(src *FileResult) *FileResult {
+	if src == nil {
+		return nil
+	}
+	dst := *src
+	if src.EndedAt != nil {
+		t := *src.EndedAt
+		dst.EndedAt = &t
+	}
+	if src.PosterError != nil {
+		s := *src.PosterError
+		dst.PosterError = &s
+	}
+	if src.TranslationWarning != nil {
+		s := *src.TranslationWarning
+		dst.TranslationWarning = &s
+	}
+	if src.FieldSources != nil {
+		dst.FieldSources = make(map[string]string, len(src.FieldSources))
+		for k, v := range src.FieldSources {
+			dst.FieldSources[k] = v
+		}
+	}
+	if src.ActressSources != nil {
+		dst.ActressSources = make(map[string]string, len(src.ActressSources))
+		for k, v := range src.ActressSources {
+			dst.ActressSources[k] = v
+		}
+	}
+	if src.Data != nil {
+		if m, ok := src.Data.(*models.Movie); ok {
+			mCopy := *m
+			if m.Actresses != nil {
+				mCopy.Actresses = make([]models.Actress, len(m.Actresses))
+				copy(mCopy.Actresses, m.Actresses)
+			}
+			if m.Genres != nil {
+				mCopy.Genres = make([]models.Genre, len(m.Genres))
+				copy(mCopy.Genres, m.Genres)
+			}
+			if m.Screenshots != nil {
+				mCopy.Screenshots = make([]string, len(m.Screenshots))
+				copy(mCopy.Screenshots, m.Screenshots)
+			}
+			if m.Translations != nil {
+				mCopy.Translations = make([]models.MovieTranslation, len(m.Translations))
+				copy(mCopy.Translations, m.Translations)
+			}
+			dst.Data = &mCopy
+		}
+	}
+	return &dst
+}
+
+func toFileResultSlim(src *FileResult) *FileResultSlim {
+	if src == nil {
+		return nil
+	}
+	slim := &FileResultSlim{
+		FilePath:    src.FilePath,
+		MovieID:     src.MovieID,
+		Revision:    src.Revision,
+		Status:      src.Status,
+		Error:       src.Error,
+		DataType:    src.DataType,
+		StartedAt:   src.StartedAt,
+		IsMultiPart: src.IsMultiPart,
+		PartNumber:  src.PartNumber,
+		PartSuffix:  src.PartSuffix,
+	}
+	if src.FieldSources != nil {
+		slim.FieldSources = make(map[string]string, len(src.FieldSources))
+		for k, v := range src.FieldSources {
+			slim.FieldSources[k] = v
+		}
+	}
+	if src.ActressSources != nil {
+		slim.ActressSources = make(map[string]string, len(src.ActressSources))
+		for k, v := range src.ActressSources {
+			slim.ActressSources[k] = v
+		}
+	}
+	if src.PosterError != nil {
+		s := *src.PosterError
+		slim.PosterError = &s
+	}
+	if src.TranslationWarning != nil {
+		s := *src.TranslationWarning
+		slim.TranslationWarning = &s
+	}
+	if src.EndedAt != nil {
+		t := *src.EndedAt
+		slim.EndedAt = &t
+	}
+	return slim
+}
+
 const (
 	DataTypeMovie = "movie"
 )
@@ -634,34 +731,10 @@ func (job *BatchJob) AtomicUpdateFileResult(filePath string, updateFn func(*File
 	}
 
 	// Deep copy current to prevent updateFn from accidentally mutating shared state
-	copied := *current
-	if current.EndedAt != nil {
-		t := *current.EndedAt
-		copied.EndedAt = &t
-	}
-	if current.PosterError != nil {
-		s := *current.PosterError
-		copied.PosterError = &s
-	}
-	if current.TranslationWarning != nil {
-		s := *current.TranslationWarning
-		copied.TranslationWarning = &s
-	}
-	if current.FieldSources != nil {
-		copied.FieldSources = make(map[string]string, len(current.FieldSources))
-		for k, v := range current.FieldSources {
-			copied.FieldSources[k] = v
-		}
-	}
-	if current.ActressSources != nil {
-		copied.ActressSources = make(map[string]string, len(current.ActressSources))
-		for k, v := range current.ActressSources {
-			copied.ActressSources[k] = v
-		}
-	}
+	copied := deepCopyFileResult(current)
 
 	// Apply the update function
-	updated, err := updateFn(&copied)
+	updated, err := updateFn(copied)
 	if err != nil {
 		return err
 	}
@@ -856,64 +929,7 @@ func (job *BatchJob) GetStatus() *BatchJob {
 		if v == nil {
 			continue
 		}
-		// Deep copy the FileResult struct
-		copyResult := *v
-
-		// Deep copy pointer fields to prevent shared state
-		if v.EndedAt != nil {
-			t := *v.EndedAt
-			copyResult.EndedAt = &t
-		}
-		if v.PosterError != nil {
-			s := *v.PosterError
-			copyResult.PosterError = &s
-		}
-		if v.TranslationWarning != nil {
-			s := *v.TranslationWarning
-			copyResult.TranslationWarning = &s
-		}
-		if v.FieldSources != nil {
-			copyResult.FieldSources = make(map[string]string, len(v.FieldSources))
-			for sourceField, sourceName := range v.FieldSources {
-				copyResult.FieldSources[sourceField] = sourceName
-			}
-		}
-		if v.ActressSources != nil {
-			copyResult.ActressSources = make(map[string]string, len(v.ActressSources))
-			for actressKey, sourceName := range v.ActressSources {
-				copyResult.ActressSources[actressKey] = sourceName
-			}
-		}
-
-		// Deep copy the Data payload if it's a *models.Movie to prevent shared mutable state
-		if v.Data != nil {
-			if m, ok := v.Data.(*models.Movie); ok {
-				mCopy := *m
-
-				// Deep copy nested slices to prevent concurrent modifications
-				if m.Actresses != nil {
-					mCopy.Actresses = make([]models.Actress, len(m.Actresses))
-					copy(mCopy.Actresses, m.Actresses)
-				}
-				if m.Genres != nil {
-					mCopy.Genres = make([]models.Genre, len(m.Genres))
-					copy(mCopy.Genres, m.Genres)
-				}
-				if m.Screenshots != nil {
-					mCopy.Screenshots = make([]string, len(m.Screenshots))
-					copy(mCopy.Screenshots, m.Screenshots)
-				}
-				if m.Translations != nil {
-					mCopy.Translations = make([]models.MovieTranslation, len(m.Translations))
-					copy(mCopy.Translations, m.Translations)
-				}
-
-				copyResult.Data = &mCopy
-			}
-			// For unknown types, keep the original pointer (can't easily deep-copy arbitrary types)
-		}
-
-		results[k] = &copyResult
+		results[k] = deepCopyFileResult(v)
 	}
 
 	// Deep copy the Files slice to avoid exposing the internal slice
@@ -994,43 +1010,7 @@ func (job *BatchJob) GetStatusSlim() *BatchJobSlim {
 		if v == nil {
 			continue
 		}
-		slim := &FileResultSlim{
-			FilePath:    v.FilePath,
-			MovieID:     v.MovieID,
-			Revision:    v.Revision,
-			Status:      v.Status,
-			Error:       v.Error,
-			DataType:    v.DataType,
-			StartedAt:   v.StartedAt,
-			IsMultiPart: v.IsMultiPart,
-			PartNumber:  v.PartNumber,
-			PartSuffix:  v.PartSuffix,
-		}
-		if v.FieldSources != nil {
-			slim.FieldSources = make(map[string]string, len(v.FieldSources))
-			for fk, fv := range v.FieldSources {
-				slim.FieldSources[fk] = fv
-			}
-		}
-		if v.ActressSources != nil {
-			slim.ActressSources = make(map[string]string, len(v.ActressSources))
-			for ak, av := range v.ActressSources {
-				slim.ActressSources[ak] = av
-			}
-		}
-		if v.PosterError != nil {
-			s := *v.PosterError
-			slim.PosterError = &s
-		}
-		if v.TranslationWarning != nil {
-			s := *v.TranslationWarning
-			slim.TranslationWarning = &s
-		}
-		if v.EndedAt != nil {
-			t := *v.EndedAt
-			slim.EndedAt = &t
-		}
-		results[k] = slim
+		results[k] = toFileResultSlim(v)
 	}
 
 	files := make([]string, len(job.Files))

@@ -2912,55 +2912,55 @@ func TestSanitizeTranslationWarning(t *testing.T) {
 			name:         "HTTP 429",
 			provider:     "google",
 			err:          &TranslationError{Kind: TranslationErrorHTTPStatus, StatusCode: 429, Message: "too many requests"},
-			wantContains: "rate limited (HTTP 429)",
+			wantContains: "rate limited",
 		},
 		{
 			name:         "HTTP 403",
 			provider:     "deepl",
 			err:          &TranslationError{Kind: TranslationErrorHTTPStatus, StatusCode: 403, Message: "forbidden"},
-			wantContains: "access denied (HTTP 403)",
+			wantContains: "access denied",
 		},
 		{
 			name:         "HTTP 500",
 			provider:     "google",
 			err:          &TranslationError{Kind: TranslationErrorHTTPStatus, StatusCode: 500, Message: "internal"},
-			wantContains: "service error (HTTP 500)",
+			wantContains: "external service error",
 		},
 		{
 			name:         "HTTP 502",
 			provider:     "anthropic",
 			err:          &TranslationError{Kind: TranslationErrorHTTPStatus, StatusCode: 502, Message: "bad gateway"},
-			wantContains: "service error (HTTP 502)",
+			wantContains: "external service error",
 		},
 		{
 			name:         "HTTP 400",
 			provider:     "google",
 			err:          &TranslationError{Kind: TranslationErrorHTTPStatus, StatusCode: 400, Message: "bad request"},
-			wantContains: "request error (HTTP 400)",
+			wantContains: "request error",
 		},
 		{
 			name:         "HTTP 422",
 			provider:     "deepl",
 			err:          &TranslationError{Kind: TranslationErrorHTTPStatus, StatusCode: 422, Message: "unprocessable"},
-			wantContains: "request error (HTTP 422)",
+			wantContains: "request error",
 		},
 		{
 			name:         "parse error",
 			provider:     "google",
 			err:          &TranslationError{Kind: TranslationErrorParse, Message: "bad json"},
-			wantContains: "parse_error",
+			wantContains: "service unavailable",
 		},
 		{
 			name:         "count mismatch",
 			provider:     "google",
 			err:          &TranslationError{Kind: TranslationErrorCountMismatch, Message: "3 vs 5"},
-			wantContains: "count_mismatch",
+			wantContains: "service unavailable",
 		},
 		{
 			name:         "provider error",
 			provider:     "google",
 			err:          &TranslationError{Kind: TranslationErrorProvider, Message: "failed after 3 attempts"},
-			wantContains: "provider_error",
+			wantContains: "service unavailable",
 		},
 		{
 			name:         "plain error",
@@ -2972,13 +2972,13 @@ func TestSanitizeTranslationWarning(t *testing.T) {
 			name:         "wrapped TranslationError",
 			provider:     "google",
 			err:          fmt.Errorf("wrapper: %w", &TranslationError{Kind: TranslationErrorHTTPStatus, StatusCode: 429, Message: "rate limited"}),
-			wantContains: "rate limited (HTTP 429)",
+			wantContains: "rate limited",
 		},
 		{
 			name:         "HTTP status 0 falls through",
 			provider:     "google",
 			err:          &TranslationError{Kind: TranslationErrorHTTPStatus, StatusCode: 0, Message: "unknown"},
-			wantContains: "http_status",
+			wantContains: "Translation failed",
 		},
 	}
 
@@ -2986,7 +2986,6 @@ func TestSanitizeTranslationWarning(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			got := sanitizeTranslationWarning(tt.provider, tt.err)
 			assert.Contains(t, got, tt.wantContains)
-			assert.Contains(t, got, tt.provider)
 		})
 	}
 }
@@ -3049,7 +3048,7 @@ func TestTranslateMovie_ReturnsWarningOnProviderError(t *testing.T) {
 	movie := &models.Movie{Title: "テスト"}
 	_, warning, err := s.TranslateMovie(context.Background(), movie, "")
 	require.Error(t, err)
-	assert.Contains(t, warning, "rate limited (HTTP 429)")
+	assert.Contains(t, warning, "rate limited")
 }
 
 func TestTranslationError_Error(t *testing.T) {
@@ -3144,5 +3143,5 @@ func TestTranslateMovie_CountMismatchWarning(t *testing.T) {
 	movie := &models.Movie{Title: "テスト", Description: "説明"}
 	_, warning, err := s.TranslateMovie(context.Background(), movie, "")
 	require.Error(t, err)
-	assert.Contains(t, warning, "count_mismatch", "count mismatch produces TranslationError warning")
+	assert.NotEmpty(t, warning, "count mismatch produces a sanitized warning")
 }

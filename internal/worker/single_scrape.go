@@ -720,6 +720,8 @@ func RunBatchScrapeOnce(
 	logging.Debugf("[Batch %s] File %d: Aggregation complete - Title: %s, Maker: %s, Actresses: %d, Genres: %d",
 		job.ID, fileIndex, movie.Title, movie.Maker, len(movie.Actresses), len(movie.Genres))
 
+	// ContentID fallback is applied post-aggregation because DMM-resolved ID
+	// is a synthetic value that should not influence field-level priority merging.
 	if movie.ContentID == "" && resolvedID != "" && resolvedID != movieID {
 		movie.ContentID = resolvedID
 		logging.Debugf("[Batch %s] File %d: Using DMM-resolved ContentID %q as fallback (aggregator produced empty ContentID)",

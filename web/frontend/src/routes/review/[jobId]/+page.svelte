@@ -105,7 +105,7 @@
 		if (isUpdateMode) return false;
 		if (!config) return false;
 		const mode = getEffectiveOperationMode();
-		return mode === 'organize' || mode === 'in-place' || mode === 'in-place-norenamefolder' || mode === 'metadata-only';
+		return mode === 'organize' || mode === 'in-place' || mode === 'in-place-norenamefolder';
 	}
 
 	const canOrganize = $derived(getCanOrganize());

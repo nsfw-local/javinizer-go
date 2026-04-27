@@ -35,17 +35,14 @@ func processOrganizeJob(ctx context.Context, job *worker.BatchJob, jobQueue *wor
 			logging.Warnf("Invalid operation mode override %q: %v, using config default", job.GetOperationModeOverride(), err)
 		} else {
 			outputConfig.OperationMode = parsed
-			outputConfig.MoveToFolder = parsed == types.OperationModeOrganize
-			outputConfig.RenameFolderInPlace = parsed == types.OperationModeInPlace
 		}
 	} else {
-		if moveToFolder := job.GetMoveToFolderOverride(); moveToFolder != nil {
-			outputConfig.MoveToFolder = *moveToFolder
-			outputConfig.OperationMode = ""
-		}
-		if renameFolderInPlace := job.GetRenameFolderInPlaceOverride(); renameFolderInPlace != nil {
-			outputConfig.RenameFolderInPlace = *renameFolderInPlace
-			outputConfig.OperationMode = ""
+		if override := job.GetMoveToFolderOverride(); override != nil && *override {
+			outputConfig.MoveToFolder = true
+			outputConfig.RenameFolderInPlace = false
+		} else if override := job.GetRenameFolderInPlaceOverride(); override != nil && *override {
+			outputConfig.RenameFolderInPlace = true
+			outputConfig.MoveToFolder = false
 		}
 	}
 	effectiveMode := outputConfig.GetOperationMode()
@@ -226,7 +223,7 @@ func processOrganizeJob(ctx context.Context, job *worker.BatchJob, jobQueue *wor
 				result, organizeErr = org.CopyWithLinkMode(plan, false, linkMode)
 			}
 		} else {
-			result, organizeErr = org.OrganizeWithLinkMode(match, movie, destination, false, false, false, linkMode)
+			result, organizeErr = org.OrganizeWithLinkMode(match, movie, destination, false, false, copyOnly, linkMode)
 		}
 
 		if organizeErr != nil {

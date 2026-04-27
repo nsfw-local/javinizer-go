@@ -204,7 +204,9 @@ export function createOrganizeController(deps: OrganizeControllerDeps) {
 	let lastSkipDownload = false;
 
 	async function organizeAll(skipNfo?: boolean, skipDownload?: boolean) {
-		if (!deps.getDestinationPath().trim()) {
+		const effectiveMode = deps.getOperationMode();
+		const needsDestination = effectiveMode === 'organize';
+		if (needsDestination && !deps.getDestinationPath().trim()) {
 			deps.toastError('Please enter a destination path');
 			return;
 		}

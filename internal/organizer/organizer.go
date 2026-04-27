@@ -303,6 +303,7 @@ func (o *Organizer) Execute(plan *OrganizePlan, dryRun bool) (*OrganizeResult, e
 
 	if !plan.WillMove {
 		result.ShouldGenerateMetadata = true
+		o.planSubtitles(plan, result)
 		return result, nil
 	}
 

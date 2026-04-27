@@ -287,7 +287,7 @@ func TestAggregate_TranslationWarningOnProviderError(t *testing.T) {
 	movie, warning, err := agg.Aggregate(results)
 	require.NoError(t, err)
 	require.NotNil(t, movie)
-	assert.Contains(t, warning, "rate limited (HTTP 429)")
+	assert.Contains(t, warning, "rate limited")
 	assert.Equal(t, "Original Title", movie.Title)
 }
 

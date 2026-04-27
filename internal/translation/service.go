@@ -191,21 +191,22 @@ func normalizeProvider(provider string) string {
 func sanitizeTranslationWarning(provider string, err error) string {
 	var te *TranslationError
 	if errors.As(err, &te) && te.Kind == TranslationErrorHTTPStatus {
+		logging.Warnf("Translation (%s): HTTP %d error", provider, te.StatusCode)
 		switch {
 		case te.StatusCode == 429:
-			return fmt.Sprintf("Translation failed (%s provider): rate limited (HTTP 429), try again later", provider)
+			return "Translation failed: rate limited, try again later"
 		case te.StatusCode == 403:
-			return fmt.Sprintf("Translation failed (%s provider): access denied (HTTP 403), check API key", provider)
+			return "Translation failed: access denied, check API key"
 		case te.StatusCode >= 500:
-			return fmt.Sprintf("Translation failed (%s provider): service error (HTTP %d)", provider, te.StatusCode)
+			return "Translation failed: external service error"
 		case te.StatusCode >= 400:
-			return fmt.Sprintf("Translation failed (%s provider): request error (HTTP %d)", provider, te.StatusCode)
+			return "Translation failed: request error"
 		}
 	}
 	if errors.As(err, &te) {
-		return fmt.Sprintf("Translation failed (%s provider): %s", provider, te.Kind)
+		return "Translation failed: service unavailable"
 	}
-	return fmt.Sprintf("Translation failed (%s provider): internal error", provider)
+	return "Translation failed: internal error"
 }
 
 func normalizeLanguage(language string) string {

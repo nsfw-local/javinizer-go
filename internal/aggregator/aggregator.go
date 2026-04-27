@@ -574,7 +574,7 @@ func (a *Aggregator) aggregateWithPriority(results []*models.ScraperResult, prio
 
 	if len(a.config.Metadata.RequiredFields) > 0 {
 		if err := validateRequiredFields(movie, a.config.Metadata.RequiredFields); err != nil {
-			return nil, translationWarning, fmt.Errorf("required field validation failed: %w", err)
+			return nil, "", fmt.Errorf("required field validation failed: %w", err)
 		}
 	}
 

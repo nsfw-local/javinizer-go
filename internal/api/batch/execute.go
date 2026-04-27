@@ -77,9 +77,11 @@ func organizeJob(deps *ServerDependencies) gin.HandlerFunc {
 		}
 
 		// Security: Validate destination directory against allow/deny lists
-		if !isDirAllowed(req.Destination, cfg.API.Security.AllowedDirectories, cfg.API.Security.DeniedDirectories) {
-			c.JSON(403, ErrorResponse{Error: "Access denied to requested directory"})
-			return
+		if effectiveMode == types.OperationModeOrganize {
+			if !isDirAllowed(req.Destination, cfg.API.Security.AllowedDirectories, cfg.API.Security.DeniedDirectories) {
+				c.JSON(403, ErrorResponse{Error: "Access denied to requested directory"})
+				return
+			}
 		}
 
 		logging.Infof("Organize job %s: copy_only=%v operation_mode=%q link_mode=%q destination=%q", jobID, req.CopyOnly, req.OperationMode, req.LinkMode, req.Destination)
