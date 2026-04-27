@@ -8,93 +8,76 @@ import (
 )
 
 func init() {
-	scraperutil.RegisterModule(&scraperModule{})
-}
-
-type scraperModule struct{}
-
-func (m *scraperModule) Name() string        { return "aventertainment" }
-func (m *scraperModule) Description() string { return "AV Entertainment" }
-func (m *scraperModule) Constructor() any {
-	return func(settings config.ScraperSettings, db *database.DB, globalConfig *config.ScrapersConfig) (models.Scraper, error) {
-		var globalProxy *config.ProxyConfig
-		var globalFlareSolverr config.FlareSolverrConfig
-		if globalConfig != nil {
-			globalProxy = &globalConfig.Proxy
-			globalFlareSolverr = globalConfig.FlareSolverr
-		}
-		return New(settings, globalProxy, globalFlareSolverr), nil
-	}
-}
-func (m *scraperModule) Validator() any {
-	return scraperutil.ValidatorFunc(func(a any) error {
-		return (&AVEntertainmentConfig{}).ValidateConfig(a.(*config.ScraperSettings))
-	})
-}
-func (m *scraperModule) ConfigFactory() any {
-	return scraperutil.ConfigFactory(func() any { return &AVEntertainmentConfig{} })
-}
-func (m *scraperModule) Options() any {
-	return []any{
-		models.ScraperOption{
-			Key:         "language",
-			Label:       "Language",
-			Description: "Language for metadata fields",
-			Type:        "select",
-			Default:     "en",
-			Choices: []models.ScraperChoice{
-				{Value: "en", Label: "English"},
-				{Value: "ja", Label: "Japanese"},
+	m := &scraperModule{}
+	m.StandardModule = scraperutil.StandardModule{
+		ScraperName:        "aventertainment",
+		ScraperDescription: "AV Entertainment",
+		ScraperOptions: []any{
+			models.ScraperOption{
+				Key:         "language",
+				Label:       "Language",
+				Description: "Language for metadata fields",
+				Type:        "select",
+				Default:     "en",
+				Choices: []models.ScraperChoice{
+					{Value: "en", Label: "English"},
+					{Value: "ja", Label: "Japanese"},
+				},
+			},
+			models.ScraperOption{
+				Key:         "request_delay",
+				Label:       "Request Delay",
+				Description: "Delay between requests to avoid rate limiting",
+				Type:        "number",
+				Min:         scraperutil.IntPtr(0),
+				Max:         scraperutil.IntPtr(5000),
+				Unit:        "ms",
+			},
+			models.ScraperOption{
+				Key:         "base_url",
+				Label:       "Base URL",
+				Description: "AV Entertainment base URL",
+				Type:        "string",
+			},
+			models.ScraperOption{
+				Key:         "scrape_bonus_screens",
+				Label:       "Scrape bonus screenshots",
+				Description: "Append bonus image files to screenshots",
+				Type:        "boolean",
 			},
 		},
-		models.ScraperOption{
-			Key:         "request_delay",
-			Label:       "Request Delay",
-			Description: "Delay between requests to avoid rate limiting",
-			Type:        "number",
-			Min:         scraperutil.IntPtr(0),
-			Max:         scraperutil.IntPtr(5000),
-			Unit:        "ms",
+		ScraperDefaults: config.ScraperSettings{
+			Enabled:   false,
+			RateLimit: 1000,
+			BaseURL:   "https://www.aventertainments.com",
 		},
-		models.ScraperOption{
-			Key:         "base_url",
-			Label:       "Base URL",
-			Description: "AV Entertainment base URL",
-			Type:        "string",
+		ScraperPriority: 45,
+		ConfigType:      func() scraperutil.ScraperConfigInterface { return &AVEntertainmentConfig{} },
+		NewScraperFunc: func(settings config.ScraperSettings, db *database.DB, globalConfig *config.ScrapersConfig) (models.Scraper, error) {
+			var globalProxy *config.ProxyConfig
+			var globalFlareSolverr config.FlareSolverrConfig
+			if globalConfig != nil {
+				globalProxy = &globalConfig.Proxy
+				globalFlareSolverr = globalConfig.FlareSolverr
+			}
+			return New(settings, globalProxy, globalFlareSolverr), nil
 		},
-		models.ScraperOption{
-			Key:         "scrape_bonus_screens",
-			Label:       "Scrape bonus screenshots",
-			Description: "Append bonus image files to screenshots",
-			Type:        "boolean",
+		FlatBuilderRaw: func(fc *scraperutil.FlattenedConfig, _ scraperutil.FlattenOverrides, raw any) any {
+			s := &config.ScraperSettings{Enabled: fc.Enabled, Language: "", RateLimit: fc.RateLimit, BaseURL: "https://www.aventertainments.com", Proxy: config.ProxyAsConfig(fc.Proxy), DownloadProxy: config.ProxyAsConfig(fc.DownloadProxy)}
+			if aventCfg, ok := raw.(*AVEntertainmentConfig); ok {
+				if aventCfg.ScrapeBonusScreens {
+					s.Extra = map[string]any{"scrape_bonus_screens": aventCfg.ScrapeBonusScreens}
+				}
+			}
+			return s
 		},
+		UseRawBuilder: true,
 	}
-}
-func (m *scraperModule) Defaults() any {
-	return config.ScraperSettings{
-		Enabled:   false,
-		RateLimit: 1000,
-		BaseURL:   "https://www.aventertainments.com",
-	}
-}
-func (m *scraperModule) Priority() int { return 45 }
-func proxyAsConfig(p any) *config.ProxyConfig {
-	if p == nil {
-		return nil
-	}
-	return p.(*config.ProxyConfig)
+	scraperutil.RegisterModule(m)
 }
 
-func (m *scraperModule) FlattenFunc() any {
-	return scraperutil.DefaultFlattenConfigWithRaw(scraperutil.FlattenOverrides{}, func(fc *scraperutil.FlattenedConfig, _ scraperutil.FlattenOverrides, raw any) any {
-		s := &config.ScraperSettings{Enabled: fc.Enabled, Language: "", RateLimit: fc.RateLimit, BaseURL: "https://www.aventertainments.com", Proxy: proxyAsConfig(fc.Proxy), DownloadProxy: proxyAsConfig(fc.DownloadProxy)}
-		if aventCfg, ok := raw.(*AVEntertainmentConfig); ok {
-			if aventCfg.ScrapeBonusScreens {
-				s.Extra = map[string]any{"scrape_bonus_screens": aventCfg.ScrapeBonusScreens}
-			}
-		}
-		return s
-	})
+type scraperModule struct {
+	scraperutil.StandardModule
 }
 
 var _ scraperutil.ScraperModule = (*scraperModule)(nil)

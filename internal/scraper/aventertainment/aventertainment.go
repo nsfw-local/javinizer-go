@@ -51,34 +51,14 @@ type Scraper struct {
 
 // New creates a new AVEntertainment scraper.
 func New(settings config.ScraperSettings, globalProxy *config.ProxyConfig, globalFlareSolverr config.FlareSolverrConfig) *Scraper {
-	// Build ScraperSettings for HTTP client (HTTP-01 pattern)
-	configForHTTP := &config.ScraperSettings{
-		Enabled:       settings.Enabled,
-		Timeout:       settings.Timeout,
-		RateLimit:     settings.RateLimit,
-		RetryCount:    settings.RetryCount,
-		UserAgent:     settings.UserAgent,
-		Proxy:         settings.Proxy,
-		DownloadProxy: settings.DownloadProxy,
-	}
-
-	// Handle nil globalProxy to avoid dereference panic
-	globalProxyVal := config.ProxyConfig{}
-	if globalProxy != nil {
-		globalProxyVal = *globalProxy
-	}
-	proxyEnabled := globalProxyVal.Enabled
-	if settings.Proxy != nil && settings.Proxy.Enabled {
-		proxyEnabled = true
-	}
-	proxyCfg := config.ResolveScraperProxy(globalProxyVal, settings.Proxy)
-
-	client, err := NewHTTPClient(configForHTTP, globalProxy, globalFlareSolverr)
-	usingProxy := err == nil && proxyEnabled && strings.TrimSpace(proxyCfg.URL) != ""
-	if err != nil {
-		logging.Errorf("AVEntertainment: Failed to create HTTP client with proxy: %v, using explicit no-proxy fallback", err)
-		client = httpclient.NewRestyClientNoProxy(time.Duration(settings.Timeout)*time.Second, settings.RetryCount)
-	}
+	result := httpclient.InitScraperClient(&settings, globalProxy, globalFlareSolverr,
+		httpclient.WithScraperHeaders(httpclient.CombineHeaders(
+			httpclient.StandardHTMLHeaders(),
+			httpclient.UserAgentHeader(settings.UserAgent),
+			map[string]string{"Accept-Language": "en-US,en;q=0.9,ja;q=0.8"},
+		)),
+	)
+	client := result.Client
 
 	base := strings.TrimSpace(settings.BaseURL)
 	if base == "" {
@@ -86,7 +66,6 @@ func New(settings config.ScraperSettings, globalProxy *config.ProxyConfig, globa
 	}
 	base = strings.TrimRight(base, "/")
 
-	// Extract scrape_bonus_screens from Extra if present
 	scrapeBonus := false
 	if settings.Extra != nil {
 		if val, ok := settings.Extra["scrape_bonus_screens"].(bool); ok {
@@ -106,8 +85,8 @@ func New(settings config.ScraperSettings, globalProxy *config.ProxyConfig, globa
 		settings:      settings,
 	}
 
-	if usingProxy {
-		logging.Infof("AVEntertainment: Using proxy %s", httpclient.SanitizeProxyURL(proxyCfg.URL))
+	if result.ProxyEnabled && strings.TrimSpace(result.ProxyProfile.URL) != "" {
+		logging.Infof("AVEntertainment: Using proxy %s", httpclient.SanitizeProxyURL(result.ProxyProfile.URL))
 	}
 
 	return s

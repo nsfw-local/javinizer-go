@@ -13,7 +13,7 @@ func TestFlattenFunc_WithValidConfig(t *testing.T) {
 	fn := scraperutil.GetFlattenFunc("aventertainment")
 	require.NotNil(t, fn)
 
-	cfg := &AVEntertainmentConfig{Enabled: true, RequestDelay: 1000}
+	cfg := &AVEntertainmentConfig{BaseScraperConfig: config.BaseScraperConfig{Enabled: true, RequestDelay: 1000}}
 	result := fn(cfg)
 	require.NotNil(t, result)
 
@@ -29,7 +29,7 @@ func TestFlattenFunc_WithProxy(t *testing.T) {
 	require.NotNil(t, fn)
 
 	proxyCfg := &config.ProxyConfig{Enabled: true, Profile: "test"}
-	cfg := &AVEntertainmentConfig{Enabled: true, RequestDelay: 500, Proxy: proxyCfg, DownloadProxy: proxyCfg}
+	cfg := &AVEntertainmentConfig{BaseScraperConfig: config.BaseScraperConfig{Enabled: true, RequestDelay: 500, Proxy: proxyCfg, DownloadProxy: proxyCfg}}
 	result := fn(cfg)
 	require.NotNil(t, result)
 
@@ -264,73 +264,73 @@ func TestGetterMethods(t *testing.T) {
 	}{
 		{
 			name:           "IsEnabled returns true when enabled",
-			config:         &AVEntertainmentConfig{Enabled: true},
+			config:         &AVEntertainmentConfig{BaseScraperConfig: config.BaseScraperConfig{Enabled: true}},
 			getter:         "IsEnabled",
 			expectedResult: true,
 		},
 		{
 			name:           "IsEnabled returns false when disabled",
-			config:         &AVEntertainmentConfig{Enabled: false},
+			config:         &AVEntertainmentConfig{BaseScraperConfig: config.BaseScraperConfig{Enabled: false}},
 			getter:         "IsEnabled",
 			expectedResult: false,
 		},
 		{
 			name:           "GetUserAgent returns custom user agent",
-			config:         &AVEntertainmentConfig{UserAgent: "custom-agent/1.0"},
+			config:         &AVEntertainmentConfig{BaseScraperConfig: config.BaseScraperConfig{UserAgent: "custom-agent/1.0"}},
 			getter:         "GetUserAgent",
 			expectedResult: "custom-agent/1.0",
 		},
 		{
 			name:           "GetUserAgent returns empty string when not set",
-			config:         &AVEntertainmentConfig{UserAgent: ""},
+			config:         &AVEntertainmentConfig{BaseScraperConfig: config.BaseScraperConfig{UserAgent: ""}},
 			getter:         "GetUserAgent",
 			expectedResult: "",
 		},
 		{
 			name:           "GetRequestDelay returns configured delay",
-			config:         &AVEntertainmentConfig{RequestDelay: 1000},
+			config:         &AVEntertainmentConfig{BaseScraperConfig: config.BaseScraperConfig{RequestDelay: 1000}},
 			getter:         "GetRequestDelay",
 			expectedResult: 1000,
 		},
 		{
 			name:           "GetRequestDelay returns 0 when not set",
-			config:         &AVEntertainmentConfig{RequestDelay: 0},
+			config:         &AVEntertainmentConfig{BaseScraperConfig: config.BaseScraperConfig{RequestDelay: 0}},
 			getter:         "GetRequestDelay",
 			expectedResult: 0,
 		},
 		{
 			name:           "GetMaxRetries returns configured retry count",
-			config:         &AVEntertainmentConfig{MaxRetries: 3},
+			config:         &AVEntertainmentConfig{BaseScraperConfig: config.BaseScraperConfig{MaxRetries: 3}},
 			getter:         "GetMaxRetries",
 			expectedResult: 3,
 		},
 		{
 			name:           "GetMaxRetries returns 0 when not set",
-			config:         &AVEntertainmentConfig{MaxRetries: 0},
+			config:         &AVEntertainmentConfig{BaseScraperConfig: config.BaseScraperConfig{MaxRetries: 0}},
 			getter:         "GetMaxRetries",
 			expectedResult: 0,
 		},
 		{
 			name:           "GetProxy returns proxy config when set",
-			config:         &AVEntertainmentConfig{Proxy: proxyConfig},
+			config:         &AVEntertainmentConfig{BaseScraperConfig: config.BaseScraperConfig{Proxy: proxyConfig}},
 			getter:         "GetProxy",
 			expectedResult: proxyConfig,
 		},
 		{
 			name:           "GetProxy returns nil when not set",
-			config:         &AVEntertainmentConfig{Proxy: nil},
+			config:         &AVEntertainmentConfig{BaseScraperConfig: config.BaseScraperConfig{Proxy: nil}},
 			getter:         "GetProxy",
 			expectedResult: nil,
 		},
 		{
 			name:           "GetDownloadProxy returns download proxy config when set",
-			config:         &AVEntertainmentConfig{DownloadProxy: downloadProxyConfig},
+			config:         &AVEntertainmentConfig{BaseScraperConfig: config.BaseScraperConfig{DownloadProxy: downloadProxyConfig}},
 			getter:         "GetDownloadProxy",
 			expectedResult: downloadProxyConfig,
 		},
 		{
 			name:           "GetDownloadProxy returns nil when not set",
-			config:         &AVEntertainmentConfig{DownloadProxy: nil},
+			config:         &AVEntertainmentConfig{BaseScraperConfig: config.BaseScraperConfig{DownloadProxy: nil}},
 			getter:         "GetDownloadProxy",
 			expectedResult: nil,
 		},

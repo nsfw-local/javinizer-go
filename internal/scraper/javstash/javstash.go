@@ -104,22 +104,11 @@ func New(settings config.ScraperSettings, globalProxy *config.ProxyConfig, globa
 	}
 	baseURL = strings.TrimSuffix(baseURL, "/")
 
-	scraperCfg := &config.ScraperSettings{
-		Enabled:         settings.Enabled,
-		Timeout:         settings.Timeout,
-		RateLimit:       settings.RateLimit,
-		RetryCount:      settings.RetryCount,
-		UserAgent:       settings.UserAgent,
-		Proxy:           settings.Proxy,
-		UseFlareSolverr: settings.UseFlareSolverr,
-		UseBrowser:      settings.UseBrowser,
-	}
-
-	client, err := NewHTTPClient(scraperCfg, globalProxy, globalFlareSolverr)
-	if err != nil {
-		logging.Errorf("Javstash: Failed to create HTTP client: %v, using fallback", err)
-		client = httpclient.NewRestyClientNoProxy(time.Duration(settings.Timeout)*time.Second, settings.RetryCount)
-	}
+	result := httpclient.InitScraperClient(&settings, globalProxy, globalFlareSolverr,
+		httpclient.WithScraperHeaders(httpclient.JSONAPIHeaders()),
+		httpclient.WithScraperHeaders(httpclient.UserAgentHeader(settings.UserAgent)),
+	)
+	client := result.Client
 
 	lang := scraperutil.NormalizeLanguage(settings.Language)
 
