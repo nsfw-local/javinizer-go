@@ -3,6 +3,7 @@ package database
 import (
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/javinizer/javinizer-go/internal/config"
@@ -28,14 +29,43 @@ func setupBaseRepoTestDB(t *testing.T) *DB {
 	return db
 }
 
-func TestBaseRepository_Create(t *testing.T) {
-	db := setupBaseRepoTestDB(t)
-	repo := NewBaseRepository[models.History, uint](
+func newTestHistoryRepo(db *DB) *BaseRepository[models.History, uint] {
+	return NewBaseRepository[models.History, uint](
 		db, "history",
 		func(h models.History) string { return fmt.Sprintf("%d", h.ID) },
 		WithDefaultOrder[models.History, uint]("created_at DESC"),
 		WithNewEntity[models.History, uint](func() models.History { return models.History{} }),
 	)
+}
+
+func newTestHistoryRepoNoOrder(db *DB) *BaseRepository[models.History, uint] {
+	return NewBaseRepository[models.History, uint](
+		db, "history",
+		func(h models.History) string { return fmt.Sprintf("%d", h.ID) },
+		WithNewEntity[models.History, uint](func() models.History { return models.History{} }),
+	)
+}
+
+func newTestJobRepo(db *DB) *BaseRepository[models.Job, string] {
+	return NewBaseRepository[models.Job, string](
+		db, "job",
+		func(j models.Job) string { return j.ID },
+		WithDefaultOrder[models.Job, string]("started_at DESC"),
+		WithNewEntity[models.Job, string](func() models.Job { return models.Job{} }),
+	)
+}
+
+func newTestGenreRepo(db *DB) *BaseRepository[models.Genre, uint] {
+	return NewBaseRepository[models.Genre, uint](
+		db, "genre",
+		func(g models.Genre) string { return g.Name },
+		WithNewEntity[models.Genre, uint](func() models.Genre { return models.Genre{} }),
+	)
+}
+
+func TestBaseRepository_Create(t *testing.T) {
+	db := setupBaseRepoTestDB(t)
+	repo := newTestHistoryRepo(db)
 
 	history := &models.History{MovieID: "TEST-001", Operation: "organize", Status: "success"}
 	err := repo.Create(history)
@@ -49,12 +79,7 @@ func TestBaseRepository_Create(t *testing.T) {
 
 func TestBaseRepository_FindByID(t *testing.T) {
 	db := setupBaseRepoTestDB(t)
-	repo := NewBaseRepository[models.History, uint](
-		db, "history",
-		func(h models.History) string { return fmt.Sprintf("%d", h.ID) },
-		WithDefaultOrder[models.History, uint]("created_at DESC"),
-		WithNewEntity[models.History, uint](func() models.History { return models.History{} }),
-	)
+	repo := newTestHistoryRepo(db)
 
 	history := &models.History{MovieID: "TEST-001", Operation: "organize", Status: "success"}
 	if err := repo.Create(history); err != nil {
@@ -72,12 +97,7 @@ func TestBaseRepository_FindByID(t *testing.T) {
 
 func TestBaseRepository_FindByID_NotFound(t *testing.T) {
 	db := setupBaseRepoTestDB(t)
-	repo := NewBaseRepository[models.History, uint](
-		db, "history",
-		func(h models.History) string { return fmt.Sprintf("%d", h.ID) },
-		WithDefaultOrder[models.History, uint]("created_at DESC"),
-		WithNewEntity[models.History, uint](func() models.History { return models.History{} }),
-	)
+	repo := newTestHistoryRepo(db)
 
 	_, err := repo.FindByID(99999)
 	if err == nil {
@@ -90,12 +110,7 @@ func TestBaseRepository_FindByID_NotFound(t *testing.T) {
 
 func TestBaseRepository_Delete(t *testing.T) {
 	db := setupBaseRepoTestDB(t)
-	repo := NewBaseRepository[models.History, uint](
-		db, "history",
-		func(h models.History) string { return fmt.Sprintf("%d", h.ID) },
-		WithDefaultOrder[models.History, uint]("created_at DESC"),
-		WithNewEntity[models.History, uint](func() models.History { return models.History{} }),
-	)
+	repo := newTestHistoryRepo(db)
 
 	history := &models.History{MovieID: "TEST-001", Operation: "organize", Status: "success"}
 	if err := repo.Create(history); err != nil {
@@ -114,12 +129,7 @@ func TestBaseRepository_Delete(t *testing.T) {
 
 func TestBaseRepository_List(t *testing.T) {
 	db := setupBaseRepoTestDB(t)
-	repo := NewBaseRepository[models.History, uint](
-		db, "history",
-		func(h models.History) string { return fmt.Sprintf("%d", h.ID) },
-		WithDefaultOrder[models.History, uint]("created_at DESC"),
-		WithNewEntity[models.History, uint](func() models.History { return models.History{} }),
-	)
+	repo := newTestHistoryRepo(db)
 
 	for i := 0; i < 5; i++ {
 		if err := repo.Create(&models.History{MovieID: fmt.Sprintf("TEST-%03d", i), Operation: "organize", Status: "success"}); err != nil {
@@ -138,12 +148,7 @@ func TestBaseRepository_List(t *testing.T) {
 
 func TestBaseRepository_ListAll(t *testing.T) {
 	db := setupBaseRepoTestDB(t)
-	repo := NewBaseRepository[models.History, uint](
-		db, "history",
-		func(h models.History) string { return fmt.Sprintf("%d", h.ID) },
-		WithDefaultOrder[models.History, uint]("created_at DESC"),
-		WithNewEntity[models.History, uint](func() models.History { return models.History{} }),
-	)
+	repo := newTestHistoryRepo(db)
 
 	for i := 0; i < 5; i++ {
 		if err := repo.Create(&models.History{MovieID: fmt.Sprintf("TEST-%03d", i), Operation: "organize", Status: "success"}); err != nil {
@@ -162,12 +167,7 @@ func TestBaseRepository_ListAll(t *testing.T) {
 
 func TestBaseRepository_Count(t *testing.T) {
 	db := setupBaseRepoTestDB(t)
-	repo := NewBaseRepository[models.History, uint](
-		db, "history",
-		func(h models.History) string { return fmt.Sprintf("%d", h.ID) },
-		WithDefaultOrder[models.History, uint]("created_at DESC"),
-		WithNewEntity[models.History, uint](func() models.History { return models.History{} }),
-	)
+	repo := newTestHistoryRepo(db)
 
 	for i := 0; i < 3; i++ {
 		if err := repo.Create(&models.History{MovieID: fmt.Sprintf("TEST-%03d", i), Operation: "organize", Status: "success"}); err != nil {
@@ -186,12 +186,7 @@ func TestBaseRepository_Count(t *testing.T) {
 
 func TestBaseRepository_Create_ErrorWrapping(t *testing.T) {
 	db := setupBaseRepoTestDB(t)
-	repo := NewBaseRepository[models.History, uint](
-		db, "history",
-		func(h models.History) string { return fmt.Sprintf("%d", h.ID) },
-		WithDefaultOrder[models.History, uint]("created_at DESC"),
-		WithNewEntity[models.History, uint](func() models.History { return models.History{} }),
-	)
+	repo := newTestHistoryRepo(db)
 
 	history := &models.History{MovieID: "TEST-001", Operation: "organize", Status: "success"}
 	if err := repo.Create(history); err != nil {
@@ -207,12 +202,7 @@ func TestBaseRepository_Create_ErrorWrapping(t *testing.T) {
 
 func TestBaseRepository_StringID(t *testing.T) {
 	db := setupBaseRepoTestDB(t)
-	repo := NewBaseRepository[models.Job, string](
-		db, "job",
-		func(j models.Job) string { return j.ID },
-		WithDefaultOrder[models.Job, string]("started_at DESC"),
-		WithNewEntity[models.Job, string](func() models.Job { return models.Job{} }),
-	)
+	repo := newTestJobRepo(db)
 
 	job := &models.Job{ID: "job-001", Status: "running"}
 	if err := repo.Create(job); err != nil {
@@ -235,12 +225,7 @@ func TestBaseRepository_StringID(t *testing.T) {
 
 func TestBaseRepository_GetDB(t *testing.T) {
 	db := setupBaseRepoTestDB(t)
-	repo := NewBaseRepository[models.History, uint](
-		db, "history",
-		func(h models.History) string { return fmt.Sprintf("%d", h.ID) },
-		WithDefaultOrder[models.History, uint]("created_at DESC"),
-		WithNewEntity[models.History, uint](func() models.History { return models.History{} }),
-	)
+	repo := newTestHistoryRepo(db)
 
 	got := repo.GetDB()
 	if got == nil {
@@ -250,12 +235,7 @@ func TestBaseRepository_GetDB(t *testing.T) {
 
 func TestBaseRepository_List_DefaultOrder(t *testing.T) {
 	db := setupBaseRepoTestDB(t)
-	repo := NewBaseRepository[models.History, uint](
-		db, "history",
-		func(h models.History) string { return fmt.Sprintf("%d", h.ID) },
-		WithDefaultOrder[models.History, uint]("created_at DESC"),
-		WithNewEntity[models.History, uint](func() models.History { return models.History{} }),
-	)
+	repo := newTestHistoryRepo(db)
 
 	if err := repo.Create(&models.History{MovieID: "FIRST", Operation: "organize", Status: "success"}); err != nil {
 		t.Fatalf("Create returned error: %v", err)
@@ -278,29 +258,21 @@ func TestBaseRepository_List_DefaultOrder(t *testing.T) {
 
 func TestBaseRepository_FindByID_ErrorWrapping(t *testing.T) {
 	db := setupBaseRepoTestDB(t)
-	repo := NewBaseRepository[models.History, uint](
-		db, "history",
-		func(h models.History) string { return fmt.Sprintf("%d", h.ID) },
-		WithNewEntity[models.History, uint](func() models.History { return models.History{} }),
-	)
+	repo := newTestHistoryRepoNoOrder(db)
 
 	_, err := repo.FindByID(99999)
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
 	errMsg := err.Error()
-	if !containsSubstring(errMsg, "history") {
+	if !strings.Contains(errMsg, "history") {
 		t.Errorf("error message should contain 'history', got: %s", errMsg)
 	}
 }
 
 func TestBaseRepository_Delete_NonExistent(t *testing.T) {
 	db := setupBaseRepoTestDB(t)
-	repo := NewBaseRepository[models.History, uint](
-		db, "history",
-		func(h models.History) string { return fmt.Sprintf("%d", h.ID) },
-		WithNewEntity[models.History, uint](func() models.History { return models.History{} }),
-	)
+	repo := newTestHistoryRepoNoOrder(db)
 
 	err := repo.Delete(99999)
 	if err != nil {
@@ -310,11 +282,7 @@ func TestBaseRepository_Delete_NonExistent(t *testing.T) {
 
 func TestBaseRepository_NoDefaultOrder(t *testing.T) {
 	db := setupBaseRepoTestDB(t)
-	repo := NewBaseRepository[models.Genre, uint](
-		db, "genre",
-		func(g models.Genre) string { return g.Name },
-		WithNewEntity[models.Genre, uint](func() models.Genre { return models.Genre{} }),
-	)
+	repo := newTestGenreRepo(db)
 
 	if err := repo.Create(&models.Genre{Name: "Action"}); err != nil {
 		t.Fatalf("Create returned error: %v", err)
@@ -329,22 +297,9 @@ func TestBaseRepository_NoDefaultOrder(t *testing.T) {
 	}
 }
 
-func containsSubstring(s, sub string) bool {
-	for i := 0; i+len(sub) <= len(s); i++ {
-		if s[i:i+len(sub)] == sub {
-			return true
-		}
-	}
-	return false
-}
-
 func TestBaseRepository_FindByID_ErrNotFound_WithGormErrRecordNotFound(t *testing.T) {
 	db := setupBaseRepoTestDB(t)
-	repo := NewBaseRepository[models.History, uint](
-		db, "history",
-		func(h models.History) string { return fmt.Sprintf("%d", h.ID) },
-		WithNewEntity[models.History, uint](func() models.History { return models.History{} }),
-	)
+	repo := newTestHistoryRepoNoOrder(db)
 
 	_, err := repo.FindByID(99999)
 	if err == nil {
