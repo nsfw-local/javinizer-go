@@ -2130,7 +2130,12 @@ func TestSearch_AP288_BlankDVDID(t *testing.T) {
 
 	result, err := scraper.Search(ctx, "AP-288")
 
-	require.NoError(t, err, "AP-288 should resolve successfully via blank dvd_id fallback")
+	if err != nil {
+		if strings.Contains(err.Error(), "403") {
+			t.Skip("R18.dev returned 403 — external service unavailable")
+		}
+		require.NoError(t, err, "AP-288 should resolve successfully via blank dvd_id fallback")
+	}
 	require.NotNil(t, result)
 	assert.Equal(t, "AP-288", result.ID)
 	assert.Equal(t, "1ap00288", result.ContentID)
