@@ -1,0 +1,356 @@
+package database
+
+import (
+	"errors"
+	"fmt"
+	"testing"
+
+	"github.com/javinizer/javinizer-go/internal/config"
+	"github.com/javinizer/javinizer-go/internal/models"
+)
+
+func setupBaseRepoTestDB(t *testing.T) *DB {
+	t.Helper()
+	cfg := &config.Config{
+		Database: config.DatabaseConfig{
+			Type:     "sqlite",
+			DSN:      ":memory:",
+			LogLevel: "silent",
+		},
+	}
+	db, err := New(cfg)
+	if err != nil {
+		t.Fatalf("failed to create test db: %v", err)
+	}
+	if err := db.AutoMigrate(); err != nil {
+		t.Fatalf("failed to migrate: %v", err)
+	}
+	return db
+}
+
+func TestBaseRepository_Create(t *testing.T) {
+	db := setupBaseRepoTestDB(t)
+	repo := NewBaseRepository[models.History, uint](
+		db, "history",
+		func(h models.History) string { return fmt.Sprintf("%d", h.ID) },
+		WithDefaultOrder[models.History, uint]("created_at DESC"),
+		WithNewEntity[models.History, uint](func() models.History { return models.History{} }),
+	)
+
+	history := &models.History{MovieID: "TEST-001", Operation: "organize", Status: "success"}
+	err := repo.Create(history)
+	if err != nil {
+		t.Fatalf("Create returned error: %v", err)
+	}
+	if history.ID == 0 {
+		t.Error("expected ID to be set after Create")
+	}
+}
+
+func TestBaseRepository_FindByID(t *testing.T) {
+	db := setupBaseRepoTestDB(t)
+	repo := NewBaseRepository[models.History, uint](
+		db, "history",
+		func(h models.History) string { return fmt.Sprintf("%d", h.ID) },
+		WithDefaultOrder[models.History, uint]("created_at DESC"),
+		WithNewEntity[models.History, uint](func() models.History { return models.History{} }),
+	)
+
+	history := &models.History{MovieID: "TEST-001", Operation: "organize", Status: "success"}
+	if err := repo.Create(history); err != nil {
+		t.Fatalf("Create returned error: %v", err)
+	}
+
+	found, err := repo.FindByID(history.ID)
+	if err != nil {
+		t.Fatalf("FindByID returned error: %v", err)
+	}
+	if found.MovieID != "TEST-001" {
+		t.Errorf("expected MovieID TEST-001, got %s", found.MovieID)
+	}
+}
+
+func TestBaseRepository_FindByID_NotFound(t *testing.T) {
+	db := setupBaseRepoTestDB(t)
+	repo := NewBaseRepository[models.History, uint](
+		db, "history",
+		func(h models.History) string { return fmt.Sprintf("%d", h.ID) },
+		WithDefaultOrder[models.History, uint]("created_at DESC"),
+		WithNewEntity[models.History, uint](func() models.History { return models.History{} }),
+	)
+
+	_, err := repo.FindByID(99999)
+	if err == nil {
+		t.Fatal("expected error for non-existent ID, got nil")
+	}
+	if !errors.Is(err, ErrNotFound) {
+		t.Errorf("expected ErrNotFound, got %v", err)
+	}
+}
+
+func TestBaseRepository_Delete(t *testing.T) {
+	db := setupBaseRepoTestDB(t)
+	repo := NewBaseRepository[models.History, uint](
+		db, "history",
+		func(h models.History) string { return fmt.Sprintf("%d", h.ID) },
+		WithDefaultOrder[models.History, uint]("created_at DESC"),
+		WithNewEntity[models.History, uint](func() models.History { return models.History{} }),
+	)
+
+	history := &models.History{MovieID: "TEST-001", Operation: "organize", Status: "success"}
+	if err := repo.Create(history); err != nil {
+		t.Fatalf("Create returned error: %v", err)
+	}
+
+	if err := repo.Delete(history.ID); err != nil {
+		t.Fatalf("Delete returned error: %v", err)
+	}
+
+	_, err := repo.FindByID(history.ID)
+	if !errors.Is(err, ErrNotFound) {
+		t.Errorf("expected ErrNotFound after delete, got %v", err)
+	}
+}
+
+func TestBaseRepository_List(t *testing.T) {
+	db := setupBaseRepoTestDB(t)
+	repo := NewBaseRepository[models.History, uint](
+		db, "history",
+		func(h models.History) string { return fmt.Sprintf("%d", h.ID) },
+		WithDefaultOrder[models.History, uint]("created_at DESC"),
+		WithNewEntity[models.History, uint](func() models.History { return models.History{} }),
+	)
+
+	for i := 0; i < 5; i++ {
+		if err := repo.Create(&models.History{MovieID: fmt.Sprintf("TEST-%03d", i), Operation: "organize", Status: "success"}); err != nil {
+			t.Fatalf("Create %d returned error: %v", i, err)
+		}
+	}
+
+	results, err := repo.List(3, 0)
+	if err != nil {
+		t.Fatalf("List returned error: %v", err)
+	}
+	if len(results) != 3 {
+		t.Errorf("expected 3 results, got %d", len(results))
+	}
+}
+
+func TestBaseRepository_List_ZeroLimit(t *testing.T) {
+	db := setupBaseRepoTestDB(t)
+	repo := NewBaseRepository[models.History, uint](
+		db, "history",
+		func(h models.History) string { return fmt.Sprintf("%d", h.ID) },
+		WithDefaultOrder[models.History, uint]("created_at DESC"),
+		WithNewEntity[models.History, uint](func() models.History { return models.History{} }),
+	)
+
+	for i := 0; i < 5; i++ {
+		if err := repo.Create(&models.History{MovieID: fmt.Sprintf("TEST-%03d", i), Operation: "organize", Status: "success"}); err != nil {
+			t.Fatalf("Create %d returned error: %v", i, err)
+		}
+	}
+
+	results, err := repo.List(0, 0)
+	if err != nil {
+		t.Fatalf("List returned error: %v", err)
+	}
+	if len(results) != 5 {
+		t.Errorf("expected 5 results with zero limit, got %d", len(results))
+	}
+}
+
+func TestBaseRepository_Count(t *testing.T) {
+	db := setupBaseRepoTestDB(t)
+	repo := NewBaseRepository[models.History, uint](
+		db, "history",
+		func(h models.History) string { return fmt.Sprintf("%d", h.ID) },
+		WithDefaultOrder[models.History, uint]("created_at DESC"),
+		WithNewEntity[models.History, uint](func() models.History { return models.History{} }),
+	)
+
+	for i := 0; i < 3; i++ {
+		if err := repo.Create(&models.History{MovieID: fmt.Sprintf("TEST-%03d", i), Operation: "organize", Status: "success"}); err != nil {
+			t.Fatalf("Create %d returned error: %v", i, err)
+		}
+	}
+
+	count, err := repo.Count()
+	if err != nil {
+		t.Fatalf("Count returned error: %v", err)
+	}
+	if count != 3 {
+		t.Errorf("expected count 3, got %d", count)
+	}
+}
+
+func TestBaseRepository_Create_ErrorWrapping(t *testing.T) {
+	db := setupBaseRepoTestDB(t)
+	repo := NewBaseRepository[models.History, uint](
+		db, "history",
+		func(h models.History) string { return fmt.Sprintf("%d", h.ID) },
+		WithDefaultOrder[models.History, uint]("created_at DESC"),
+		WithNewEntity[models.History, uint](func() models.History { return models.History{} }),
+	)
+
+	history := &models.History{MovieID: "TEST-001", Operation: "organize", Status: "success"}
+	if err := repo.Create(history); err != nil {
+		t.Fatalf("first Create returned error: %v", err)
+	}
+
+	duplicate := &models.History{ID: history.ID, MovieID: "TEST-002", Operation: "organize", Status: "success"}
+	err := repo.Create(duplicate)
+	if err == nil {
+		t.Fatal("expected error for duplicate create, got nil")
+	}
+}
+
+func TestBaseRepository_StringID(t *testing.T) {
+	db := setupBaseRepoTestDB(t)
+	repo := NewBaseRepository[models.Job, string](
+		db, "job",
+		func(j models.Job) string { return j.ID },
+		WithDefaultOrder[models.Job, string]("started_at DESC"),
+		WithNewEntity[models.Job, string](func() models.Job { return models.Job{} }),
+	)
+
+	job := &models.Job{ID: "job-001", Status: "running"}
+	if err := repo.Create(job); err != nil {
+		t.Fatalf("Create returned error: %v", err)
+	}
+
+	found, err := repo.FindByID("job-001")
+	if err != nil {
+		t.Fatalf("FindByID returned error: %v", err)
+	}
+	if found.ID != "job-001" {
+		t.Errorf("expected ID job-001, got %s", found.ID)
+	}
+
+	_, err = repo.FindByID("nonexistent")
+	if !errors.Is(err, ErrNotFound) {
+		t.Errorf("expected ErrNotFound, got %v", err)
+	}
+}
+
+func TestBaseRepository_GetDB(t *testing.T) {
+	db := setupBaseRepoTestDB(t)
+	repo := NewBaseRepository[models.History, uint](
+		db, "history",
+		func(h models.History) string { return fmt.Sprintf("%d", h.ID) },
+		WithDefaultOrder[models.History, uint]("created_at DESC"),
+		WithNewEntity[models.History, uint](func() models.History { return models.History{} }),
+	)
+
+	got := repo.GetDB()
+	if got == nil {
+		t.Error("GetDB returned nil")
+	}
+}
+
+func TestBaseRepository_List_DefaultOrder(t *testing.T) {
+	db := setupBaseRepoTestDB(t)
+	repo := NewBaseRepository[models.History, uint](
+		db, "history",
+		func(h models.History) string { return fmt.Sprintf("%d", h.ID) },
+		WithDefaultOrder[models.History, uint]("created_at DESC"),
+		WithNewEntity[models.History, uint](func() models.History { return models.History{} }),
+	)
+
+	if err := repo.Create(&models.History{MovieID: "FIRST", Operation: "organize", Status: "success"}); err != nil {
+		t.Fatalf("Create returned error: %v", err)
+	}
+	if err := repo.Create(&models.History{MovieID: "SECOND", Operation: "organize", Status: "success"}); err != nil {
+		t.Fatalf("Create returned error: %v", err)
+	}
+
+	results, err := repo.List(0, 0)
+	if err != nil {
+		t.Fatalf("List returned error: %v", err)
+	}
+	if len(results) < 2 {
+		t.Fatalf("expected at least 2 results, got %d", len(results))
+	}
+	if results[0].MovieID != "SECOND" {
+		t.Errorf("expected newest first (SECOND), got %s", results[0].MovieID)
+	}
+}
+
+func TestBaseRepository_FindByID_ErrorWrapping(t *testing.T) {
+	db := setupBaseRepoTestDB(t)
+	repo := NewBaseRepository[models.History, uint](
+		db, "history",
+		func(h models.History) string { return fmt.Sprintf("%d", h.ID) },
+		WithNewEntity[models.History, uint](func() models.History { return models.History{} }),
+	)
+
+	_, err := repo.FindByID(99999)
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	errMsg := err.Error()
+	if !containsSubstring(errMsg, "history") {
+		t.Errorf("error message should contain 'history', got: %s", errMsg)
+	}
+}
+
+func TestBaseRepository_Delete_NonExistent(t *testing.T) {
+	db := setupBaseRepoTestDB(t)
+	repo := NewBaseRepository[models.History, uint](
+		db, "history",
+		func(h models.History) string { return fmt.Sprintf("%d", h.ID) },
+		WithNewEntity[models.History, uint](func() models.History { return models.History{} }),
+	)
+
+	err := repo.Delete(99999)
+	if err != nil {
+		t.Errorf("deleting non-existent record should not error, got: %v", err)
+	}
+}
+
+func TestBaseRepository_NoDefaultOrder(t *testing.T) {
+	db := setupBaseRepoTestDB(t)
+	repo := NewBaseRepository[models.Genre, uint](
+		db, "genre",
+		func(g models.Genre) string { return g.Name },
+		WithNewEntity[models.Genre, uint](func() models.Genre { return models.Genre{} }),
+	)
+
+	if err := repo.Create(&models.Genre{Name: "Action"}); err != nil {
+		t.Fatalf("Create returned error: %v", err)
+	}
+
+	results, err := repo.List(0, 0)
+	if err != nil {
+		t.Fatalf("List returned error: %v", err)
+	}
+	if len(results) != 1 {
+		t.Errorf("expected 1 result, got %d", len(results))
+	}
+}
+
+func containsSubstring(s, sub string) bool {
+	for i := 0; i+len(sub) <= len(s); i++ {
+		if s[i:i+len(sub)] == sub {
+			return true
+		}
+	}
+	return false
+}
+
+func TestBaseRepository_FindByID_ErrNotFound_WithGormErrRecordNotFound(t *testing.T) {
+	db := setupBaseRepoTestDB(t)
+	repo := NewBaseRepository[models.History, uint](
+		db, "history",
+		func(h models.History) string { return fmt.Sprintf("%d", h.ID) },
+		WithNewEntity[models.History, uint](func() models.History { return models.History{} }),
+	)
+
+	_, err := repo.FindByID(99999)
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if !errors.Is(err, ErrNotFound) {
+		t.Errorf("expected ErrNotFound, got %v", err)
+	}
+}
