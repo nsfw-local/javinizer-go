@@ -1486,18 +1486,3 @@ func (r *routeRoundTripper) RoundTrip(req *http.Request) (*http.Response, error)
 		Request:    req,
 	}, nil
 }
-
-//nolint:unused // Reserved for future use in HTTP mocking
-type statusRoundTripper struct {
-	statusCode int
-}
-
-//nolint:unused // Reserved for future use in HTTP mocking
-func (s *statusRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
-	return &http.Response{
-		StatusCode: s.statusCode,
-		Header:     make(http.Header),
-		Body:       io.NopCloser(strings.NewReader("")),
-		Request:    req,
-	}, nil
-}

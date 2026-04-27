@@ -2,6 +2,8 @@ package config
 
 import (
 	"strings"
+
+	"gopkg.in/yaml.v3"
 )
 
 // ProxyProfile holds reusable proxy connection settings.
@@ -28,6 +30,17 @@ type ProxyConfig struct {
 	Profile        string                  `yaml:"profile,omitempty" json:"profile,omitempty"`                 // Named profile to use (for scraper-specific overrides)
 	DefaultProfile string                  `yaml:"default_profile,omitempty" json:"default_profile,omitempty"` // Default profile name (for global scrapers.proxy)
 	Profiles       map[string]ProxyProfile `yaml:"profiles,omitempty" json:"profiles,omitempty"`               // Named proxy profiles (global scrapers.proxy)
+}
+
+// UnmarshalYAML implements custom YAML unmarshaling for ProxyConfig.
+// It validates that no legacy proxy fields (url, username, password, use_main_proxy)
+// are present at the YAML level, then decodes into the struct.
+func (p *ProxyConfig) UnmarshalYAML(node *yaml.Node) error {
+	if err := rejectUnknownProxyFields(node, "proxy"); err != nil {
+		return err
+	}
+	type plain ProxyConfig
+	return node.Decode((*plain)(p))
 }
 
 // ResolveScraperUserAgent resolves the effective User-Agent for a scraper.

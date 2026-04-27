@@ -23,14 +23,6 @@ type VersionStatusResponse struct {
 	Error           string `json:"error,omitempty"`  // Error message if any
 }
 
-// VersionCheckRequest represents the request body for force version check.
-// Note: This struct is currently unused - the POST /api/v1/version/check endpoint
-// accepts JSON but doesn't use any fields. Kept for potential future use.
-type VersionCheckRequest struct {
-	// Force refresh the cache
-	ForceRefresh bool `json:"force_refresh,omitempty"`
-}
-
 // versionStatus godoc
 // @Summary Get version status
 // @Description Get the current version and check if an update is available. Returns cached status unless explicitly refreshed.

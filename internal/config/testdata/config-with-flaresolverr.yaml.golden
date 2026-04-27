@@ -17,10 +17,6 @@ scrapers:
         session_ttl: 300
     proxy:
         enabled: true
-        url: "http://proxy.example.com:8080"
-        username: ""
-        password: ""
-        use_main_proxy: false
         default_profile: ""
         profiles: {}
     r18dev:
@@ -29,25 +25,9 @@ scrapers:
         request_delay: 1500
         max_retries: 3
         respect_retry_after: true
-        timeout: 0
-        rate_limit: 1500
-        retry_count: 0
         user_agent: ""
         use_flaresolverr: true
-        extra:
-            respect_retry_after: true
     dmm:
         enabled: true
+        use_browser: true
         scrape_actress: true
-        enable_browser: true
-        browser_timeout: 30
-        language: ja
-        timeout: 0
-        rate_limit: 0
-        retry_count: 0
-        user_agent: ""
-        use_flaresolverr: false
-        extra:
-            browser_timeout: 30
-            enable_browser: true
-            scrape_actress: true

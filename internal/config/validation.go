@@ -35,9 +35,6 @@ func validateProxyProfileConfig(c *Config) error {
 
 	profiles := c.Scrapers.Proxy.Profiles
 
-	if err := validateNoLegacyProxyDirectFields("scrapers.proxy", &c.Scrapers.Proxy); err != nil {
-		return err
-	}
 	if c.Scrapers.Proxy.Enabled && c.Scrapers.Proxy.DefaultProfile == "" {
 		return fmt.Errorf("scrapers.proxy.default_profile is required when scrapers.proxy.enabled is true")
 	}
@@ -93,10 +90,6 @@ func validateProxyProfileRef(path string, proxyCfg *ProxyConfig, profiles map[st
 		return nil
 	}
 
-	if err := validateNoLegacyProxyDirectFields(path, proxyCfg); err != nil {
-		return err
-	}
-
 	// enabled=true with empty profile means "inherit" mode - valid, no profile needed
 	// enabled=true with non-empty profile means "specific" mode - profile is required
 	if proxyCfg.Enabled && proxyCfg.Profile != "" {
@@ -109,7 +102,6 @@ func validateProxyProfileRef(path string, proxyCfg *ProxyConfig, profiles map[st
 
 // rejectUnknownProxyFields checks if the raw YAML node contains legacy proxy fields
 // that are no longer supported. Returns an error if any are found.
-// nolint:unused // Will be integrated into UnmarshalYAML in Task 2
 func rejectUnknownProxyFields(node *yaml.Node, context string) error {
 	if node == nil {
 		return nil
@@ -138,15 +130,6 @@ func rejectUnknownProxyFields(node *yaml.Node, context string) error {
 		}
 	}
 
-	return nil
-}
-
-func validateNoLegacyProxyDirectFields(path string, proxyCfg *ProxyConfig) error {
-	if proxyCfg == nil {
-		return nil
-	}
-	// Legacy field validation is now handled at the YAML parsing level
-	// via rejectUnknownProxyFields() for url/username/password/use_main_proxy
 	return nil
 }
 
