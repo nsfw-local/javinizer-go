@@ -2900,3 +2900,249 @@ func TestService_TranslateMovie_StoresHash(t *testing.T) {
 	require.NotNil(t, translation)
 	assert.Equal(t, "abc123def456", translation.SettingsHash, "hash should be stored in translation")
 }
+
+func TestSanitizeTranslationWarning(t *testing.T) {
+	tests := []struct {
+		name         string
+		provider     string
+		err          error
+		wantContains string
+	}{
+		{
+			name:         "HTTP 429",
+			provider:     "google",
+			err:          &TranslationError{Kind: TranslationErrorHTTPStatus, StatusCode: 429, Message: "too many requests"},
+			wantContains: "rate limited (HTTP 429)",
+		},
+		{
+			name:         "HTTP 403",
+			provider:     "deepl",
+			err:          &TranslationError{Kind: TranslationErrorHTTPStatus, StatusCode: 403, Message: "forbidden"},
+			wantContains: "access denied (HTTP 403)",
+		},
+		{
+			name:         "HTTP 500",
+			provider:     "google",
+			err:          &TranslationError{Kind: TranslationErrorHTTPStatus, StatusCode: 500, Message: "internal"},
+			wantContains: "service error (HTTP 500)",
+		},
+		{
+			name:         "HTTP 502",
+			provider:     "anthropic",
+			err:          &TranslationError{Kind: TranslationErrorHTTPStatus, StatusCode: 502, Message: "bad gateway"},
+			wantContains: "service error (HTTP 502)",
+		},
+		{
+			name:         "HTTP 400",
+			provider:     "google",
+			err:          &TranslationError{Kind: TranslationErrorHTTPStatus, StatusCode: 400, Message: "bad request"},
+			wantContains: "request error (HTTP 400)",
+		},
+		{
+			name:         "HTTP 422",
+			provider:     "deepl",
+			err:          &TranslationError{Kind: TranslationErrorHTTPStatus, StatusCode: 422, Message: "unprocessable"},
+			wantContains: "request error (HTTP 422)",
+		},
+		{
+			name:         "parse error",
+			provider:     "google",
+			err:          &TranslationError{Kind: TranslationErrorParse, Message: "bad json"},
+			wantContains: "parse_error",
+		},
+		{
+			name:         "count mismatch",
+			provider:     "google",
+			err:          &TranslationError{Kind: TranslationErrorCountMismatch, Message: "3 vs 5"},
+			wantContains: "count_mismatch",
+		},
+		{
+			name:         "provider error",
+			provider:     "google",
+			err:          &TranslationError{Kind: TranslationErrorProvider, Message: "failed after 3 attempts"},
+			wantContains: "provider_error",
+		},
+		{
+			name:         "plain error",
+			provider:     "google",
+			err:          fmt.Errorf("connection refused"),
+			wantContains: "internal error",
+		},
+		{
+			name:         "wrapped TranslationError",
+			provider:     "google",
+			err:          fmt.Errorf("wrapper: %w", &TranslationError{Kind: TranslationErrorHTTPStatus, StatusCode: 429, Message: "rate limited"}),
+			wantContains: "rate limited (HTTP 429)",
+		},
+		{
+			name:         "HTTP status 0 falls through",
+			provider:     "google",
+			err:          &TranslationError{Kind: TranslationErrorHTTPStatus, StatusCode: 0, Message: "unknown"},
+			wantContains: "http_status",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := sanitizeTranslationWarning(tt.provider, tt.err)
+			assert.Contains(t, got, tt.wantContains)
+			assert.Contains(t, got, tt.provider)
+		})
+	}
+}
+
+func TestTranslateMovie_ReturnsWarningOnEmptyFields(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode([]interface{}{[]interface{}{[]interface{}{"translated text"}}})
+	}))
+	defer server.Close()
+
+	cfg := config.TranslationConfig{
+		Enabled:        true,
+		Provider:       "google",
+		TargetLanguage: "en",
+		SourceLanguage: "ja",
+		ApplyToPrimary: true,
+		Fields: config.TranslationFieldsConfig{
+			Title: true,
+		},
+		Google: config.GoogleTranslationConfig{
+			Mode:    "free",
+			BaseURL: server.URL,
+		},
+	}
+
+	s := New(cfg)
+	movie := &models.Movie{
+		Title: "テストタイトル",
+	}
+	translation, warning, err := s.TranslateMovie(context.Background(), movie, "")
+	require.NoError(t, err)
+	require.NotNil(t, translation)
+	assert.Empty(t, warning, "no warning when all translations succeed")
+	assert.Equal(t, "translated text", movie.Title)
+}
+
+func TestTranslateMovie_ReturnsWarningOnProviderError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusTooManyRequests)
+		w.Write([]byte("rate limited"))
+	}))
+	defer server.Close()
+
+	cfg := config.TranslationConfig{
+		Enabled:        true,
+		Provider:       "google",
+		TargetLanguage: "en",
+		SourceLanguage: "ja",
+		Fields: config.TranslationFieldsConfig{
+			Title: true,
+		},
+		Google: config.GoogleTranslationConfig{
+			Mode:    "free",
+			BaseURL: server.URL,
+		},
+	}
+
+	s := New(cfg)
+	movie := &models.Movie{Title: "テスト"}
+	_, warning, err := s.TranslateMovie(context.Background(), movie, "")
+	require.Error(t, err)
+	assert.Contains(t, warning, "rate limited (HTTP 429)")
+}
+
+func TestTranslationError_Error(t *testing.T) {
+	t.Run("with status code", func(t *testing.T) {
+		e := &TranslationError{Kind: TranslationErrorHTTPStatus, StatusCode: 429, Message: "too many requests"}
+		assert.Equal(t, "too many requests (status 429)", e.Error())
+	})
+	t.Run("without status code", func(t *testing.T) {
+		e := &TranslationError{Kind: TranslationErrorParse, Message: "bad json"}
+		assert.Equal(t, "bad json", e.Error())
+	})
+	t.Run("nil message falls back to kind", func(t *testing.T) {
+		e := &TranslationError{Kind: TranslationErrorCountMismatch}
+		assert.Equal(t, "count_mismatch", e.Error())
+	})
+	t.Run("nil error", func(t *testing.T) {
+		var e *TranslationError
+		assert.Equal(t, "", e.Error())
+	})
+}
+
+func TestTranslationError_Unwrap(t *testing.T) {
+	t.Run("with cause", func(t *testing.T) {
+		cause := fmt.Errorf("root cause")
+		e := &TranslationError{Kind: TranslationErrorProvider, Cause: cause}
+		assert.Equal(t, cause, e.Unwrap())
+	})
+	t.Run("nil error", func(t *testing.T) {
+		var e *TranslationError
+		assert.Nil(t, e.Unwrap())
+	})
+}
+
+func TestTranslateMovie_EmptyTranslationWarning(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode([]interface{}{[]interface{}{[]interface{}{""}}})
+	}))
+	defer server.Close()
+
+	cfg := config.TranslationConfig{
+		Enabled:        true,
+		Provider:       "google",
+		TargetLanguage: "en",
+		SourceLanguage: "ja",
+		ApplyToPrimary: true,
+		Fields: config.TranslationFieldsConfig{
+			Title: true,
+		},
+		Google: config.GoogleTranslationConfig{
+			Mode:    "free",
+			BaseURL: server.URL,
+		},
+	}
+
+	s := New(cfg)
+	movie := &models.Movie{Title: "テスト"}
+	translation, warning, err := s.TranslateMovie(context.Background(), movie, "")
+	require.NoError(t, err)
+	require.NotNil(t, translation)
+	assert.Contains(t, warning, "title: empty translation, kept original")
+	assert.Equal(t, "テスト", movie.Title, "original text preserved on empty translation")
+}
+
+func TestTranslateMovie_CountMismatchWarning(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"choices": []map[string]interface{}{
+				{"message": map[string]interface{}{"content": `["only_one"]`}},
+			},
+		})
+	}))
+	defer server.Close()
+
+	cfg := config.TranslationConfig{
+		Enabled:        true,
+		Provider:       "openai",
+		TargetLanguage: "en",
+		SourceLanguage: "ja",
+		Fields: config.TranslationFieldsConfig{
+			Title:       true,
+			Description: true,
+		},
+		OpenAI: config.OpenAITranslationConfig{
+			BaseURL: server.URL,
+			APIKey:  "test-key",
+		},
+	}
+
+	s := New(cfg)
+	movie := &models.Movie{Title: "テスト", Description: "説明"}
+	_, warning, err := s.TranslateMovie(context.Background(), movie, "")
+	require.Error(t, err)
+	assert.Contains(t, warning, "count_mismatch", "count mismatch produces TranslationError warning")
+}

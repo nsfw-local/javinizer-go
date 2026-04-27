@@ -1007,3 +1007,55 @@ func TestScraperResultNormalizeMediaURLs_NilReceiver(t *testing.T) {
 		result.NormalizeMediaURLs()
 	})
 }
+
+func TestScraperRegistry_Reset(t *testing.T) {
+	reg := NewScraperRegistry()
+	reg.Register(&mockScraperForTest{})
+	_, exists := reg.Get("mock")
+	assert.True(t, exists)
+
+	reg.Reset()
+	_, exists = reg.Get("mock")
+	assert.False(t, exists)
+}
+
+func TestReplacePathSuffixIgnoreCase(t *testing.T) {
+	tests := []struct {
+		name        string
+		path        string
+		suffix      string
+		replacement string
+		want        string
+	}{
+		{"replaces suffix", "/path/to/file.PS.jpg", "ps.jpg", "pl.jpg", "/path/to/file.pl.jpg"},
+		{"no match returns original", "/path/to/file.png", "ps.jpg", "pl.jpg", "/path/to/file.png"},
+		{"case insensitive", "/path/PS.JPG", "ps.jpg", "pl.jpg", "/path/pl.jpg"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := replacePathSuffixIgnoreCase(tc.path, tc.suffix, tc.replacement)
+			assert.Equal(t, tc.want, got)
+		})
+	}
+}
+
+func TestNormalizeDMMPosterURL_EdgeCases(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{"empty string", "", ""},
+		{"whitespace only", "  ", ""},
+		{"invalid url", "://not-a-url", "://not-a-url"},
+		{"non-DMM host unchanged", "https://example.com/img/ps.jpg", "https://example.com/img/ps.jpg"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := normalizeDMMPosterURL(tc.input)
+			assert.Equal(t, tc.want, got)
+		})
+	}
+}

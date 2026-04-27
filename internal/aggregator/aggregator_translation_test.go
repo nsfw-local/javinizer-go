@@ -254,3 +254,96 @@ func TestMergeTranslationFields(t *testing.T) {
 		assert.Equal(t, "old-source", merged.SourceName)
 	})
 }
+
+func TestAggregate_TranslationWarningOnProviderError(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusTooManyRequests)
+		w.Write([]byte("rate limited"))
+	}))
+	defer ts.Close()
+
+	cfg := config.DefaultConfig()
+	cfg.Scrapers.Priority = []string{"r18dev"}
+	cfg.Metadata.Priority.Priority = []string{"r18dev"}
+	cfg.Metadata.Translation.Enabled = true
+	cfg.Metadata.Translation.Provider = "openai"
+	cfg.Metadata.Translation.SourceLanguage = "en"
+	cfg.Metadata.Translation.TargetLanguage = "ja"
+	cfg.Metadata.Translation.OpenAI.BaseURL = ts.URL
+	cfg.Metadata.Translation.OpenAI.APIKey = "k"
+	cfg.Metadata.Translation.OpenAI.Model = "m"
+	cfg.Metadata.Translation.Fields = config.TranslationFieldsConfig{Title: true}
+
+	agg := New(cfg)
+
+	results := []*models.ScraperResult{{
+		Source:    "r18dev",
+		Language:  "en",
+		ID:        "IPX-003",
+		ContentID: "ipx003",
+		Title:     "Original Title",
+	}}
+
+	movie, warning, err := agg.Aggregate(results)
+	require.NoError(t, err)
+	require.NotNil(t, movie)
+	assert.Contains(t, warning, "rate limited (HTTP 429)")
+	assert.Equal(t, "Original Title", movie.Title)
+}
+
+func TestAggregate_TranslationWarningOnEmptyResult(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"choices": []map[string]interface{}{
+				{"message": map[string]interface{}{"content": `[""]`}},
+			},
+		})
+	}))
+	defer ts.Close()
+
+	cfg := config.DefaultConfig()
+	cfg.Scrapers.Priority = []string{"r18dev"}
+	cfg.Metadata.Priority.Priority = []string{"r18dev"}
+	cfg.Metadata.Translation.Enabled = true
+	cfg.Metadata.Translation.Provider = "openai"
+	cfg.Metadata.Translation.SourceLanguage = "en"
+	cfg.Metadata.Translation.TargetLanguage = "ja"
+	cfg.Metadata.Translation.OpenAI.BaseURL = ts.URL
+	cfg.Metadata.Translation.OpenAI.APIKey = "k"
+	cfg.Metadata.Translation.OpenAI.Model = "m"
+	cfg.Metadata.Translation.Fields = config.TranslationFieldsConfig{Title: true}
+	cfg.Metadata.Translation.ApplyToPrimary = true
+
+	agg := New(cfg)
+
+	results := []*models.ScraperResult{{
+		Source:    "r18dev",
+		Language:  "en",
+		ID:        "IPX-004",
+		ContentID: "ipx004",
+		Title:     "Original Title",
+	}}
+
+	movie, warning, err := agg.Aggregate(results)
+	require.NoError(t, err)
+	require.NotNil(t, movie)
+	assert.Contains(t, warning, "title: empty translation, kept original")
+	assert.Equal(t, "Original Title", movie.Title)
+}
+
+func TestApplyConfiguredTranslation_NilAggregator(t *testing.T) {
+	var agg *Aggregator
+	movie := &models.Movie{Title: "test"}
+	warning := agg.ApplyConfiguredTranslation(movie)
+	assert.Empty(t, warning)
+}
+
+func TestApplyConfiguredTranslation_Disabled(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.Metadata.Translation.Enabled = false
+	agg := New(cfg)
+	movie := &models.Movie{Title: "test"}
+	warning := agg.ApplyConfiguredTranslation(movie)
+	assert.Empty(t, warning)
+}

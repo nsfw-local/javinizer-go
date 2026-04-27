@@ -1304,4 +1304,268 @@ func TestBatchJob_GetStatusSlim(t *testing.T) {
 		assert.Equal(t, "ABC-123", movie.ID)
 		assert.Equal(t, "Test Movie", movie.Title)
 	})
+
+	t.Run("TranslationWarning deep-copied in GetStatus", func(t *testing.T) {
+		jq := NewJobQueue(nil, "", nil)
+		job := jq.CreateJob([]string{"file1.mp4"})
+
+		warning := "Translation failed: rate limited"
+		job.UpdateFileResult("file1.mp4", &FileResult{
+			FilePath:           "file1.mp4",
+			Status:             JobStatusCompleted,
+			TranslationWarning: &warning,
+			StartedAt:          time.Now(),
+		})
+
+		status := job.GetStatus()
+		result, ok := status.Results["file1.mp4"]
+		require.True(t, ok)
+		require.NotNil(t, result.TranslationWarning)
+		assert.Equal(t, warning, *result.TranslationWarning)
+
+		*result.TranslationWarning = "modified"
+		status2 := job.GetStatus()
+		result2, ok := status2.Results["file1.mp4"]
+		require.True(t, ok)
+		require.NotNil(t, result2.TranslationWarning)
+		assert.Equal(t, warning, *result2.TranslationWarning, "mutation of snapshot should not affect source")
+	})
+
+	t.Run("TranslationWarning deep-copied in GetStatusSlim", func(t *testing.T) {
+		jq := NewJobQueue(nil, "", nil)
+		job := jq.CreateJob([]string{"file1.mp4"})
+
+		warning := "Translation failed: empty result"
+		job.UpdateFileResult("file1.mp4", &FileResult{
+			FilePath:           "file1.mp4",
+			Status:             JobStatusCompleted,
+			TranslationWarning: &warning,
+			StartedAt:          time.Now(),
+		})
+
+		slim := job.GetStatusSlim()
+		result, ok := slim.Results["file1.mp4"]
+		require.True(t, ok)
+		require.NotNil(t, result.TranslationWarning)
+		assert.Equal(t, warning, *result.TranslationWarning)
+
+		*result.TranslationWarning = "modified"
+		slim2 := job.GetStatusSlim()
+		result2, ok := slim2.Results["file1.mp4"]
+		require.True(t, ok)
+		require.NotNil(t, result2.TranslationWarning)
+		assert.Equal(t, warning, *result2.TranslationWarning, "mutation of slim snapshot should not affect source")
+	})
+
+	t.Run("MoveToFolderOverride deep-copied in GetStatus", func(t *testing.T) {
+		jq := NewJobQueue(nil, "", nil)
+		job := jq.CreateJob([]string{"file1.mp4"})
+
+		tTrue := true
+		job.SetMoveToFolderOverride(&tTrue)
+
+		status := job.GetStatus()
+		require.NotNil(t, status.MoveToFolderOverride)
+		assert.True(t, *status.MoveToFolderOverride)
+
+		*status.MoveToFolderOverride = false
+		status2 := job.GetStatus()
+		assert.True(t, *status2.MoveToFolderOverride, "mutation of snapshot should not affect source")
+	})
+
+	t.Run("MoveToFolderOverride deep-copied in GetStatusSlim", func(t *testing.T) {
+		jq := NewJobQueue(nil, "", nil)
+		job := jq.CreateJob([]string{"file1.mp4"})
+
+		tTrue := true
+		job.SetMoveToFolderOverride(&tTrue)
+
+		slim := job.GetStatusSlim()
+		require.NotNil(t, slim.MoveToFolderOverride)
+		assert.True(t, *slim.MoveToFolderOverride)
+
+		*slim.MoveToFolderOverride = false
+		slim2 := job.GetStatusSlim()
+		assert.True(t, *slim2.MoveToFolderOverride, "mutation of slim snapshot should not affect source")
+	})
+
+	t.Run("RenameFolderInPlaceOverride deep-copied in GetStatus", func(t *testing.T) {
+		jq := NewJobQueue(nil, "", nil)
+		job := jq.CreateJob([]string{"file1.mp4"})
+
+		tFalse := false
+		job.SetRenameFolderInPlaceOverride(&tFalse)
+
+		status := job.GetStatus()
+		require.NotNil(t, status.RenameFolderInPlaceOverride)
+		assert.False(t, *status.RenameFolderInPlaceOverride)
+
+		*status.RenameFolderInPlaceOverride = true
+		status2 := job.GetStatus()
+		assert.False(t, *status2.RenameFolderInPlaceOverride, "mutation of snapshot should not affect source")
+	})
+
+	t.Run("GetID and GetJobStatus", func(t *testing.T) {
+		jq := NewJobQueue(nil, "", nil)
+		job := jq.CreateJob([]string{"file1.mp4"})
+
+		assert.Equal(t, job.ID, job.GetID())
+		assert.Equal(t, JobStatusPending, job.GetJobStatus())
+
+		job.MarkStarted()
+		assert.Equal(t, JobStatusRunning, job.GetJobStatus())
+	})
+}
+
+func TestBatchJob_RLockRUnlock(t *testing.T) {
+	jq := NewJobQueue(nil, "", nil)
+	job := jq.CreateJob([]string{"file1.mp4"})
+
+	assert.NotPanics(t, func() {
+		job.RLock()
+		job.RUnlock()
+	})
+}
+
+func TestJobQueue_StartStopCleanup(t *testing.T) {
+	jq := NewJobQueue(nil, "", nil)
+	jq.StartCleanup()
+	time.Sleep(10 * time.Millisecond)
+	jq.StopCleanup()
+}
+
+func TestJobQueue_CleanupOldOrganizedJobs_NoOp(t *testing.T) {
+	jq := NewJobQueue(nil, "", nil)
+	assert.NotPanics(t, func() {
+		jq.cleanupOldOrganizedJobs()
+	})
+}
+
+func TestJobQueue_LoadFromDatabase_NilRepo(t *testing.T) {
+	jq := NewJobQueue(nil, "", nil)
+	assert.NotPanics(t, func() {
+		jq.loadFromDatabase()
+	})
+}
+
+func TestJobQueue_PersistToDatabase_NilRepo(t *testing.T) {
+	jq := NewJobQueue(nil, "", nil)
+	job := jq.CreateJob([]string{"file1.mp4"})
+	assert.NotPanics(t, func() {
+		jq.persistToDatabase(job)
+	})
+}
+
+func TestJobQueue_PersistToDatabase_DeletedJob(t *testing.T) {
+	jq := NewJobQueue(nil, "", nil)
+	job := jq.CreateJob([]string{"file1.mp4"})
+	job.deleted = true
+	assert.NotPanics(t, func() {
+		jq.persistToDatabase(job)
+	})
+}
+
+func TestGetStatusSlim_NilResultEntry(t *testing.T) {
+	jq := NewJobQueue(nil, "", nil)
+	job := jq.CreateJob([]string{"file1.mp4"})
+	job.Results["file1.mp4"] = nil
+
+	slim := job.GetStatusSlim()
+	assert.NotNil(t, slim)
+	_, exists := slim.Results["file1.mp4"]
+	assert.False(t, exists, "nil result entries should be skipped")
+}
+
+func TestGetStatusSlim_FieldSourcesAndActressSources(t *testing.T) {
+	jq := NewJobQueue(nil, "", nil)
+	job := jq.CreateJob([]string{"file1.mp4"})
+	job.Results["file1.mp4"] = &FileResult{
+		FilePath: "file1.mp4",
+		Status:   JobStatusCompleted,
+		FieldSources: map[string]string{
+			"title": "r18dev",
+		},
+		ActressSources: map[string]string{
+			"actress_0": "dmm",
+		},
+	}
+
+	slim := job.GetStatusSlim()
+	assert.NotNil(t, slim)
+	slimResult := slim.Results["file1.mp4"]
+	require.NotNil(t, slimResult)
+	assert.Equal(t, "r18dev", slimResult.FieldSources["title"])
+	assert.Equal(t, "dmm", slimResult.ActressSources["actress_0"])
+}
+
+func TestGetStatusSlim_DeepCopyTimestamps(t *testing.T) {
+	jq := NewJobQueue(nil, "", nil)
+	job := jq.CreateJob([]string{"file1.mp4"})
+	now := time.Now()
+	job.CompletedAt = &now
+	job.OrganizedAt = &now
+	job.RevertedAt = &now
+
+	slim := job.GetStatusSlim()
+	require.NotNil(t, slim)
+	require.NotNil(t, slim.CompletedAt)
+	require.NotNil(t, slim.OrganizedAt)
+	require.NotNil(t, slim.RevertedAt)
+
+	*slim.CompletedAt = time.Time{}
+	assert.NotEqual(t, time.Time{}, *job.CompletedAt, "deep copy should isolate mutations")
+}
+
+func TestAtomicUpdateFileResult_NotFound(t *testing.T) {
+	jq := NewJobQueue(nil, "", nil)
+	job := jq.CreateJob([]string{"file1.mp4"})
+
+	err := job.AtomicUpdateFileResult("nonexistent.mp4", func(fr *FileResult) (*FileResult, error) {
+		return fr, nil
+	})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "not found")
+}
+
+func TestAtomicUpdateFileResult_NilResult(t *testing.T) {
+	jq := NewJobQueue(nil, "", nil)
+	job := jq.CreateJob([]string{"file1.mp4"})
+	job.Results["file1.mp4"] = nil
+
+	err := job.AtomicUpdateFileResult("file1.mp4", func(fr *FileResult) (*FileResult, error) {
+		return fr, nil
+	})
+	assert.Error(t, err)
+}
+
+func TestAtomicUpdateFileResult_UpdateFnError(t *testing.T) {
+	jq := NewJobQueue(nil, "", nil)
+	job := jq.CreateJob([]string{"file1.mp4"})
+	job.Results["file1.mp4"] = &FileResult{
+		FilePath: "file1.mp4",
+		Status:   JobStatusPending,
+	}
+
+	err := job.AtomicUpdateFileResult("file1.mp4", func(fr *FileResult) (*FileResult, error) {
+		return nil, fmt.Errorf("update rejected")
+	})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "update rejected")
+}
+
+func TestAtomicUpdateFileResult_StatusTransition(t *testing.T) {
+	jq := NewJobQueue(nil, "", nil)
+	job := jq.CreateJob([]string{"file1.mp4"})
+	job.Results["file1.mp4"] = &FileResult{
+		FilePath: "file1.mp4",
+		Status:   JobStatusPending,
+	}
+
+	err := job.AtomicUpdateFileResult("file1.mp4", func(fr *FileResult) (*FileResult, error) {
+		fr.Status = JobStatusCompleted
+		return fr, nil
+	})
+	require.NoError(t, err)
+	assert.Equal(t, 1, job.Completed)
+	assert.Equal(t, 0, job.Failed)
 }
