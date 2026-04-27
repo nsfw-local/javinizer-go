@@ -64,6 +64,7 @@ auth.sessions.json
 
 # Coverage files
 *.out
+coverage*.out
 coverage.html
 *.coverprofile
 COVERAGE_REPORT.md
