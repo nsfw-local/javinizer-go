@@ -838,13 +838,32 @@ func TestBatchJob_ExcludeFile(t *testing.T) {
 		files := []string{"file1.mp4"}
 		job := jq.CreateJob(files)
 
-		// Exclude same file multiple times
 		job.ExcludeFile("file1.mp4")
 		job.ExcludeFile("file1.mp4")
 		job.ExcludeFile("file1.mp4")
 
-		// Should still be excluded
 		assert.True(t, job.IsExcluded("file1.mp4"))
+	})
+
+	t.Run("AllFilesExcluded returns true when all excluded", func(t *testing.T) {
+		jq := NewJobQueue(nil, "", nil)
+		files := []string{"file1.mp4", "file2.mkv"}
+		job := jq.CreateJob(files)
+
+		assert.False(t, job.AllFilesExcluded())
+
+		job.ExcludeFile("file1.mp4")
+		assert.False(t, job.AllFilesExcluded())
+
+		job.ExcludeFile("file2.mkv")
+		assert.True(t, job.AllFilesExcluded())
+	})
+
+	t.Run("AllFilesExcluded returns false for empty results", func(t *testing.T) {
+		jq := NewJobQueue(nil, "", nil)
+		job := jq.CreateJob(nil)
+
+		assert.False(t, job.AllFilesExcluded())
 	})
 }
 

@@ -1151,6 +1151,53 @@ func TestAggregateActressMergingByJapaneseName(t *testing.T) {
 	assert.Equal(t, "https://example.com/thumb.jpg", movie.Actresses[0].ThumbURL)
 }
 
+func TestAggregateActressMergingJapaneseNameVsFirstName(t *testing.T) {
+	cfg := &config.Config{
+		Scrapers: config.ScrapersConfig{
+			Priority: []string{"dmm", "javlibrary"},
+		},
+		Metadata: config.MetadataConfig{
+			ActressDatabase: config.ActressDatabaseConfig{
+				ConvertAlias: false,
+			},
+		},
+	}
+
+	agg := New(cfg)
+
+	results := []*models.ScraperResult{
+		{
+			Source: "dmm",
+			ID:     "ABP-880",
+			Actresses: []models.ActressInfo{
+				{
+					DMMID:        1044046,
+					JapaneseName: "河合あすな",
+					ThumbURL:     "https://pics.dmm.co.jp/mono/actjpgs/kawai_asuna.jpg",
+				},
+			},
+		},
+		{
+			Source: "javlibrary",
+			ID:     "ABP-880",
+			Actresses: []models.ActressInfo{
+				{
+					FirstName: "河合あすな",
+				},
+			},
+		},
+	}
+
+	movie, _, err := agg.Aggregate(results)
+	require.NoError(t, err)
+	require.NotNil(t, movie)
+
+	require.Len(t, movie.Actresses, 1, "should merge Japanese-name-in-FirstName with JapaneseName")
+	assert.Equal(t, "河合あすな", movie.Actresses[0].JapaneseName)
+	assert.Equal(t, 1044046, movie.Actresses[0].DMMID)
+	assert.Equal(t, "https://pics.dmm.co.jp/mono/actjpgs/kawai_asuna.jpg", movie.Actresses[0].ThumbURL)
+}
+
 // TestAggregateActressAliasConversion tests actress alias conversion in full aggregation
 func TestAggregateActressAliasConversion(t *testing.T) {
 	tmpDir := t.TempDir()

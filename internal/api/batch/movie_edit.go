@@ -294,6 +294,12 @@ func excludeBatchMovie(deps *ServerDependencies) gin.HandlerFunc {
 			logging.Debugf("[ExcludeBatchMovie] Excluded: %s", filePath)
 		}
 
+		if job.AllFilesExcluded() {
+			job.MarkCancelled()
+			deps.JobQueue.PersistJob(job)
+			logging.Infof("All files excluded from batch job %s, marked as cancelled", jobID)
+		}
+
 		logging.Infof("Movie %s (%d file(s)) excluded from batch job %s", movieID, len(filePaths), jobID)
 
 		c.JSON(200, gin.H{"message": "Movie excluded from organization"})

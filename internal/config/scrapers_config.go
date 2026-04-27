@@ -256,13 +256,29 @@ func scraperConfigKeys(concrete any) map[string]struct{} {
 		return keys
 	}
 
+	collectStructKeys(typ, keys)
+	return keys
+}
+
+func collectStructKeys(typ reflect.Type, keys map[string]struct{}) {
 	for i := 0; i < typ.NumField(); i++ {
 		field := typ.Field(i)
-		if field.PkgPath != "" { // unexported
+		if field.PkgPath != "" {
 			continue
 		}
 
 		yamlTag := strings.TrimSpace(field.Tag.Get("yaml"))
+		if yamlTag == ",inline" {
+			embedType := field.Type
+			if embedType.Kind() == reflect.Ptr {
+				embedType = embedType.Elem()
+			}
+			if embedType.Kind() == reflect.Struct {
+				collectStructKeys(embedType, keys)
+			}
+			continue
+		}
+
 		yamlTagged := yamlTag != ""
 		if yamlTag != "" {
 			name := strings.Split(yamlTag, ",")[0]
@@ -280,21 +296,18 @@ func scraperConfigKeys(concrete any) map[string]struct{} {
 			}
 		}
 
-		// Match Go decoder fallback behavior for exported untagged fields.
 		if !yamlTagged && !jsonTagged {
 			keys[field.Name] = struct{}{}
 			keys[strings.ToLower(field.Name)] = struct{}{}
 		}
 	}
-
-	return keys
 }
 
 func isAllowedUnifiedScraperKey(key string) bool {
 	switch key {
 	case "enabled", "language", "timeout", "rate_limit", "retry_count", "user_agent",
 		"proxy", "download_proxy", "use_flaresolverr", "base_url", "cookies",
-		"request_delay", "max_retries",
+		"request_delay", "max_retries", "respect_retry_after",
 		// NEW: Allow use_browser and scrape_actress per-scraper overrides
 		"use_browser", "scrape_actress":
 		return true

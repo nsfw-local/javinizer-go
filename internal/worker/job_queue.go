@@ -906,6 +906,20 @@ func (job *BatchJob) ExcludeFile(filePath string) {
 	job.Excluded[filePath] = true
 }
 
+func (job *BatchJob) AllFilesExcluded() bool {
+	job.mu.RLock()
+	defer job.mu.RUnlock()
+	if len(job.Results) == 0 {
+		return len(job.Files) > 0 && len(job.Excluded) >= len(job.Files)
+	}
+	for filePath := range job.Results {
+		if !job.Excluded[filePath] {
+			return false
+		}
+	}
+	return true
+}
+
 // IsExcluded checks if a file is excluded from organization (thread-safe)
 func (job *BatchJob) IsExcluded(filePath string) bool {
 	job.mu.RLock()

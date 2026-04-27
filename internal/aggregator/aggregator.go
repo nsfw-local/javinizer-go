@@ -648,6 +648,10 @@ func (a *Aggregator) getRatingByPriority(
 	return 0, 0
 }
 
+func normalizeNameKey(name string) string {
+	return strings.Join(strings.Fields(strings.ToLower(strings.TrimSpace(name))), " ")
+}
+
 // getActressesByPriority retrieves actresses based on priority and merges data from multiple sources
 func (a *Aggregator) getActressesByPriority(
 	results map[string]*models.ScraperResult,
@@ -666,28 +670,29 @@ func (a *Aggregator) getActressesByPriority(
 		}
 
 		for _, info := range result.Actresses {
-			// Determine the name-based key for this actress
-			nameKey := info.JapaneseName
+			nameKey := normalizeNameKey(info.JapaneseName)
 			if nameKey == "" {
-				nameKey = info.FirstName + " " + info.LastName
+				nameKey = normalizeNameKey(info.FirstName + " " + info.LastName)
+			}
+			if nameKey == "" {
+				nameKey = normalizeNameKey(info.LastName + " " + info.FirstName)
 			}
 
-			// Check if we already have this actress by DMMID or by name
 			var existing *models.Actress
 			var foundInDMMIDMap bool
 
-			// Primary match: by DMMID (most reliable)
 			if info.DMMID != 0 {
 				existing, foundInDMMIDMap = actressByDMMID[info.DMMID]
 			}
 
-			// Secondary match: by name (for cases where one source has DMMID and other doesn't)
 			if existing == nil && nameKey != "" {
-				// Check DMMID map first (in case we need to upgrade a name-only entry)
 				for _, actress := range actressByDMMID {
-					actressNameKey := actress.JapaneseName
+					actressNameKey := normalizeNameKey(actress.JapaneseName)
 					if actressNameKey == "" {
-						actressNameKey = actress.FirstName + " " + actress.LastName
+						actressNameKey = normalizeNameKey(actress.FirstName + " " + actress.LastName)
+					}
+					if actressNameKey == "" {
+						actressNameKey = normalizeNameKey(actress.LastName + " " + actress.FirstName)
 					}
 					if actressNameKey == nameKey {
 						existing = actress
@@ -696,7 +701,6 @@ func (a *Aggregator) getActressesByPriority(
 					}
 				}
 
-				// Check name map if not found in DMMID map
 				if existing == nil {
 					existing = actressByName[nameKey]
 				}
