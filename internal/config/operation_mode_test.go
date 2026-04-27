@@ -128,8 +128,6 @@ func TestOutputConfigOperationModeField(t *testing.T) {
 		yamlContent := `
 output:
   operation_mode: organize
-  move_to_folder: true
-  rename_folder_in_place: false
 `
 		tmpDir := t.TempDir()
 		cfgPath := filepath.Join(tmpDir, "config.yaml")
@@ -141,12 +139,10 @@ output:
 		assert.Equal(t, types.OperationMode("organize"), cfg.Output.OperationMode)
 	})
 
-	t.Run("boolean fields remain unchanged with OperationMode", func(t *testing.T) {
+	t.Run("OperationMode in-place deserializes correctly", func(t *testing.T) {
 		yamlContent := `
 output:
   operation_mode: in-place
-  rename_folder_in_place: true
-  move_to_folder: true
 `
 		tmpDir := t.TempDir()
 		cfgPath := filepath.Join(tmpDir, "config.yaml")
