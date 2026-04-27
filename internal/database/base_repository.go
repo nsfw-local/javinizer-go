@@ -44,6 +44,9 @@ func NewBaseRepository[T any, ID string | uint](
 }
 
 func (r *BaseRepository[T, ID]) Create(entity *T) error {
+	if entity == nil {
+		return fmt.Errorf("create %s: entity must not be nil", r.entityName)
+	}
 	if err := r.db.Create(entity).Error; err != nil {
 		return wrapDBErr("create", fmt.Sprintf("%s %s", r.entityName, r.labelFunc(*entity)), err)
 	}
@@ -88,7 +91,9 @@ func (r *BaseRepository[T, ID]) List(limit, offset int) ([]T, error) {
 	if r.defaultOrder != "" {
 		query = query.Order(r.defaultOrder)
 	}
-	query = query.Limit(limit).Offset(offset)
+	if limit > 0 {
+		query = query.Limit(limit).Offset(offset)
+	}
 	err := query.Find(&entities).Error
 	if err != nil {
 		return nil, wrapDBErr("find", r.entityName+"s", err)

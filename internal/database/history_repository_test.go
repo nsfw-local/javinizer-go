@@ -471,7 +471,8 @@ func TestHistoryRepository(t *testing.T) {
 	t.Run("List with zero limit", func(t *testing.T) {
 		results, err := repo.List(0, 0)
 		require.NoError(t, err)
-		assert.Len(t, results, 0)
+		assert.GreaterOrEqual(t, len(results), 1,
+			"List(0,0) should return all records when limit is 0")
 	})
 
 	t.Run("List with negative offset", func(t *testing.T) {

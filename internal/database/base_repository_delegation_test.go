@@ -180,7 +180,7 @@ func TestDelegatedGetDB_RepoSpecificMethod(t *testing.T) {
 		"repo-specific method using GetDB() should work correctly")
 }
 
-func TestBaseRepositoryList_ZeroLimitReturnsZeroRecords(t *testing.T) {
+func TestBaseRepositoryList_ZeroLimitReturnsAllRecords(t *testing.T) {
 	db := newDatabaseTestDB(t)
 	repo := NewBaseRepository[models.History, uint](
 		db, "history",
@@ -197,8 +197,8 @@ func TestBaseRepositoryList_ZeroLimitReturnsZeroRecords(t *testing.T) {
 
 	results, err := repo.List(0, 0)
 	require.NoError(t, err)
-	assert.Len(t, results, 0,
-		"List(0,0) with GORM returns 0 records (use ListAll() for all records)")
+	assert.Len(t, results, 3,
+		"List(0,0) should return all records when limit is 0")
 }
 
 func TestDelegatedDelete_UintIDRepo(t *testing.T) {
