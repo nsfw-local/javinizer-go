@@ -717,8 +717,12 @@ func (a *Aggregator) getActressesByPriority(
 	actressByName := make(map[string]*models.Actress)
 
 	unknownText := ""
+	skipUnknown := false
 	if a.config != nil {
-		unknownText = strings.ToLower(strings.TrimSpace(a.config.Metadata.NFO.UnknownActressText))
+		skipUnknown = !a.config.Metadata.NFO.IsUnknownActressFallback()
+		if skipUnknown {
+			unknownText = strings.ToLower(strings.TrimSpace(a.config.Metadata.NFO.UnknownActressText))
+		}
 	}
 
 	hadAnyActressFromScrapers := false
@@ -734,7 +738,7 @@ func (a *Aggregator) getActressesByPriority(
 
 			nameKey := resolveNameKey(info.JapaneseName, info.FirstName, info.LastName)
 
-			if unknownText != "" && isUnknownActress(info, nameKey, unknownText) {
+			if skipUnknown && unknownText != "" && isUnknownActress(info, nameKey, unknownText) {
 				continue
 			}
 
@@ -833,7 +837,7 @@ func (a *Aggregator) getActressesByPriority(
 	}
 
 	// If no actresses found and unknown actress text is set, add unknown
-	if !hadAnyActressFromScrapers && a.config.Metadata.NFO.UnknownActressText != "" {
+	if !hadAnyActressFromScrapers && a.config.Metadata.NFO.IsUnknownActressFallback() && a.config.Metadata.NFO.UnknownActressText != "" {
 		return []models.Actress{
 			{
 				FirstName:    a.config.Metadata.NFO.UnknownActressText,

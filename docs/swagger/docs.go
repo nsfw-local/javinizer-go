@@ -2952,7 +2952,12 @@ const docTemplate = `{
                 "tagline": {
                     "type": "string"
                 },
+                "unknown_actress_mode": {
+                    "description": "skip (default) or fallback",
+                    "type": "string"
+                },
                 "unknown_actress_text": {
+                    "description": "Text for fallback mode",
                     "type": "string"
                 }
             }

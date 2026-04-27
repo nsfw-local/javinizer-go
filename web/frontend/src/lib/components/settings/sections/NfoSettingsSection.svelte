@@ -83,6 +83,17 @@
 				}}
 			/>
 
+			<FormToggle
+				label="Unknown actress fallback"
+				description="Show placeholder text when no actress information is available (off = omit entirely)"
+				checked={config.metadata.nfo?.unknown_actress_mode === 'fallback'}
+				onchange={(val) => {
+					if (!config.metadata.nfo) config.metadata.nfo = {};
+					config.metadata.nfo.unknown_actress_mode = val ? 'fallback' : 'skip';
+				}}
+			/>
+
+			{#if config.metadata.nfo?.unknown_actress_mode === 'fallback'}
 			<FormTextInput
 				label="Unknown actress text"
 				description="Text to display when actress information is unavailable"
@@ -93,6 +104,7 @@
 					config.metadata.nfo.unknown_actress_text = val;
 				}}
 			/>
+			{/if}
 
 			<FormToggle
 				label="Actress as tag"

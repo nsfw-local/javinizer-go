@@ -228,6 +228,7 @@ func TestActressNameFormatting(t *testing.T) {
 				ActorFirstNameOrder: true,
 				ActorJapaneseNames:  false,
 				UnknownActress:      "Unknown",
+				UnknownActressMode:  "fallback",
 			},
 			actress: models.Actress{
 				FirstName: "",

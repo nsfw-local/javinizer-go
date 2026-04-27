@@ -387,6 +387,10 @@ metadata:
         first_name_order: true
         actress_language_ja: false
         per_file: false            # Generate one NFO per multi-part file when true
+        # Unknown actress behavior:
+        #   skip (default) - omit unknown actresses entirely
+        #   fallback - use unknown_actress_text as placeholder when no actress found
+        unknown_actress_mode: skip
         unknown_actress_text: Unknown
         actress_as_tag: false
         add_generic_role: false  # Add generic "Actress" role to all actresses

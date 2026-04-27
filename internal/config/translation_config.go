@@ -252,8 +252,9 @@ type NFOConfig struct {
 	FilenameTemplate     string   `yaml:"filename_template" json:"filename_template"`
 	FirstNameOrder       bool     `yaml:"first_name_order" json:"first_name_order"`
 	ActressLanguageJA    bool     `yaml:"actress_language_ja" json:"actress_language_ja"`
-	PerFile              bool     `yaml:"per_file" json:"per_file"` // Create separate NFO for each multi-part file
-	UnknownActressText   string   `yaml:"unknown_actress_text" json:"unknown_actress_text"`
+	PerFile              bool     `yaml:"per_file" json:"per_file"`                         // Create separate NFO for each multi-part file
+	UnknownActressMode   string   `yaml:"unknown_actress_mode" json:"unknown_actress_mode"` // skip (default) or fallback
+	UnknownActressText   string   `yaml:"unknown_actress_text" json:"unknown_actress_text"` // Text for fallback mode
 	ActressAsTag         bool     `yaml:"actress_as_tag" json:"actress_as_tag"`
 	AddGenericRole       bool     `yaml:"add_generic_role" json:"add_generic_role"`         // Add generic "Actress" role to all actresses
 	AltNameRole          bool     `yaml:"alt_name_role" json:"alt_name_role"`               // Use alternate name (Japanese) in role field
@@ -265,6 +266,10 @@ type NFOConfig struct {
 	Tag                  []string `yaml:"tag" json:"tag"`
 	Tagline              string   `yaml:"tagline" json:"tagline"`
 	Credits              []string `yaml:"credits" json:"credits"`
+}
+
+func (n *NFOConfig) IsUnknownActressFallback() bool {
+	return n.UnknownActressMode == "fallback"
 }
 
 // SettingsHash computes a deterministic hash of output-affecting translation settings.

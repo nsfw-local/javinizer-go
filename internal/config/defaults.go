@@ -186,6 +186,7 @@ func DefaultConfig() *Config {
 				FirstNameOrder:       true,
 				ActressLanguageJA:    false,
 				PerFile:              false,
+				UnknownActressMode:   "skip",
 				UnknownActressText:   "Unknown",
 				ActressAsTag:         false,
 				AddGenericRole:       false,

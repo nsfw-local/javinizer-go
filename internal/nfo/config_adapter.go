@@ -21,6 +21,7 @@ func ConfigFromAppConfig(appCfg *config.NFOConfig, outputCfg *config.OutputConfi
 		ActorFirstNameOrder:  appCfg.FirstNameOrder,
 		ActorJapaneseNames:   appCfg.ActressLanguageJA,
 		UnknownActress:       appCfg.UnknownActressText,
+		UnknownActressMode:   appCfg.UnknownActressMode,
 		NFOFilenameTemplate:  appCfg.FilenameTemplate,
 		PerFile:              appCfg.PerFile,
 		ActressAsTag:         appCfg.ActressAsTag,

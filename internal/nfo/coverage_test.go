@@ -404,17 +404,17 @@ func TestNewGenerator_ConfigDefaults(t *testing.T) {
 
 	t.Run("Empty UnknownActress field", func(t *testing.T) {
 		cfg := &Config{
-			UnknownActress:      "", // Empty, should default
+			UnknownActress:      "",
+			UnknownActressMode:  "fallback",
 			NFOFilenameTemplate: "<ID>.nfo",
 		}
 
 		gen := NewGenerator(afero.NewOsFs(), cfg)
 
-		// Should set default
 		movie := &models.Movie{
 			ID: "TEST-001",
 			Actresses: []models.Actress{
-				{FirstName: "", LastName: ""}, // Unknown actress
+				{FirstName: "", LastName: ""},
 			},
 		}
 

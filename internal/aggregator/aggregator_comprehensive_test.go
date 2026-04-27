@@ -500,6 +500,7 @@ func TestGetActressesByPriorityUnknownText(t *testing.T) {
 				ConvertAlias: false,
 			},
 			NFO: config.NFOConfig{
+				UnknownActressMode: "fallback",
 				UnknownActressText: "Unknown",
 			},
 		},

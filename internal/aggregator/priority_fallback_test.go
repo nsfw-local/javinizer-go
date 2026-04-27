@@ -162,6 +162,100 @@ func TestUnknownActressJapaneseNameFiltered(t *testing.T) {
 	assert.Equal(t, "テスト女優", movie.Actresses[0].JapaneseName)
 }
 
+func TestUnknownActressFallbackModeKeepsFromScraper(t *testing.T) {
+	cfg := &config.Config{
+		Scrapers: config.ScrapersConfig{
+			Priority: []string{"mgstage"},
+		},
+		Metadata: config.MetadataConfig{
+			NFO: config.NFOConfig{
+				UnknownActressMode: "fallback",
+				UnknownActressText: "Unknown",
+			},
+		},
+	}
+
+	agg := New(cfg)
+
+	results := []*models.ScraperResult{
+		{
+			Source: "mgstage",
+			ID:     "200GANA-3215",
+			Title:  "マジ軟派、初撮。 2172",
+			Actresses: []models.ActressInfo{
+				{FirstName: "Unknown"},
+			},
+		},
+	}
+
+	movie, _, err := agg.Aggregate(results)
+	require.NoError(t, err)
+	require.NotNil(t, movie)
+
+	assert.Equal(t, 1, len(movie.Actresses), "Fallback mode should keep Unknown actress from scraper")
+}
+
+func TestUnknownActressFallbackModeAddsPlaceholder(t *testing.T) {
+	cfg := &config.Config{
+		Scrapers: config.ScrapersConfig{
+			Priority: []string{"mgstage"},
+		},
+		Metadata: config.MetadataConfig{
+			NFO: config.NFOConfig{
+				UnknownActressMode: "fallback",
+				UnknownActressText: "Unknown",
+			},
+		},
+	}
+
+	agg := New(cfg)
+
+	results := []*models.ScraperResult{
+		{
+			Source: "mgstage",
+			ID:     "200GANA-3215",
+			Title:  "マジ軟派、初撮。 2172",
+		},
+	}
+
+	movie, _, err := agg.Aggregate(results)
+	require.NoError(t, err)
+	require.NotNil(t, movie)
+
+	assert.Equal(t, 1, len(movie.Actresses), "Fallback mode should add Unknown placeholder")
+	assert.Equal(t, "Unknown", movie.Actresses[0].FirstName)
+}
+
+func TestUnknownActressSkipModeNoPlaceholder(t *testing.T) {
+	cfg := &config.Config{
+		Scrapers: config.ScrapersConfig{
+			Priority: []string{"mgstage"},
+		},
+		Metadata: config.MetadataConfig{
+			NFO: config.NFOConfig{
+				UnknownActressMode: "skip",
+				UnknownActressText: "Unknown",
+			},
+		},
+	}
+
+	agg := New(cfg)
+
+	results := []*models.ScraperResult{
+		{
+			Source: "mgstage",
+			ID:     "200GANA-3215",
+			Title:  "マジ軟派、初撮。 2172",
+		},
+	}
+
+	movie, _, err := agg.Aggregate(results)
+	require.NoError(t, err)
+	require.NotNil(t, movie)
+
+	assert.Equal(t, 0, len(movie.Actresses), "Skip mode should not add Unknown placeholder")
+}
+
 func TestIsUnknownActress(t *testing.T) {
 	tests := []struct {
 		name        string

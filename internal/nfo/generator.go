@@ -27,6 +27,7 @@ type Config struct {
 	ActorFirstNameOrder bool   // true = FirstName LastName, false = LastName FirstName
 	ActorJapaneseNames  bool   // Use Japanese names if available
 	UnknownActress      string // Placeholder for unknown actresses (default: "Unknown")
+	UnknownActressMode  string // skip (default) or fallback
 
 	// File naming
 	NFOFilenameTemplate string // Template for NFO filename (default: "<ID>.nfo")
@@ -68,6 +69,9 @@ func NewGenerator(fs afero.Fs, cfg *Config) *Generator {
 	if cfg.UnknownActress == "" {
 		cfg.UnknownActress = "Unknown"
 	}
+	if cfg.UnknownActressMode == "" {
+		cfg.UnknownActressMode = "skip"
+	}
 	if cfg.NFOFilenameTemplate == "" {
 		cfg.NFOFilenameTemplate = "<ID>.nfo"
 	}
@@ -85,6 +89,7 @@ func DefaultConfig() *Config {
 		ActorFirstNameOrder:  true,
 		ActorJapaneseNames:   false,
 		UnknownActress:       "Unknown",
+		UnknownActressMode:   "skip",
 		NFOFilenameTemplate:  "<ID>.nfo",
 		IncludeStreamDetails: false,
 		IncludeFanart:        true,
@@ -295,7 +300,8 @@ func (g *Generator) MovieToNFO(movie *models.Movie, videoFilePath string) *Movie
 		// Add actress names as tags
 		for _, actress := range movie.Actresses {
 			actressName := g.formatActressName(actress)
-			if actressName != "" && actressName != g.config.UnknownActress && !tagSet[actressName] {
+			skipUnknownTag := g.config.UnknownActressMode != "fallback" && actressName == g.config.UnknownActress
+			if actressName != "" && !skipUnknownTag && !tagSet[actressName] {
 				nfo.Tags = append(nfo.Tags, actressName)
 				tagSet[actressName] = true
 			}
@@ -363,22 +369,22 @@ func normalizeActressNameForDedup(name string) string {
 
 // formatActressName formats an actress name according to config
 func (g *Generator) formatActressName(actress models.Actress) string {
-	return FormatActressName(actress, g.config.ActorJapaneseNames, g.config.ActorFirstNameOrder, g.config.UnknownActress)
+	return FormatActressName(actress, g.config.ActorJapaneseNames, g.config.ActorFirstNameOrder, g.config.UnknownActress, g.config.UnknownActressMode)
 }
 
-// formatActressNameFromActressInfo formats an actress name from ActressInfo
 func (g *Generator) formatActressNameFromActressInfo(actress models.ActressInfo) string {
 	return FormatActressName(models.Actress{
 		FirstName:    actress.FirstName,
 		LastName:     actress.LastName,
 		JapaneseName: actress.JapaneseName,
-	}, g.config.ActorJapaneseNames, g.config.ActorFirstNameOrder, g.config.UnknownActress)
+	}, g.config.ActorJapaneseNames, g.config.ActorFirstNameOrder, g.config.UnknownActress, g.config.UnknownActressMode)
 }
 
-// FormatActressName formats an actress name according to the given settings.
-// unknownActress is returned when the actress has no name in any language.
-// Pass "" for unknownActress to use the default "Unknown" placeholder.
-func FormatActressName(actress models.Actress, japaneseNames bool, firstNameOrder bool, unknownActress string) string {
+func FormatActressName(actress models.Actress, japaneseNames bool, firstNameOrder bool, unknownActress string, unknownActressMode ...string) string {
+	mode := ""
+	if len(unknownActressMode) > 0 {
+		mode = unknownActressMode[0]
+	}
 	if unknownActress == "" {
 		unknownActress = "Unknown"
 	}
@@ -390,6 +396,9 @@ func FormatActressName(actress models.Actress, japaneseNames bool, firstNameOrde
 	if actress.FirstName == "" && actress.LastName == "" {
 		if actress.JapaneseName != "" {
 			return actress.JapaneseName
+		}
+		if mode == "skip" {
+			return ""
 		}
 		return unknownActress
 	}
