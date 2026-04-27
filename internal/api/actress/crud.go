@@ -11,7 +11,6 @@ import (
 	"github.com/javinizer/javinizer-go/internal/api/core"
 	"github.com/javinizer/javinizer-go/internal/database"
 	"github.com/javinizer/javinizer-go/internal/models"
-	"gorm.io/gorm"
 )
 
 type actressRequest struct {
@@ -143,7 +142,7 @@ func getActress(actressRepo *database.ActressRepository) gin.HandlerFunc {
 
 		actress, err := actressRepo.FindByID(id)
 		if err != nil {
-			if errors.Is(err, gorm.ErrRecordNotFound) {
+			if database.IsNotFound(err) {
 				c.JSON(http.StatusNotFound, ErrorResponse{Error: "actress not found"})
 				return
 			}
@@ -198,7 +197,7 @@ func updateActress(actressRepo *database.ActressRepository) gin.HandlerFunc {
 
 		existing, err := actressRepo.FindByID(id)
 		if err != nil {
-			if errors.Is(err, gorm.ErrRecordNotFound) {
+			if database.IsNotFound(err) {
 				c.JSON(http.StatusNotFound, ErrorResponse{Error: "actress not found"})
 				return
 			}
@@ -244,7 +243,7 @@ func deleteActress(actressRepo *database.ActressRepository) gin.HandlerFunc {
 
 		existing, err := actressRepo.FindByID(id)
 		if err != nil {
-			if errors.Is(err, gorm.ErrRecordNotFound) {
+			if database.IsNotFound(err) {
 				c.JSON(http.StatusNotFound, ErrorResponse{Error: "actress not found"})
 				return
 			}

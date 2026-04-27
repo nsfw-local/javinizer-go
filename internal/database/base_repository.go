@@ -88,11 +88,19 @@ func (r *BaseRepository[T, ID]) List(limit, offset int) ([]T, error) {
 	if r.defaultOrder != "" {
 		query = query.Order(r.defaultOrder)
 	}
-	if limit > 0 {
-		query = query.Limit(limit)
+	query = query.Limit(limit).Offset(offset)
+	err := query.Find(&entities).Error
+	if err != nil {
+		return nil, wrapDBErr("find", r.entityName+"s", err)
 	}
-	if offset > 0 {
-		query = query.Offset(offset)
+	return entities, nil
+}
+
+func (r *BaseRepository[T, ID]) ListAll() ([]T, error) {
+	var entities []T
+	query := r.db.DB
+	if r.defaultOrder != "" {
+		query = query.Order(r.defaultOrder)
 	}
 	err := query.Find(&entities).Error
 	if err != nil {

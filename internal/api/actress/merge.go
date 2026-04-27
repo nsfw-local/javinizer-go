@@ -6,7 +6,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/javinizer/javinizer-go/internal/database"
-	"gorm.io/gorm"
 )
 
 func writeActressMergeError(c *gin.Context, err error) {
@@ -16,7 +15,7 @@ func writeActressMergeError(c *gin.Context, err error) {
 		errors.Is(err, database.ErrActressMergeInvalidField),
 		errors.Is(err, database.ErrActressMergeInvalidDecision):
 		c.JSON(http.StatusBadRequest, ErrorResponse{Error: err.Error()})
-	case errors.Is(err, gorm.ErrRecordNotFound):
+	case database.IsNotFound(err):
 		c.JSON(http.StatusNotFound, ErrorResponse{Error: "actress not found"})
 	case errors.Is(err, database.ErrActressMergeUniqueConstraint):
 		c.JSON(http.StatusConflict, ErrorResponse{Error: err.Error()})

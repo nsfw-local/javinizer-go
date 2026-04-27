@@ -8,32 +8,31 @@ import (
 )
 
 type HistoryRepository struct {
-	db *DB
+	*BaseRepository[models.History, uint]
 }
 
 func NewHistoryRepository(db *DB) *HistoryRepository {
-	return &HistoryRepository{db: db}
+	return &HistoryRepository{
+		BaseRepository: NewBaseRepository[models.History, uint](
+			db, "history",
+			func(h models.History) string { return fmt.Sprintf("%d", h.ID) },
+			WithDefaultOrder[models.History, uint]("created_at DESC"),
+			WithNewEntity[models.History, uint](func() models.History { return models.History{} }),
+		),
+	}
 }
 
 func (r *HistoryRepository) Create(history *models.History) error {
-	if err := r.db.Create(history).Error; err != nil {
-		return wrapDBErr("create", fmt.Sprintf("history %d", history.ID), err)
-	}
-	return nil
+	return r.BaseRepository.Create(history)
 }
 
 func (r *HistoryRepository) FindByID(id uint) (*models.History, error) {
-	var history models.History
-	err := r.db.First(&history, id).Error
-	if err != nil {
-		return nil, wrapDBErr("find", fmt.Sprintf("history %d", id), err)
-	}
-	return &history, nil
+	return r.BaseRepository.FindByID(id)
 }
 
 func (r *HistoryRepository) FindByMovieID(movieID string) ([]models.History, error) {
 	var history []models.History
-	err := r.db.Where("movie_id = ?", movieID).Order("created_at DESC").Find(&history).Error
+	err := r.GetDB().Where("movie_id = ?", movieID).Order("created_at DESC").Find(&history).Error
 	if err != nil {
 		return nil, wrapDBErr("find", fmt.Sprintf("history for movie %s", movieID), err)
 	}
@@ -42,7 +41,7 @@ func (r *HistoryRepository) FindByMovieID(movieID string) ([]models.History, err
 
 func (r *HistoryRepository) FindByOperation(operation string, limit int) ([]models.History, error) {
 	var history []models.History
-	query := r.db.Where("operation = ?", operation).Order("created_at DESC")
+	query := r.GetDB().Where("operation = ?", operation).Order("created_at DESC")
 	if limit > 0 {
 		query = query.Limit(limit)
 	}
@@ -55,7 +54,7 @@ func (r *HistoryRepository) FindByOperation(operation string, limit int) ([]mode
 
 func (r *HistoryRepository) FindByStatus(status string, limit int) ([]models.History, error) {
 	var history []models.History
-	query := r.db.Where("status = ?", status).Order("created_at DESC")
+	query := r.GetDB().Where("status = ?", status).Order("created_at DESC")
 	if limit > 0 {
 		query = query.Limit(limit)
 	}
@@ -68,7 +67,7 @@ func (r *HistoryRepository) FindByStatus(status string, limit int) ([]models.His
 
 func (r *HistoryRepository) FindRecent(limit int) ([]models.History, error) {
 	var history []models.History
-	err := r.db.Order("created_at DESC").Limit(limit).Find(&history).Error
+	err := r.GetDB().Order("created_at DESC").Limit(limit).Find(&history).Error
 	if err != nil {
 		return nil, wrapDBErr("find", "recent history", err)
 	}
@@ -77,7 +76,7 @@ func (r *HistoryRepository) FindRecent(limit int) ([]models.History, error) {
 
 func (r *HistoryRepository) FindByDateRange(start, end time.Time) ([]models.History, error) {
 	var history []models.History
-	err := r.db.Where("datetime(created_at) BETWEEN datetime(?) AND datetime(?)", start.Format(SqliteTimeFormat), end.Format(SqliteTimeFormat)).Order("created_at DESC").Find(&history).Error
+	err := r.GetDB().Where("datetime(created_at) BETWEEN datetime(?) AND datetime(?)", start.Format(SqliteTimeFormat), end.Format(SqliteTimeFormat)).Order("created_at DESC").Find(&history).Error
 	if err != nil {
 		return nil, wrapDBErr("find", "history by date range", err)
 	}
@@ -85,17 +84,12 @@ func (r *HistoryRepository) FindByDateRange(start, end time.Time) ([]models.Hist
 }
 
 func (r *HistoryRepository) Count() (int64, error) {
-	var count int64
-	err := r.db.Model(&models.History{}).Count(&count).Error
-	if err != nil {
-		return 0, wrapDBErr("count", "history", err)
-	}
-	return count, nil
+	return r.BaseRepository.Count()
 }
 
 func (r *HistoryRepository) CountByStatus(status string) (int64, error) {
 	var count int64
-	err := r.db.Model(&models.History{}).Where("status = ?", status).Count(&count).Error
+	err := r.GetDB().Model(&models.History{}).Where("status = ?", status).Count(&count).Error
 	if err != nil {
 		return 0, wrapDBErr("count", fmt.Sprintf("history by status %s", status), err)
 	}
@@ -104,7 +98,7 @@ func (r *HistoryRepository) CountByStatus(status string) (int64, error) {
 
 func (r *HistoryRepository) CountByOperation(operation string) (int64, error) {
 	var count int64
-	err := r.db.Model(&models.History{}).Where("operation = ?", operation).Count(&count).Error
+	err := r.GetDB().Model(&models.History{}).Where("operation = ?", operation).Count(&count).Error
 	if err != nil {
 		return 0, wrapDBErr("count", fmt.Sprintf("history by operation %s", operation), err)
 	}
@@ -112,38 +106,30 @@ func (r *HistoryRepository) CountByOperation(operation string) (int64, error) {
 }
 
 func (r *HistoryRepository) Delete(id uint) error {
-	if err := r.db.Delete(&models.History{}, id).Error; err != nil {
-		return wrapDBErr("delete", fmt.Sprintf("history %d", id), err)
-	}
-	return nil
+	return r.BaseRepository.Delete(id)
 }
 
 func (r *HistoryRepository) DeleteByMovieID(movieID string) error {
-	if err := r.db.Where("movie_id = ?", movieID).Delete(&models.History{}).Error; err != nil {
+	if err := r.GetDB().Where("movie_id = ?", movieID).Delete(&models.History{}).Error; err != nil {
 		return wrapDBErr("delete", fmt.Sprintf("history for movie %s", movieID), err)
 	}
 	return nil
 }
 
 func (r *HistoryRepository) DeleteOlderThan(date time.Time) error {
-	if err := r.db.Where("datetime(created_at) < datetime(?)", date.Format(SqliteTimeFormat)).Delete(&models.History{}).Error; err != nil {
+	if err := r.GetDB().Where("datetime(created_at) < datetime(?)", date.Format(SqliteTimeFormat)).Delete(&models.History{}).Error; err != nil {
 		return wrapDBErr("delete", "history older than date", err)
 	}
 	return nil
 }
 
 func (r *HistoryRepository) List(limit, offset int) ([]models.History, error) {
-	var history []models.History
-	err := r.db.Order("created_at DESC").Limit(limit).Offset(offset).Find(&history).Error
-	if err != nil {
-		return nil, wrapDBErr("find", "history", err)
-	}
-	return history, nil
+	return r.BaseRepository.List(limit, offset)
 }
 
 func (r *HistoryRepository) FindByBatchJobID(batchJobID string) ([]models.History, error) {
 	var history []models.History
-	err := r.db.Where("batch_job_id = ?", batchJobID).Order("created_at ASC").Find(&history).Error
+	err := r.GetDB().Where("batch_job_id = ?", batchJobID).Order("created_at ASC").Find(&history).Error
 	if err != nil {
 		return nil, wrapDBErr("find", fmt.Sprintf("history for batch job %s", batchJobID), err)
 	}

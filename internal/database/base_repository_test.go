@@ -136,7 +136,7 @@ func TestBaseRepository_List(t *testing.T) {
 	}
 }
 
-func TestBaseRepository_List_ZeroLimit(t *testing.T) {
+func TestBaseRepository_ListAll(t *testing.T) {
 	db := setupBaseRepoTestDB(t)
 	repo := NewBaseRepository[models.History, uint](
 		db, "history",
@@ -151,12 +151,12 @@ func TestBaseRepository_List_ZeroLimit(t *testing.T) {
 		}
 	}
 
-	results, err := repo.List(0, 0)
+	results, err := repo.ListAll()
 	if err != nil {
-		t.Fatalf("List returned error: %v", err)
+		t.Fatalf("ListAll returned error: %v", err)
 	}
 	if len(results) != 5 {
-		t.Errorf("expected 5 results with zero limit, got %d", len(results))
+		t.Errorf("expected 5 results from ListAll, got %d", len(results))
 	}
 }
 
@@ -264,9 +264,9 @@ func TestBaseRepository_List_DefaultOrder(t *testing.T) {
 		t.Fatalf("Create returned error: %v", err)
 	}
 
-	results, err := repo.List(0, 0)
+	results, err := repo.ListAll()
 	if err != nil {
-		t.Fatalf("List returned error: %v", err)
+		t.Fatalf("ListAll returned error: %v", err)
 	}
 	if len(results) < 2 {
 		t.Fatalf("expected at least 2 results, got %d", len(results))
@@ -320,9 +320,9 @@ func TestBaseRepository_NoDefaultOrder(t *testing.T) {
 		t.Fatalf("Create returned error: %v", err)
 	}
 
-	results, err := repo.List(0, 0)
+	results, err := repo.ListAll()
 	if err != nil {
-		t.Fatalf("List returned error: %v", err)
+		t.Fatalf("ListAll returned error: %v", err)
 	}
 	if len(results) != 1 {
 		t.Errorf("expected 1 result, got %d", len(results))

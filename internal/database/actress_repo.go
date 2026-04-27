@@ -10,7 +10,7 @@ import (
 )
 
 type ActressRepository struct {
-	db *DB
+	*BaseRepository[models.Actress, uint]
 }
 
 var (
@@ -46,51 +46,42 @@ type ActressMergeResult struct {
 }
 
 func NewActressRepository(db *DB) *ActressRepository {
-	return &ActressRepository{db: db}
+	return &ActressRepository{
+		BaseRepository: NewBaseRepository[models.Actress, uint](
+			db, "actress",
+			func(a models.Actress) string { return fmt.Sprintf("%d", a.ID) },
+			WithDefaultOrder[models.Actress, uint]("japanese_name ASC, last_name ASC, first_name ASC, id ASC"),
+			WithNewEntity[models.Actress, uint](func() models.Actress { return models.Actress{} }),
+		),
+	}
 }
 
 func (r *ActressRepository) Create(actress *models.Actress) error {
-	if err := r.db.Create(actress).Error; err != nil {
-		return wrapDBErr("create", fmt.Sprintf("actress %s", actress.JapaneseName), err)
-	}
-	return nil
+	return r.BaseRepository.Create(actress)
 }
 
 func (r *ActressRepository) Update(actress *models.Actress) error {
-	if err := r.db.Save(actress).Error; err != nil {
+	if err := r.GetDB().Save(actress).Error; err != nil {
 		return wrapDBErr("update", fmt.Sprintf("actress %s", actress.JapaneseName), err)
 	}
 	return nil
 }
 
 func (r *ActressRepository) FindByID(id uint) (*models.Actress, error) {
-	var actress models.Actress
-	err := r.db.First(&actress, id).Error
-	if err != nil {
-		return nil, wrapDBErr("find", fmt.Sprintf("actress %d", id), err)
-	}
-	return &actress, nil
+	return r.BaseRepository.FindByID(id)
 }
 
 func (r *ActressRepository) Delete(id uint) error {
-	if err := r.db.Delete(&models.Actress{}, id).Error; err != nil {
-		return wrapDBErr("delete", fmt.Sprintf("actress %d", id), err)
-	}
-	return nil
+	return r.BaseRepository.Delete(id)
 }
 
 func (r *ActressRepository) Count() (int64, error) {
-	var count int64
-	err := r.db.Model(&models.Actress{}).Count(&count).Error
-	if err != nil {
-		return 0, wrapDBErr("count", "actresses", err)
-	}
-	return count, nil
+	return r.BaseRepository.Count()
 }
 
 func (r *ActressRepository) FindByJapaneseName(name string) (*models.Actress, error) {
 	var actress models.Actress
-	err := r.db.First(&actress, "japanese_name = ?", name).Error
+	err := r.GetDB().First(&actress, "japanese_name = ?", name).Error
 	if err != nil {
 		return nil, wrapDBErr("find", fmt.Sprintf("actress %s", name), err)
 	}
@@ -110,12 +101,7 @@ func (r *ActressRepository) FindOrCreate(actress *models.Actress) error {
 }
 
 func (r *ActressRepository) List(limit, offset int) ([]models.Actress, error) {
-	var actresses []models.Actress
-	err := r.db.Order("japanese_name ASC, last_name ASC, first_name ASC, id ASC").Limit(limit).Offset(offset).Find(&actresses).Error
-	if err != nil {
-		return nil, wrapDBErr("find", "actresses", err)
-	}
-	return actresses, nil
+	return r.BaseRepository.List(limit, offset)
 }
 
 func (r *ActressRepository) ListSorted(limit, offset int, sortBy, sortOrder string) ([]models.Actress, error) {
@@ -125,7 +111,7 @@ func (r *ActressRepository) ListSorted(limit, offset int, sortBy, sortOrder stri
 	if err != nil {
 		return nil, err
 	}
-	dbq := r.db.DB
+	dbq := r.GetDB().DB
 	for _, clause := range actressOrderClauses(sortBy, sortOrder) {
 		dbq = dbq.Order(clause)
 	}
@@ -141,7 +127,7 @@ func (r *ActressRepository) SearchPaged(query string, limit, offset int) ([]mode
 	var actresses []models.Actress
 
 	searchPattern := "%" + query + "%"
-	err := r.db.Where("first_name LIKE ? OR last_name LIKE ? OR japanese_name LIKE ?",
+	err := r.GetDB().Where("first_name LIKE ? OR last_name LIKE ? OR japanese_name LIKE ?",
 		searchPattern, searchPattern, searchPattern).
 		Order("japanese_name ASC, last_name ASC, first_name ASC, id ASC").
 		Limit(limit).
@@ -162,7 +148,7 @@ func (r *ActressRepository) SearchPagedSorted(query string, limit, offset int, s
 	}
 	searchPattern := "%" + query + "%"
 
-	dbq := r.db.Where("first_name LIKE ? OR last_name LIKE ? OR japanese_name LIKE ?",
+	dbq := r.GetDB().Where("first_name LIKE ? OR last_name LIKE ? OR japanese_name LIKE ?",
 		searchPattern, searchPattern, searchPattern)
 	for _, clause := range actressOrderClauses(sortBy, sortOrder) {
 		dbq = dbq.Order(clause)
@@ -178,7 +164,7 @@ func (r *ActressRepository) SearchPagedSorted(query string, limit, offset int, s
 func (r *ActressRepository) CountSearch(query string) (int64, error) {
 	var count int64
 	searchPattern := "%" + query + "%"
-	err := r.db.Model(&models.Actress{}).
+	err := r.GetDB().Model(&models.Actress{}).
 		Where("first_name LIKE ? OR last_name LIKE ? OR japanese_name LIKE ?",
 			searchPattern, searchPattern, searchPattern).
 		Count(&count).Error
@@ -192,7 +178,7 @@ func (r *ActressRepository) Search(query string) ([]models.Actress, error) {
 	var actresses []models.Actress
 
 	if query == "" {
-		err := r.db.Limit(100).Order("japanese_name ASC, last_name ASC, first_name ASC").Find(&actresses).Error
+		err := r.GetDB().Limit(100).Order("japanese_name ASC, last_name ASC, first_name ASC").Find(&actresses).Error
 		if err != nil {
 			return nil, wrapDBErr("find", "actresses", err)
 		}
@@ -200,7 +186,7 @@ func (r *ActressRepository) Search(query string) ([]models.Actress, error) {
 	}
 
 	searchPattern := "%" + query + "%"
-	err := r.db.Where("first_name LIKE ? OR last_name LIKE ? OR japanese_name LIKE ?",
+	err := r.GetDB().Where("first_name LIKE ? OR last_name LIKE ? OR japanese_name LIKE ?",
 		searchPattern, searchPattern, searchPattern).
 		Order("japanese_name ASC, last_name ASC, first_name ASC").
 		Limit(20).
@@ -294,7 +280,7 @@ func (r *ActressRepository) Merge(targetID, sourceID uint, resolutions map[strin
 
 	updatedMovies := 0
 	conflictsResolved := len(preview.Conflicts)
-	err = r.db.Transaction(func(tx *gorm.DB) error {
+	err = r.GetDB().Transaction(func(tx *gorm.DB) error {
 		if merged.DMMID > 0 {
 			var existing models.Actress
 			checkErr := tx.Where("dmm_id = ? AND id NOT IN ?", merged.DMMID, []uint{targetID, sourceID}).First(&existing).Error
