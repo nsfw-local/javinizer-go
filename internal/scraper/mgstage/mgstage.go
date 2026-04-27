@@ -41,6 +41,8 @@ var (
 	mgstagePrefixedIDRe  = regexp.MustCompile(`(?i)(?:^|[^a-z0-9])(\d{2,4}[a-z]{2,8})[-_]?(\d{3,5}[a-z]?)(?:$|[^a-z0-9])`)
 	mgstageIDPartsStrict = regexp.MustCompile(`(?i)^([a-z0-9]+)-([0-9]+[a-z]?)$`)
 	mgstageCompactIDRe   = regexp.MustCompile(`^(\d{2,4}[A-Z]{2,8})(\d{3,5}[A-Z]?)$`)
+	mgstageLettersOnlyRe = regexp.MustCompile(`^[A-Z]+$`)
+	mgstageDigitsOnlyRe  = regexp.MustCompile(`^\d+$`)
 )
 
 // New creates a new MGStage scraper
@@ -192,6 +194,12 @@ func (s *Scraper) ResolveSearchQuery(input string) (string, bool) {
 		}
 	}
 
+	// Accept plain MGStage-style IDs (e.g., "GANA-2850", "SIRO-5615") so the
+	// scraper can handle prefix expansion internally via GetURLCtx.
+	if normalized, ok := normalizeMGStageIDToken(input); ok {
+		return normalized, true
+	}
+
 	return "", false
 }
 
@@ -202,44 +210,62 @@ func (s *Scraper) GetURL(id string) (string, error) {
 
 // GetURLCtx attempts to find the URL for a given movie ID using MGStage search with context support
 func (s *Scraper) GetURLCtx(ctx context.Context, id string) (string, error) {
-	// Normalize ID for search (remove hyphens, lowercase)
+	foundURL, err := s.searchByID(ctx, id)
+	if err == nil && foundURL != "" {
+		return foundURL, nil
+	}
+
+	letterPrefix, number := splitMGStageID(id)
+	if letterPrefix != "" {
+		for _, prefixedID := range expandMGStagePrefixes(letterPrefix, number) {
+			foundURL, err = s.searchByID(ctx, prefixedID)
+			if err == nil && foundURL != "" {
+				return foundURL, nil
+			}
+		}
+	}
+
+	return "", models.NewScraperNotFoundError("MGStage", "movie not found on MGStage")
+}
+
+// searchByID tries to find the product URL for a given ID via search and direct URL lookup.
+func (s *Scraper) searchByID(ctx context.Context, id string) (string, error) {
 	searchID := normalizeIDForSearch(id)
-	url := fmt.Sprintf(searchURL, searchID)
+	searchReqURL := fmt.Sprintf(searchURL, searchID)
 
 	if err := s.rateLimiter.Wait(ctx); err != nil {
 		return "", err
 	}
 
-	resp, err := s.client.R().SetContext(ctx).Get(url)
-
+	resp, err := s.client.R().SetContext(ctx).Get(searchReqURL)
 	if err != nil {
 		return "", fmt.Errorf("failed to search MGStage: %w", err)
 	}
 
-	if resp.StatusCode() != 200 {
-		directURL := fmt.Sprintf(productURL, id)
-		if err := s.rateLimiter.Wait(ctx); err != nil {
-			return "", err
+	if resp.StatusCode() == 200 {
+		foundURL := s.findProductInSearchResults(resp.String(), id)
+		if foundURL != "" {
+			return foundURL, nil
 		}
-
-		directResp, directErr := s.client.R().SetContext(ctx).Get(directURL)
-
-		if directErr == nil && directResp.StatusCode() == 200 {
-			return directURL, nil
-		}
-
-		return "", s.httpStatusError("search", resp.StatusCode())
 	}
 
-	// Parse search results to find product URL
-	doc, err := goquery.NewDocumentFromReader(strings.NewReader(resp.String()))
+	directURL := fmt.Sprintf(productURL, id)
+	if s.checkDirectURL(ctx, directURL) {
+		return directURL, nil
+	}
+
+	return "", models.NewScraperNotFoundError("MGStage", "movie not found on MGStage")
+}
+
+// findProductInSearchResults parses search HTML and returns the first matching product URL.
+func (s *Scraper) findProductInSearchResults(html string, id string) string {
+	doc, err := goquery.NewDocumentFromReader(strings.NewReader(html))
 	if err != nil {
-		return "", fmt.Errorf("failed to parse search results: %w", err)
+		return ""
 	}
 
-	// Look for product links in search results
-	var foundURL string
 	normalizedID := normalizeIDForSearch(id)
+	var foundURL string
 
 	doc.Find("a[href*='/product/product_detail/']").Each(func(i int, sel *goquery.Selection) {
 		if foundURL != "" {
@@ -251,10 +277,8 @@ func (s *Scraper) GetURLCtx(ctx context.Context, id string) (string, error) {
 			return
 		}
 
-		// Match by normalized product ID extracted from URL path.
 		hrefID := extractIDFromURL(href)
 		if hrefID != "" && normalizeIDForSearch(hrefID) == normalizedID {
-			// Make URL absolute if needed
 			if strings.HasPrefix(href, "/") {
 				foundURL = baseURL + href
 			} else {
@@ -263,23 +287,34 @@ func (s *Scraper) GetURLCtx(ctx context.Context, id string) (string, error) {
 		}
 	})
 
-	if foundURL != "" {
-		return foundURL, nil
-	}
+	return foundURL
+}
 
-	// If no match found in search, try direct product URL
-	directURL := fmt.Sprintf(productURL, id)
+// checkDirectURL verifies that a direct product URL actually resolves to a product page
+// (not a redirect to the homepage, which MGStage returns for nonexistent IDs).
+func (s *Scraper) checkDirectURL(ctx context.Context, directURL string) bool {
 	if err := s.rateLimiter.Wait(ctx); err != nil {
-		return "", err
+		return false
 	}
 
-	resp, err = s.client.R().SetContext(ctx).Get(directURL)
-
-	if err == nil && resp.StatusCode() == 200 {
-		return directURL, nil
+	resp, err := s.client.R().SetContext(ctx).Get(directURL)
+	if err != nil || resp.StatusCode() != 200 {
+		return false
 	}
 
-	return "", models.NewScraperNotFoundError("MGStage", "movie not found on MGStage")
+	if resp.RawResponse != nil && resp.RawResponse.Request != nil {
+		finalURL := resp.RawResponse.Request.URL.String()
+		if !strings.Contains(finalURL, "/product/product_detail/") {
+			return false
+		}
+	}
+
+	doc, err := goquery.NewDocumentFromReader(strings.NewReader(resp.String()))
+	if err != nil {
+		return false
+	}
+
+	return extractTableValue(doc, "品番：") != ""
 }
 
 // Search searches for and scrapes metadata for a given movie ID with context support
@@ -432,6 +467,33 @@ func normalizeIDForSearch(id string) string {
 	id = strings.ToLower(id)
 	id = strings.ReplaceAll(id, "-", "")
 	return id
+}
+
+// splitMGStageID splits an ID like "GANA-2850" into letter prefix "GANA" and number "2850".
+// Returns empty strings if the ID doesn't match the standard XX-NNN format.
+func splitMGStageID(id string) (letter, number string) {
+	m := mgstageIDPartsStrict.FindStringSubmatch(strings.ToUpper(id))
+	if len(m) == 3 {
+		prefix := m[1]
+		num := m[2]
+		if mgstageLettersOnlyRe.MatchString(prefix) {
+			return prefix, num
+		}
+	}
+	return "", ""
+}
+
+// expandMGStagePrefixes generates candidate prefixed IDs for a stripped MGStage ID.
+// MGStage uses numeric prefixes that are part of the product ID (e.g., "200GANA-2850"
+// where "200" is the series prefix). When a user provides just "GANA-2850", we try
+// common prefix numbers to find the correct full ID.
+func expandMGStagePrefixes(letter, number string) []string {
+	commonPrefixes := []string{"200", "259", "300", "326", "100", "400", "500"}
+	candidates := make([]string, 0, len(commonPrefixes))
+	for _, prefix := range commonPrefixes {
+		candidates = append(candidates, prefix+letter+"-"+number)
+	}
+	return candidates
 }
 
 func normalizeMGStageIDToken(token string) (string, bool) {
@@ -900,7 +962,18 @@ func mgstageIDsMatch(requestedID, parsedID string) bool {
 	if requested == "" || parsed == "" {
 		return false
 	}
-	return requested == parsed
+	if requested == parsed {
+		return true
+	}
+	// Handle MGStage prefixed IDs: "gana2850" should match "200gana2850"
+	// by stripping common numeric prefixes from the parsed ID.
+	if strings.HasSuffix(parsed, requested) {
+		prefix := parsed[:len(parsed)-len(requested)]
+		if mgstageDigitsOnlyRe.MatchString(prefix) {
+			return true
+		}
+	}
+	return false
 }
 
 func isGenericMGStageTitle(title string) bool {

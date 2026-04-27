@@ -680,6 +680,30 @@ func TestMGStageIDsMatch(t *testing.T) {
 			pars: "MIDE-123",
 			want: true,
 		},
+		{
+			name: "prefixed ID match - GANA",
+			req:  "GANA-2850",
+			pars: "200GANA-2850",
+			want: true,
+		},
+		{
+			name: "prefixed ID match - LUXU",
+			req:  "LUXU-1806",
+			pars: "259LUXU-1806",
+			want: true,
+		},
+		{
+			name: "prefixed ID with different suffix - no match",
+			req:  "GANA-2850",
+			pars: "200GANA-2851",
+			want: false,
+		},
+		{
+			name: "prefix with non-numeric prefix - no match",
+			req:  "GANA-2850",
+			pars: "ABCGANA-2850",
+			want: false,
+		},
 	}
 
 	for _, tt := range tests {
@@ -1302,10 +1326,10 @@ func TestResolveSearchQuery(t *testing.T) {
 			wantOk: true,
 		},
 		{
-			name:   "plain ID not recognized",
+			name:   "plain ID recognized",
 			input:  "IPX-123",
-			want:   "",
-			wantOk: false,
+			want:   "IPX-123",
+			wantOk: true,
 		},
 		{
 			name:   "empty input",
@@ -1314,10 +1338,10 @@ func TestResolveSearchQuery(t *testing.T) {
 			wantOk: false,
 		},
 		{
-			name:   "whitespace trimmed",
+			name:   "whitespace trimmed plain ID",
 			input:  "  MIDE-123  ",
-			want:   "",
-			wantOk: false,
+			want:   "MIDE-123",
+			wantOk: true,
 		},
 		{
 			name:   "URL with query params",
@@ -1455,6 +1479,168 @@ func TestSearch_ErrorPaths(t *testing.T) {
 			if tt.wantErr {
 				assert.Nil(t, result)
 			}
+		})
+	}
+}
+
+// TestSplitMGStageID tests splitting stripped IDs into letter prefix and number
+func TestSplitMGStageID(t *testing.T) {
+	tests := []struct {
+		name       string
+		input      string
+		wantLetter string
+		wantNumber string
+	}{
+		{
+			name:       "GANA series",
+			input:      "GANA-2850",
+			wantLetter: "GANA",
+			wantNumber: "2850",
+		},
+		{
+			name:       "LUXU series",
+			input:      "LUXU-1806",
+			wantLetter: "LUXU",
+			wantNumber: "1806",
+		},
+		{
+			name:       "SIRO series",
+			input:      "SIRO-5615",
+			wantLetter: "SIRO",
+			wantNumber: "5615",
+		},
+		{
+			name:       "lowercase input",
+			input:      "gana-2850",
+			wantLetter: "GANA",
+			wantNumber: "2850",
+		},
+		{
+			name:       "already prefixed ID - no split",
+			input:      "200GANA-2850",
+			wantLetter: "",
+			wantNumber: "",
+		},
+		{
+			name:       "no hyphen",
+			input:      "GANA2850",
+			wantLetter: "",
+			wantNumber: "",
+		},
+		{
+			name:       "empty string",
+			input:      "",
+			wantLetter: "",
+			wantNumber: "",
+		},
+		{
+			name:       "pure numeric prefix",
+			input:      "259LUXU-1806",
+			wantLetter: "",
+			wantNumber: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			letter, number := splitMGStageID(tt.input)
+			assert.Equal(t, tt.wantLetter, letter)
+			assert.Equal(t, tt.wantNumber, number)
+		})
+	}
+}
+
+// TestExpandMGStagePrefixes tests prefix expansion for stripped IDs
+func TestExpandMGStagePrefixes(t *testing.T) {
+	candidates := expandMGStagePrefixes("GANA", "2850")
+	assert.Contains(t, candidates, "200GANA-2850")
+	assert.Contains(t, candidates, "259GANA-2850")
+	assert.Contains(t, candidates, "300GANA-2850")
+	assert.NotContains(t, candidates, "GANA-2850") // Should not include the bare ID
+}
+
+// TestGetURL_PrefixExpansion tests that GetURL finds the movie when a stripped ID
+// is provided and the correct prefixed ID is found through expansion.
+func TestGetURL_PrefixExpansion(t *testing.T) {
+	client := resty.New()
+
+	rt := &routeRoundTripper{
+		routes: make(map[string]mockHTTPResponse),
+	}
+
+	searchURI := "/search/cSearch.php?search_word=gana2850&type=top&page=1&list_cnt=120"
+	rt.routes[searchURI] = mockHTTPResponse{
+		statusCode: http.StatusOK,
+		body:       `<html><body><p>No results for bare GANA-2850</p></body></html>`,
+	}
+
+	directURI := "/product/product_detail/GANA-2850/"
+	rt.routes[directURI] = mockHTTPResponse{
+		statusCode: http.StatusNotFound,
+		body:       "",
+	}
+
+	prefixedSearchURI := "/search/cSearch.php?search_word=200gana2850&type=top&page=1&list_cnt=120"
+	rt.routes[prefixedSearchURI] = mockHTTPResponse{
+		statusCode: http.StatusOK,
+		body:       `<html><body><a href="/product/product_detail/200GANA-2850/">200GANA-2850</a></body></html>`,
+	}
+
+	prefixedDirectURI := "/product/product_detail/200GANA-2850/"
+	rt.routes[prefixedDirectURI] = mockHTTPResponse{
+		statusCode: http.StatusOK,
+		body:       `<html><head><title>200GANA-2850</title></head><body><table><tr><th>品番：</th><td>200GANA-2850</td></tr></table></body></html>`,
+	}
+
+	client.SetTransport(rt)
+
+	scraper := &Scraper{
+		client:      client,
+		enabled:     true,
+		rateLimiter: ratelimit.NewLimiter(0),
+	}
+
+	url, err := scraper.GetURL("GANA-2850")
+	assert.NoError(t, err)
+	assert.Equal(t, "https://www.mgstage.com/product/product_detail/200GANA-2850/", url)
+}
+
+// TestResolveSearchQuery_PlainID tests that plain MGStage IDs are now recognized
+func TestResolveSearchQuery_PlainID(t *testing.T) {
+	tests := []struct {
+		name   string
+		input  string
+		want   string
+		wantOk bool
+	}{
+		{
+			name:   "GANA ID",
+			input:  "GANA-2850",
+			want:   "GANA-2850",
+			wantOk: true,
+		},
+		{
+			name:   "SIRO ID lowercase",
+			input:  "siro-5615",
+			want:   "SIRO-5615",
+			wantOk: true,
+		},
+		{
+			name:   "invalid format - no hyphen",
+			input:  "GANA2850",
+			want:   "",
+			wantOk: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			settings := testSettings("https://www.mgstage.com")
+			scraper := New(settings, nil, config.FlareSolverrConfig{})
+
+			result, ok := scraper.ResolveSearchQuery(tt.input)
+			assert.Equal(t, tt.wantOk, ok)
+			assert.Equal(t, tt.want, result)
 		})
 	}
 }
