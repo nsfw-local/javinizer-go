@@ -87,7 +87,7 @@ func (r *BaseRepository[T, ID]) Delete(id ID) error {
 
 func (r *BaseRepository[T, ID]) List(limit, offset int) ([]T, error) {
 	var entities []T
-	query := r.db.DB
+	query := r.db.Session(&gorm.Session{})
 	if r.defaultOrder != "" {
 		query = query.Order(r.defaultOrder)
 	}
@@ -103,7 +103,7 @@ func (r *BaseRepository[T, ID]) List(limit, offset int) ([]T, error) {
 
 func (r *BaseRepository[T, ID]) ListAll() ([]T, error) {
 	var entities []T
-	query := r.db.DB
+	query := r.db.Session(&gorm.Session{})
 	if r.defaultOrder != "" {
 		query = query.Order(r.defaultOrder)
 	}
