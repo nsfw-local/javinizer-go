@@ -3,7 +3,6 @@ package organizer
 import (
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -380,90 +379,6 @@ func TestOrganizerWithAfero_DryRun(t *testing.T) {
 	// Destination should not exist
 	exists, _ = afero.Exists(fs, result.NewPath)
 	assert.False(t, exists, "Destination should not be created in dry run")
-}
-
-// TestOrganizerWithAfero_CleanEmptyDirectories tests empty directory cleanup
-// Note: CleanEmptyDirectories uses filepath.EvalSymlinks which doesn't work with MemMapFs
-// This test validates the error path - comprehensive tests exist in organizer_test.go with OsFs
-func TestOrganizerWithAfero_CleanEmptyDirectories(t *testing.T) {
-	fs := afero.NewMemMapFs()
-
-	// Create base directory and nested structure
-	baseDir := "/movies"
-	nestedPath := filepath.Join(baseDir, "studio", "year", "movie", "file.mp4")
-	err := fs.MkdirAll(filepath.Dir(nestedPath), 0755)
-	require.NoError(t, err)
-
-	// Write and remove file to leave empty directories
-	err = afero.WriteFile(fs, nestedPath, []byte("content"), 0644)
-	require.NoError(t, err)
-	err = fs.Remove(nestedPath)
-	require.NoError(t, err)
-
-	cfg := &config.OutputConfig{}
-	org := NewOrganizer(fs, cfg, nil)
-
-	// CleanEmptyDirectories will fail with MemMapFs due to EvalSymlinks limitation
-	// This is expected behavior - the function is designed for real filesystem with symlink support
-	err = org.CleanEmptyDirectories(nestedPath, baseDir)
-	assert.Error(t, err, "MemMapFs doesn't support EvalSymlinks - error expected")
-
-	if runtime.GOOS != "windows" {
-		assert.Contains(t, err.Error(), "no such file or directory",
-			"Should fail because EvalSymlinks doesn't work with MemMapFs")
-	}
-
-	// Note: Comprehensive CleanEmptyDirectories tests exist in organizer_test.go using afero.NewOsFs()
-}
-
-// TestOrganizerWithAfero_Revert tests revert operation
-func TestOrganizerWithAfero_Revert(t *testing.T) {
-	fs := afero.NewMemMapFs()
-	sourcePath := "/source/IPX-123.mp4"
-	err := afero.WriteFile(fs, sourcePath, []byte("content"), 0644)
-	require.NoError(t, err)
-
-	cfg := &config.OutputConfig{
-		FolderFormat:  "<ID>",
-		FileFormat:    "<ID>",
-		RenameFile:    true,
-		MoveSubtitles: false,
-		MoveToFolder:  true,
-	}
-	org := NewOrganizer(fs, cfg, nil)
-
-	movie := testutil.NewMovieBuilder().WithID("IPX-123").Build()
-	match := matcher.MatchResult{
-		File: scanner.FileInfo{
-			Path:      sourcePath,
-			Name:      "IPX-123.mp4",
-			Extension: ".mp4",
-		},
-		ID: "IPX-123",
-	}
-
-	plan, err := org.Plan(match, movie, "/movies", false)
-	require.NoError(t, err)
-
-	result, err := org.Execute(plan, false)
-	require.NoError(t, err)
-	assert.True(t, result.Moved)
-
-	// Verify file moved
-	exists, _ := afero.Exists(fs, sourcePath)
-	assert.False(t, exists, "Source should be gone after move")
-
-	// Revert operation
-	err = org.Revert(result)
-	require.NoError(t, err)
-
-	// Verify file is back
-	exists, _ = afero.Exists(fs, sourcePath)
-	assert.True(t, exists, "Source should be restored after revert")
-
-	// Destination should be gone
-	exists, _ = afero.Exists(fs, result.NewPath)
-	assert.False(t, exists, "Destination should be removed after revert")
 }
 
 // TestOrganizerWithAfero_PathLengthTruncation tests path length handling

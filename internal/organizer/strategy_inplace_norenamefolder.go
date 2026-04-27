@@ -61,6 +61,18 @@ func (s *InPlaceNoRenameFolderStrategy) Plan(match matcher.MatchResult, movie *m
 	targetPath := filepath.Join(targetDir, fileName)
 	willMove := filepath.ToSlash(match.File.Path) != filepath.ToSlash(targetPath)
 
+	if s.config.MaxPathLength > 0 && len(targetPath) > s.config.MaxPathLength {
+		excess := len(targetPath) - s.config.MaxPathLength
+		ext := match.File.Extension
+		currentNameLen := len(fileName) - len(ext)
+		if currentNameLen > excess {
+			baseName := s.templateEngine.TruncateTitleBytes(strings.TrimSuffix(fileName, ext), currentNameLen-excess)
+			fileName = baseName + ext
+			targetPath = filepath.Join(targetDir, fileName)
+			willMove = filepath.ToSlash(match.File.Path) != filepath.ToSlash(targetPath)
+		}
+	}
+
 	if s.config.MaxPathLength > 0 {
 		if err := s.templateEngine.ValidatePathLength(targetPath, s.config.MaxPathLength); err != nil {
 			return nil, fmt.Errorf("path validation failed: %w", err)
@@ -97,16 +109,7 @@ func (s *InPlaceNoRenameFolderStrategy) Execute(plan *OrganizePlan) (*OrganizeRe
 		FolderPath:             plan.TargetDir,
 		FileName:               plan.TargetFile,
 		Moved:                  false,
-		ShouldGenerateMetadata: true, // Always generate NFO/media in source directory
-	}
-
-	if len(plan.Conflicts) > 0 {
-		result.Error = fmt.Errorf("conflicts detected: %s", strings.Join(plan.Conflicts, "; "))
-		return result, result.Error
-	}
-
-	if !plan.WillMove {
-		return result, nil
+		ShouldGenerateMetadata: true,
 	}
 
 	if err := fsutil.MoveFileFs(s.fs, plan.SourcePath, plan.TargetPath); err != nil {

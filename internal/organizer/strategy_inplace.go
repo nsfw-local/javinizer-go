@@ -213,16 +213,7 @@ func (s *InPlaceStrategy) Execute(plan *OrganizePlan) (*OrganizeResult, error) {
 		FolderPath:             plan.TargetDir,
 		FileName:               plan.TargetFile,
 		Moved:                  false,
-		ShouldGenerateMetadata: true, // Always generate NFO/media in source/target directory
-	}
-
-	if len(plan.Conflicts) > 0 {
-		result.Error = fmt.Errorf("conflicts detected: %s", strings.Join(plan.Conflicts, "; "))
-		return result, result.Error
-	}
-
-	if !plan.WillMove {
-		return result, nil
+		ShouldGenerateMetadata: true,
 	}
 
 	if plan.InPlace {

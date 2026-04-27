@@ -3,7 +3,6 @@ package organizer
 import (
 	"fmt"
 	"path/filepath"
-	"strings"
 
 	"github.com/javinizer/javinizer-go/internal/config"
 	"github.com/javinizer/javinizer-go/internal/fsutil"
@@ -148,16 +147,7 @@ func (s *OrganizeStrategy) Execute(plan *OrganizePlan) (*OrganizeResult, error) 
 		FolderPath:             plan.TargetDir,
 		FileName:               plan.TargetFile,
 		Moved:                  false,
-		ShouldGenerateMetadata: false, // Will be set to true after successful move
-	}
-
-	if len(plan.Conflicts) > 0 {
-		result.Error = fmt.Errorf("conflicts detected: %s", strings.Join(plan.Conflicts, "; "))
-		return result, result.Error
-	}
-
-	if !plan.WillMove {
-		return result, nil
+		ShouldGenerateMetadata: true,
 	}
 
 	if err := s.fs.MkdirAll(plan.TargetDir, 0755); err != nil {
@@ -171,7 +161,6 @@ func (s *OrganizeStrategy) Execute(plan *OrganizePlan) (*OrganizeResult, error) 
 	}
 
 	result.Moved = true
-	result.ShouldGenerateMetadata = true
 
 	return result, nil
 }

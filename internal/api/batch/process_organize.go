@@ -65,30 +65,6 @@ func processOrganizeJob(ctx context.Context, job *worker.BatchJob, jobQueue *wor
 		org.SetMatcher(fileMatcher)
 	}
 
-	// Select strategy based on effective operation mode
-	var strategy organizer.OperationStrategy
-	fs := afero.NewOsFs()
-	switch effectiveMode {
-	case types.OperationModeOrganize:
-		strategy = organizer.NewOrganizeStrategy(fs, &outputConfig, sharedEngine)
-	case types.OperationModeInPlace:
-		if fileMatcher != nil {
-			strategy = organizer.NewInPlaceStrategy(fs, &outputConfig, fileMatcher, sharedEngine)
-		} else {
-			logging.Warnf("No matcher available for in-place mode, falling back to organize")
-			strategy = organizer.NewOrganizeStrategy(fs, &outputConfig, sharedEngine)
-		}
-	case types.OperationModeInPlaceNoRenameFolder:
-		strategy = organizer.NewInPlaceNoRenameFolderStrategy(fs, &outputConfig, fileMatcher, sharedEngine)
-	case types.OperationModeMetadataOnly:
-		strategy = organizer.NewMetadataOnlyStrategy(fs, &outputConfig)
-	case types.OperationModePreview:
-		logging.Warnf("Preview mode reached in organize job, falling back to organize")
-		strategy = organizer.NewOrganizeStrategy(fs, &outputConfig, sharedEngine)
-	default:
-		strategy = organizer.NewOrganizeStrategy(fs, &outputConfig, sharedEngine)
-	}
-
 	historyLogger := history.NewLogger(db)
 	batchFileOpRepo := database.NewBatchFileOperationRepository(db)
 	linkMode, err := organizer.ParseLinkMode(linkModeRaw)
@@ -244,7 +220,7 @@ func processOrganizeJob(ctx context.Context, job *worker.BatchJob, jobQueue *wor
 		if effectiveMode == types.OperationModeOrganize {
 			result, organizeErr = org.OrganizeWithLinkMode(match, movie, destination, false, false, copyOnly, linkMode)
 		} else {
-			plan, planErr := strategy.Plan(match, movie, destination, false)
+			plan, planErr := org.Plan(match, movie, destination, false)
 			if planErr != nil {
 				organizeErr = planErr
 			} else {

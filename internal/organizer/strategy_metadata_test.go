@@ -132,26 +132,6 @@ func TestMetadataOnlyStrategy_Execute_NoMove(t *testing.T) {
 	assert.Equal(t, filepath.ToSlash("/source/ABC-123.mp4"), filepath.ToSlash(result.NewPath))
 }
 
-func TestMetadataOnlyStrategy_Execute_RejectsWillMove(t *testing.T) {
-	fs := afero.NewMemMapFs()
-	cfg := &config.OutputConfig{}
-	strategy := NewMetadataOnlyStrategy(fs, cfg)
-
-	plan := &OrganizePlan{
-		SourcePath: "/source/old-name.mp4",
-		TargetDir:  "/source",
-		TargetFile: "new-name.mp4",
-		TargetPath: "/source/new-name.mp4",
-		WillMove:   true,
-		Conflicts:  []string{},
-	}
-
-	result, err := strategy.Execute(plan)
-	assert.Error(t, err, "Metadata-only should reject plans with WillMove=true")
-	assert.Contains(t, err.Error(), "metadata-only mode does not support file moves")
-	assert.False(t, result.Moved)
-}
-
 func TestMetadataOnlyStrategy_Execute_NoMoveNoError(t *testing.T) {
 	fs := afero.NewMemMapFs()
 	cfg := &config.OutputConfig{}
@@ -203,24 +183,4 @@ func TestMetadataOnlyStrategy_Plan_AlwaysNoConflicts(t *testing.T) {
 	planWithForce, err := strategy.Plan(match, movie, "/dest", true)
 	require.NoError(t, err)
 	assert.Nil(t, planWithForce.Conflicts, "ForceUpdate should also have no conflicts in metadata-only mode")
-}
-
-func TestMetadataOnlyStrategy_Execute_RejectsWillMovePlan(t *testing.T) {
-	fs := afero.NewMemMapFs()
-	cfg := &config.OutputConfig{}
-	strategy := NewMetadataOnlyStrategy(fs, cfg)
-
-	plan := &OrganizePlan{
-		SourcePath: "/source/nonexistent.mp4",
-		TargetDir:  "/source",
-		TargetFile: "new-name.mp4",
-		TargetPath: "/source/new-name.mp4",
-		WillMove:   true,
-		Conflicts:  []string{},
-	}
-
-	result, err := strategy.Execute(plan)
-	assert.Error(t, err, "Should reject plan with WillMove=true in metadata-only mode")
-	assert.Contains(t, err.Error(), "metadata-only mode does not support file moves")
-	assert.False(t, result.Moved)
 }

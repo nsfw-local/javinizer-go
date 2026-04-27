@@ -354,50 +354,6 @@ func TestInPlaceStrategy_Plan_ForceUpdate(t *testing.T) {
 	assert.Empty(t, planForce.Conflicts, "With ForceUpdate, should skip conflict detection")
 }
 
-func TestInPlaceStrategy_Execute_Conflict(t *testing.T) {
-	fs := afero.NewMemMapFs()
-	cfg := &config.OutputConfig{}
-	m, _ := matcher.NewMatcher(&config.MatchingConfig{})
-	strategy := NewInPlaceStrategy(fs, cfg, m, nil)
-
-	plan := &OrganizePlan{
-		SourcePath: "/source/old-folder/ABC-123.mp4",
-		TargetDir:  "/source/new-folder",
-		TargetFile: "ABC-123.mp4",
-		TargetPath: "/source/new-folder/ABC-123.mp4",
-		WillMove:   true,
-		InPlace:    true,
-		OldDir:     "/source/old-folder",
-		Conflicts:  []string{"/source/new-folder already exists"},
-	}
-
-	result, err := strategy.Execute(plan)
-	assert.Error(t, err)
-	assert.False(t, result.Moved)
-}
-
-func TestInPlaceStrategy_Execute_NoInPlace(t *testing.T) {
-	fs := afero.NewMemMapFs()
-	cfg := &config.OutputConfig{}
-	m, _ := matcher.NewMatcher(&config.MatchingConfig{})
-	strategy := NewInPlaceStrategy(fs, cfg, m, nil)
-
-	plan := &OrganizePlan{
-		SourcePath: "/source/ABC-123.mp4",
-		TargetDir:  "/source",
-		TargetFile: "ABC-123.mp4",
-		TargetPath: "/source/ABC-123.mp4",
-		WillMove:   false,
-		InPlace:    false,
-		OldDir:     "/source",
-		Conflicts:  []string{},
-	}
-
-	result, err := strategy.Execute(plan)
-	require.NoError(t, err)
-	assert.False(t, result.Moved, "Should not move when WillMove=false and InPlace=false")
-}
-
 func TestInPlaceStrategy_Execute_DirRenameError(t *testing.T) {
 	fs := afero.NewMemMapFs()
 	cfg := &config.OutputConfig{}

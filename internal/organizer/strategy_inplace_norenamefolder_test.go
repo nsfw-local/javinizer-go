@@ -252,46 +252,6 @@ func TestInPlaceNoRenameFolderStrategy_Execute_NoDirRename(t *testing.T) {
 	assert.True(t, fileExists, "Renamed file should exist in original directory")
 }
 
-func TestInPlaceNoRenameFolderStrategy_Execute_Conflict(t *testing.T) {
-	fs := afero.NewMemMapFs()
-	cfg := &config.OutputConfig{}
-	m, _ := matcher.NewMatcher(&config.MatchingConfig{})
-	strategy := NewInPlaceNoRenameFolderStrategy(fs, cfg, m, nil)
-
-	plan := &OrganizePlan{
-		SourcePath: "/source/folder/ABC-123.mp4",
-		TargetDir:  "/source/folder",
-		TargetFile: "ABC-123.mp4",
-		TargetPath: "/source/folder/ABC-123.mp4",
-		WillMove:   true,
-		Conflicts:  []string{"/source/folder/ABC-123.mp4 already exists"},
-	}
-
-	result, err := strategy.Execute(plan)
-	assert.Error(t, err)
-	assert.False(t, result.Moved)
-}
-
-func TestInPlaceNoRenameFolderStrategy_Execute_NoMoveNeeded(t *testing.T) {
-	fs := afero.NewMemMapFs()
-	cfg := &config.OutputConfig{}
-	m, _ := matcher.NewMatcher(&config.MatchingConfig{})
-	strategy := NewInPlaceNoRenameFolderStrategy(fs, cfg, m, nil)
-
-	plan := &OrganizePlan{
-		SourcePath: "/source/folder/ABC-123.mp4",
-		TargetDir:  "/source/folder",
-		TargetFile: "ABC-123.mp4",
-		TargetPath: "/source/folder/ABC-123.mp4",
-		WillMove:   false,
-		Conflicts:  []string{},
-	}
-
-	result, err := strategy.Execute(plan)
-	require.NoError(t, err)
-	assert.False(t, result.Moved, "Should not move when WillMove=false")
-}
-
 func TestInPlaceNoRenameFolderStrategy_Plan_MaxPathLength(t *testing.T) {
 	fs := afero.NewMemMapFs()
 	cfg := &config.OutputConfig{

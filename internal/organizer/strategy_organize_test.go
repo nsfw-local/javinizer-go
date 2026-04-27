@@ -218,45 +218,6 @@ func TestOrganizeStrategy_Execute(t *testing.T) {
 	assert.False(t, exists, "Source file should not exist")
 }
 
-func TestOrganizeStrategy_Execute_NoMove(t *testing.T) {
-	fs := afero.NewMemMapFs()
-	cfg := &config.OutputConfig{}
-	strategy := NewOrganizeStrategy(fs, cfg, nil)
-
-	plan := &OrganizePlan{
-		SourcePath: "/source/ABC-123.mp4",
-		TargetDir:  "/source",
-		TargetFile: "ABC-123.mp4",
-		TargetPath: "/source/ABC-123.mp4",
-		WillMove:   false, // Same location
-		Conflicts:  []string{},
-	}
-
-	result, err := strategy.Execute(plan)
-	require.NoError(t, err)
-	assert.False(t, result.Moved)
-}
-
-func TestOrganizeStrategy_Execute_Conflict(t *testing.T) {
-	fs := afero.NewMemMapFs()
-	cfg := &config.OutputConfig{}
-	strategy := NewOrganizeStrategy(fs, cfg, nil)
-
-	plan := &OrganizePlan{
-		SourcePath: "/source/ABC-123.mp4",
-		TargetDir:  "/dest/ABC-123",
-		TargetFile: "ABC-123.mp4",
-		TargetPath: "/dest/ABC-123/ABC-123.mp4",
-		WillMove:   true,
-		Conflicts:  []string{"/dest/ABC-123/ABC-123.mp4"},
-	}
-
-	result, err := strategy.Execute(plan)
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "conflict")
-	assert.False(t, result.Moved)
-}
-
 func TestOrganizeStrategy_Plan_ForceUpdate(t *testing.T) {
 	fs := afero.NewMemMapFs()
 	cfg := &config.OutputConfig{

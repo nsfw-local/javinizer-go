@@ -1,7 +1,6 @@
 package organizer
 
 import (
-	"fmt"
 	"path/filepath"
 	"strings"
 
@@ -56,19 +55,12 @@ func (s *MetadataOnlyStrategy) Plan(match matcher.MatchResult, movie *models.Mov
 }
 
 func (s *MetadataOnlyStrategy) Execute(plan *OrganizePlan) (*OrganizeResult, error) {
-	result := &OrganizeResult{
+	return &OrganizeResult{
 		OriginalPath:           plan.SourcePath,
 		NewPath:                plan.TargetPath,
 		FolderPath:             plan.TargetDir,
 		FileName:               plan.TargetFile,
 		Moved:                  false,
-		ShouldGenerateMetadata: true, // Always generate NFO/media in source directory
-	}
-
-	if plan.WillMove {
-		result.Error = fmt.Errorf("metadata-only mode does not support file moves; plan has WillMove=true")
-		return result, result.Error
-	}
-
-	return result, nil
+		ShouldGenerateMetadata: true,
+	}, nil
 }

@@ -420,42 +420,6 @@ func TestOrganizer_Execute_PermissionErrors(t *testing.T) {
 	})
 }
 
-// TestOrganizer_Revert_Errors tests Revert error handling
-func TestOrganizer_Revert_Errors(t *testing.T) {
-	tmpDir := t.TempDir()
-
-	cfg := &config.OutputConfig{
-		FolderFormat: "<ID>",
-		FileFormat:   "<ID>",
-		RenameFile:   true,
-	}
-
-	org := NewOrganizer(afero.NewOsFs(), cfg, nil)
-
-	t.Run("Revert when not moved", func(t *testing.T) {
-		result := &OrganizeResult{
-			OriginalPath: "/some/path.mp4",
-			NewPath:      "/other/path.mp4",
-			Moved:        false,
-		}
-
-		err := org.Revert(result)
-		assert.NoError(t, err) // Should succeed (nothing to revert)
-	})
-
-	t.Run("Revert with nonexistent new path", func(t *testing.T) {
-		result := &OrganizeResult{
-			OriginalPath: filepath.Join(tmpDir, "original.mp4"),
-			NewPath:      filepath.Join(tmpDir, "nonexistent-new.mp4"),
-			Moved:        true,
-		}
-
-		err := org.Revert(result)
-		assert.Error(t, err)
-		assert.Contains(t, err.Error(), "failed to revert move")
-	})
-}
-
 // TestOrganizer_Plan_EdgeCases tests edge cases in Plan function
 func TestOrganizer_Plan_EdgeCases(t *testing.T) {
 	tmpDir := t.TempDir()
@@ -844,75 +808,6 @@ func TestValidatePlan_EdgeCases(t *testing.T) {
 		issues := org.ValidatePlan(plan)
 		assert.NotEmpty(t, issues)
 		assert.True(t, containsIssue(issues, "target path contains double slashes"))
-	})
-}
-
-// TestCleanEmptyDirectories_EdgeCases tests edge cases in directory cleanup
-func TestCleanEmptyDirectories_EdgeCases(t *testing.T) {
-	tmpDir := t.TempDir()
-	cfg := &config.OutputConfig{}
-	org := NewOrganizer(afero.NewOsFs(), cfg, nil)
-
-	t.Run("Stop at non-empty directory", func(t *testing.T) {
-		// Create nested directories with a file in middle level
-		deepDir := filepath.Join(tmpDir, "cleanup1", "b", "c")
-		require.NoError(t, os.MkdirAll(deepDir, 0755))
-
-		// Put a file in middle directory
-		middleFile := filepath.Join(tmpDir, "cleanup1", "b", "keep.txt")
-		require.NoError(t, os.WriteFile(middleFile, []byte("keep"), 0644))
-
-		// Create and remove a file in deep directory
-		filePath := filepath.Join(deepDir, "temp.mp4")
-		require.NoError(t, os.WriteFile(filePath, []byte("temp"), 0644))
-		require.NoError(t, os.Remove(filePath))
-
-		// Clean from deep directory
-		err := org.CleanEmptyDirectories(filePath, tmpDir)
-		require.NoError(t, err)
-
-		// Deep directory should be removed
-		_, err = os.Stat(deepDir)
-		assert.True(t, os.IsNotExist(err))
-
-		// Middle directory should still exist (has keep.txt)
-		assert.DirExists(t, filepath.Join(tmpDir, "cleanup1", "b"))
-
-		// File should still exist
-		assert.FileExists(t, middleFile)
-	})
-
-	t.Run("Stop at base directory", func(t *testing.T) {
-		// Create nested empty directories
-		baseDir := filepath.Join(tmpDir, "cleanup2")
-		deepDir := filepath.Join(baseDir, "x", "y", "z")
-		require.NoError(t, os.MkdirAll(deepDir, 0755))
-
-		filePath := filepath.Join(deepDir, "file.mp4")
-
-		// Clean from deep directory
-		err := org.CleanEmptyDirectories(filePath, baseDir)
-		require.NoError(t, err)
-
-		// The base directory should still exist
-		assert.DirExists(t, tmpDir)
-		// But the cleanup2 directory itself may or may not exist depending on implementation
-		// The important thing is the function doesn't error and doesn't go above baseDir
-	})
-
-	t.Run("Invalid base directory", func(t *testing.T) {
-		filePath := filepath.Join(tmpDir, "cleanup3", "file.mp4")
-		baseDir := "/nonexistent/base"
-
-		err := org.CleanEmptyDirectories(filePath, baseDir)
-		// Should return error from filepath.Abs
-		assert.Error(t, err)
-	})
-
-	t.Run("Cleanup with read error", func(t *testing.T) {
-		// This is difficult to test without special permissions
-		// The code handles os.ReadDir errors by returning them
-		t.Skip("Difficult to simulate ReadDir failure reliably")
 	})
 }
 

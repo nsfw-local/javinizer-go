@@ -577,7 +577,6 @@ func (o *Organizer) CopyWithLinkMode(plan *OrganizePlan, dryRun bool, linkMode L
 
 	switch linkMode {
 	case LinkModeNone:
-		// Copy the file
 		sourceFile, err := o.fs.Open(plan.SourcePath)
 		if err != nil {
 			result.Error = fmt.Errorf("failed to open source file: %w", err)
@@ -585,18 +584,34 @@ func (o *Organizer) CopyWithLinkMode(plan *OrganizePlan, dryRun bool, linkMode L
 		}
 		defer func() { _ = sourceFile.Close() }()
 
+		srcInfo, err := o.fs.Stat(plan.SourcePath)
+		if err != nil {
+			result.Error = fmt.Errorf("failed to stat source file: %w", err)
+			return result, result.Error
+		}
+
 		targetFile, err := o.fs.Create(plan.TargetPath)
 		if err != nil {
 			result.Error = fmt.Errorf("failed to create target file: %w", err)
 			return result, result.Error
 		}
-		defer func() { _ = targetFile.Close() }()
+		defer func() {
+			if closeErr := targetFile.Close(); closeErr != nil && result.Error == nil {
+				result.Error = fmt.Errorf("failed to close copied file: %w", closeErr)
+			}
+		}()
 
-		// Copy data
 		if _, err := io.Copy(targetFile, sourceFile); err != nil {
 			result.Error = fmt.Errorf("failed to copy file: %w", err)
 			return result, result.Error
 		}
+
+		if err := targetFile.Sync(); err != nil {
+			result.Error = fmt.Errorf("failed to sync copied file: %w", err)
+			return result, result.Error
+		}
+
+		_ = o.fs.Chmod(plan.TargetPath, srcInfo.Mode())
 	case LinkModeHard:
 		if err := os.Link(plan.SourcePath, plan.TargetPath); err != nil {
 			if errors.Is(err, syscall.EXDEV) {
@@ -639,24 +654,6 @@ func (o *Organizer) CopyWithLinkMode(plan *OrganizePlan, dryRun bool, linkMode L
 	return result, nil
 }
 
-// Revert reverts an organization operation (moves file back)
-func (o *Organizer) Revert(result *OrganizeResult) error {
-	if !result.Moved {
-		return nil // Nothing to revert
-	}
-
-	// Move file back to original location
-	if err := fsutil.MoveFileFs(o.fs, result.NewPath, result.OriginalPath); err != nil {
-		return fmt.Errorf("failed to revert move: %w", err)
-	}
-
-	// Try to remove the directory if it's empty
-	dir := filepath.Dir(result.NewPath)
-	_ = o.fs.Remove(dir) // Ignore error - directory might not be empty
-
-	return nil
-}
-
 // ValidatePlan checks if a plan is valid and safe to execute
 func (o *Organizer) ValidatePlan(plan *OrganizePlan) []string {
 	issues := make([]string, 0)
@@ -680,75 +677,4 @@ func (o *Organizer) ValidatePlan(plan *OrganizePlan) []string {
 	}
 
 	return issues
-}
-
-// CleanEmptyDirectories removes empty directories up to the base path
-func (o *Organizer) CleanEmptyDirectories(path string, baseDir string) error {
-	// Get the directory of the file
-	dir := filepath.Dir(path)
-
-	// Canonicalize and resolve symlinks for safe comparison
-	dir, err := filepath.Abs(filepath.Clean(dir))
-	if err != nil {
-		return err
-	}
-	// Resolve symlinks to prevent symlink-based escapes
-	dir, err = filepath.EvalSymlinks(dir)
-	if err != nil {
-		// If we can't resolve symlinks, fail safely
-		return err
-	}
-
-	// Canonicalize base directory
-	baseDir, err = filepath.Abs(filepath.Clean(baseDir))
-	if err != nil {
-		return err
-	}
-	// Resolve symlinks in base directory
-	baseDir, err = filepath.EvalSymlinks(baseDir)
-	if err != nil {
-		// If we can't resolve symlinks, fail safely
-		return err
-	}
-
-	for dir != baseDir {
-		// Check if directory is empty
-		entries, err := afero.ReadDir(o.fs, dir)
-		if err != nil {
-			return err
-		}
-
-		// If not empty, stop
-		if len(entries) > 0 {
-			break
-		}
-
-		// Safe to remove (we've verified dir != baseDir)
-		if err := o.fs.Remove(dir); err != nil {
-			return err
-		}
-
-		// Move up one level
-		parentDir := filepath.Dir(dir)
-
-		// Stop if we've reached the root (no more parents)
-		if parentDir == dir {
-			break
-		}
-
-		// Additional safety check: ensure parentDir is not above baseDir
-		rel, err := filepath.Rel(baseDir, parentDir)
-		if err != nil {
-			// Cannot determine relationship, stop to be safe
-			break
-		}
-		if strings.HasPrefix(rel, "..") {
-			// We've gone above baseDir, stop
-			break
-		}
-
-		dir = parentDir
-	}
-
-	return nil
 }

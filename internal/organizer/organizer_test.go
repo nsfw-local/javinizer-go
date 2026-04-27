@@ -703,65 +703,6 @@ func TestParseLinkMode(t *testing.T) {
 	}
 }
 
-func TestOrganizer_Revert(t *testing.T) {
-	tmpDir := t.TempDir()
-
-	// Create and organize a file
-	sourceFile := filepath.Join(tmpDir, "source", "ipx-535.mp4")
-	if err := os.MkdirAll(filepath.Dir(sourceFile), 0755); err != nil {
-		t.Fatalf("Failed to create source directory: %v", err)
-	}
-	if err := os.WriteFile(sourceFile, []byte("test"), 0644); err != nil {
-		t.Fatalf("Failed to create source file: %v", err)
-	}
-
-	cfg := &config.OutputConfig{
-		FolderFormat: "<ID>",
-		FileFormat:   "<ID>",
-		RenameFile:   true,
-		MoveToFolder: true,
-	}
-
-	org := NewOrganizer(afero.NewOsFs(), cfg, nil)
-	movie := createTestMovie()
-
-	match := matcher.MatchResult{
-		File: scanner.FileInfo{
-			Path:      sourceFile,
-			Name:      "ipx-535.mp4",
-			Extension: ".mp4",
-		},
-		ID: "IPX-535",
-	}
-
-	destDir := filepath.Join(tmpDir, "dest")
-	result, err := org.Organize(match, movie, destDir, false, false, false)
-	if err != nil {
-		t.Fatalf("Organize failed: %v", err)
-	}
-
-	// Verify file was moved
-	if _, err := os.Stat(sourceFile); !os.IsNotExist(err) {
-		t.Error("Source file still exists after organize")
-	}
-	if _, err := os.Stat(result.NewPath); os.IsNotExist(err) {
-		t.Error("Target file does not exist after organize")
-	}
-
-	// Revert the operation
-	if err := org.Revert(result); err != nil {
-		t.Fatalf("Revert failed: %v", err)
-	}
-
-	// File should be back at original location
-	if _, err := os.Stat(sourceFile); os.IsNotExist(err) {
-		t.Error("Source file does not exist after revert")
-	}
-	if _, err := os.Stat(result.NewPath); !os.IsNotExist(err) {
-		t.Error("Target file still exists after revert")
-	}
-}
-
 func TestValidatePlan(t *testing.T) {
 	tmpDir := t.TempDir()
 	cfg := &config.OutputConfig{}
@@ -943,72 +884,6 @@ func TestOrganizer_OrganizeBatch(t *testing.T) {
 		if !result.Moved {
 			t.Errorf("File %s was not moved", result.OriginalPath)
 		}
-	}
-}
-
-func TestCleanEmptyDirectories(t *testing.T) {
-	tmpDir := t.TempDir()
-	cfg := &config.OutputConfig{}
-	org := NewOrganizer(afero.NewOsFs(), cfg, nil)
-
-	// Create nested empty directories with a file
-	deepDir := filepath.Join(tmpDir, "a", "b", "c", "d")
-	if err := os.MkdirAll(deepDir, 0755); err != nil {
-		t.Fatalf("Failed to create directories: %v", err)
-	}
-
-	// Create a file in the deepest directory
-	filePath := filepath.Join(deepDir, "test.mp4")
-	if err := os.WriteFile(filePath, []byte("test"), 0644); err != nil {
-		t.Fatalf("Failed to create file: %v", err)
-	}
-
-	// Remove the file (simulating a file move)
-	if err := os.Remove(filePath); err != nil {
-		t.Fatalf("Failed to remove file: %v", err)
-	}
-
-	// Clean from file path
-	if err := org.CleanEmptyDirectories(filePath, tmpDir); err != nil {
-		t.Fatalf("CleanEmptyDirectories failed: %v", err)
-	}
-
-	// All nested directories should be removed
-	if _, err := os.Stat(filepath.Join(tmpDir, "a")); !os.IsNotExist(err) {
-		t.Error("Empty directory 'a' was not removed")
-	}
-}
-
-func TestCleanEmptyDirectories_WithHiddenFiles(t *testing.T) {
-	tmpDir := t.TempDir()
-	cfg := &config.OutputConfig{}
-	org := NewOrganizer(afero.NewOsFs(), cfg, nil)
-
-	// Create nested directories
-	deepDir := filepath.Join(tmpDir, "a", "b", "c")
-	if err := os.MkdirAll(deepDir, 0755); err != nil {
-		t.Fatalf("Failed to create directories: %v", err)
-	}
-
-	// Create a hidden file in middle directory (should prevent deletion)
-	hiddenFile := filepath.Join(tmpDir, "a", "b", ".hidden")
-	if err := os.WriteFile(hiddenFile, []byte("test"), 0644); err != nil {
-		t.Fatalf("Failed to create hidden file: %v", err)
-	}
-
-	// Try to clean from deepest directory
-	if err := org.CleanEmptyDirectories(filepath.Join(deepDir, "file.mp4"), tmpDir); err != nil {
-		t.Fatalf("CleanEmptyDirectories failed: %v", err)
-	}
-
-	// Directory 'c' should be removed (empty)
-	if _, err := os.Stat(deepDir); !os.IsNotExist(err) {
-		t.Error("Empty directory 'c' was not removed")
-	}
-
-	// Directory 'b' should still exist (has hidden file)
-	if _, err := os.Stat(filepath.Join(tmpDir, "a", "b")); os.IsNotExist(err) {
-		t.Error("Directory 'b' with hidden file was incorrectly removed")
 	}
 }
 
