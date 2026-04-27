@@ -936,52 +936,12 @@ func (t *ProcessFileTask) mergeWithExistingNFO(ctx context.Context, movie *model
 	}
 
 	sourceDir := filepath.Dir(t.match.File.Path)
-	tmplCtx := template.NewContextFromMovie(movie)
-	tmplCtx.GroupActress = t.cfg.Output.GroupActress
-	if t.cfg.Metadata.NFO.PerFile && t.match.IsMultiPart {
-		tmplCtx.PartNumber = t.match.PartNumber
-		tmplCtx.PartSuffix = t.match.PartSuffix
-		tmplCtx.IsMultiPart = true
+	isMultiPart := t.cfg.Metadata.NFO.PerFile && t.match.IsMultiPart
+	var partSuffix string
+	if isMultiPart {
+		partSuffix = t.match.PartSuffix
 	}
-
-	templateEngine := t.templateEngine
-	nfoFilename, err := templateEngine.ExecuteWithContext(ctx, t.cfg.Metadata.NFO.FilenameTemplate, tmplCtx)
-	if err != nil {
-		logging.Warnf("[%s] Failed to execute NFO filename template: %v, using default", movie.ID, err)
-		sanitized := template.SanitizeFilename(movie.ID)
-		if sanitized == "" {
-			sanitized = "metadata"
-		}
-		nfoFilename = sanitized + ".nfo"
-	} else {
-		basename := nfoFilename
-		lower := strings.ToLower(basename)
-		if strings.HasSuffix(lower, ".nfo") {
-			basename = basename[:len(basename)-4]
-		}
-		sanitized := template.SanitizeFilename(basename)
-		if sanitized == "" {
-			sanitized = template.SanitizeFilename(movie.ID)
-			if sanitized == "" {
-				sanitized = "metadata"
-			}
-		}
-		nfoFilename = sanitized + ".nfo"
-	}
-
-	nfoPath := filepath.Join(sourceDir, nfoFilename)
-
-	legacyPaths := []string{}
-	if nfoFilename != movie.ID+".nfo" {
-		legacyPaths = append(legacyPaths, filepath.Join(sourceDir, movie.ID+".nfo"))
-	}
-	if t.cfg.Metadata.NFO.PerFile && t.match.IsMultiPart {
-		videoName := strings.TrimSuffix(filepath.Base(t.match.File.Path), filepath.Ext(t.match.File.Path))
-		videoNFO := filepath.Join(sourceDir, videoName+".nfo")
-		if videoNFO != nfoPath {
-			legacyPaths = append(legacyPaths, videoNFO)
-		}
-	}
+	nfoPath, legacyPaths := nfo.ResolveNFOPath(sourceDir, movie, t.cfg.Metadata.NFO.FilenameTemplate, t.cfg.Output.GroupActress, t.cfg.Metadata.NFO.PerFile, t.match.IsMultiPart, partSuffix, t.match.File.Path)
 
 	foundPath := ""
 	if _, err := os.Stat(nfoPath); err == nil {
@@ -1017,7 +977,7 @@ func (t *ProcessFileTask) mergeWithExistingNFO(ctx context.Context, movie *model
 	if t.cfg.Metadata.NFO.DisplayTitle != "" {
 		displayCtx := template.NewContextFromMovie(merged)
 		displayCtx.Title = movie.Title
-		if displayName, err := templateEngine.ExecuteWithContext(ctx, t.cfg.Metadata.NFO.DisplayTitle, displayCtx); err == nil {
+		if displayName, err := t.templateEngine.ExecuteWithContext(ctx, t.cfg.Metadata.NFO.DisplayTitle, displayCtx); err == nil {
 			merged.DisplayTitle = displayName
 		} else if merged.DisplayTitle == "" {
 			merged.DisplayTitle = merged.Title

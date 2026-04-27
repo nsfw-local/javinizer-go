@@ -280,7 +280,6 @@ func RunBatchScrapeOnce(
 				}
 			}
 
-			// CACHE HIT NFO MERGE: Merge cached data with existing NFO if updateMode is true
 			movieToReturn := cached
 			fieldSources := buildFieldSourcesFromCachedMovie(cached)
 			actressSources := buildActressSourcesFromCachedMovie(cached)
@@ -288,58 +287,13 @@ func RunBatchScrapeOnce(
 			if updateMode && cfg != nil {
 				logging.Debugf("[Batch %s] File %d: Update mode enabled with cache hit, checking for existing NFO to merge", job.ID, fileIndex)
 
-				// Construct expected NFO path (same logic as fresh scrape path)
 				sourceDir := filepath.Dir(filePath)
-				tmplCtx := template.NewContextFromMovie(cached)
-				tmplCtx.GroupActress = cfg.Output.GroupActress
-
-				// Detect part suffix for multi-part files
-				if cfg.Metadata.NFO.PerFile && matchResultPtr != nil && matchResultPtr.IsMultiPart {
-					tmplCtx.PartNumber = matchResultPtr.PartNumber
-					tmplCtx.PartSuffix = matchResultPtr.PartSuffix
-					tmplCtx.IsMultiPart = true
+				isMultiPart := matchResultPtr != nil && matchResultPtr.IsMultiPart
+				var partSuffix string
+				if isMultiPart {
+					partSuffix = matchResultPtr.PartSuffix
 				}
-
-				// Generate expected NFO filename using template
-				templateEngine := job.TemplateEngine()
-				nfoFilename, err := templateEngine.ExecuteWithContext(ctx, cfg.Metadata.NFO.FilenameTemplate, tmplCtx)
-				if err != nil {
-					logging.Warnf("[Batch %s] File %d: Failed to execute NFO filename template: %v, using default", job.ID, fileIndex, err)
-					sanitized := template.SanitizeFilename(cached.ID)
-					if sanitized == "" {
-						sanitized = "metadata"
-					}
-					nfoFilename = sanitized + ".nfo"
-				} else {
-					basename := nfoFilename
-					lower := strings.ToLower(basename)
-					if strings.HasSuffix(lower, ".nfo") {
-						basename = basename[:len(basename)-4]
-					}
-					sanitized := template.SanitizeFilename(basename)
-					if sanitized == "" {
-						sanitized = template.SanitizeFilename(cached.ID)
-						if sanitized == "" {
-							sanitized = "metadata"
-						}
-					}
-					nfoFilename = sanitized + ".nfo"
-				}
-
-				nfoPath := filepath.Join(sourceDir, nfoFilename)
-
-				// Also try legacy paths
-				legacyPaths := []string{}
-				if nfoFilename != cached.ID+".nfo" {
-					legacyPaths = append(legacyPaths, filepath.Join(sourceDir, cached.ID+".nfo"))
-				}
-				if cfg.Metadata.NFO.PerFile && matchResultPtr != nil && matchResultPtr.IsMultiPart {
-					videoName := strings.TrimSuffix(filepath.Base(filePath), filepath.Ext(filePath))
-					videoNFO := filepath.Join(sourceDir, videoName+".nfo")
-					if videoNFO != nfoPath {
-						legacyPaths = append(legacyPaths, videoNFO)
-					}
-				}
+				nfoPath, legacyPaths := nfo.ResolveNFOPath(sourceDir, cached, cfg.Metadata.NFO.FilenameTemplate, cfg.Output.GroupActress, cfg.Metadata.NFO.PerFile, isMultiPart, partSuffix, filePath)
 
 				// Check if NFO exists
 				foundPath := ""
@@ -740,60 +694,13 @@ func RunBatchScrapeOnce(
 	if updateMode && cfg != nil {
 		logging.Debugf("[Batch %s] File %d: Update mode enabled, checking for existing NFO to merge", job.ID, fileIndex)
 
-		// Construct expected NFO path (similar to processUpdateMode logic)
 		sourceDir := filepath.Dir(filePath)
-		tmplCtx := template.NewContextFromMovie(movie)
-		tmplCtx.GroupActress = cfg.Output.GroupActress
-
-		// Detect part suffix for multi-part files
-		if cfg.Metadata.NFO.PerFile && matchResultPtr != nil && matchResultPtr.IsMultiPart {
-			tmplCtx.PartNumber = matchResultPtr.PartNumber
-			tmplCtx.PartSuffix = matchResultPtr.PartSuffix
-			tmplCtx.IsMultiPart = true
+		isMultiPart := matchResultPtr != nil && matchResultPtr.IsMultiPart
+		var partSuffix string
+		if isMultiPart {
+			partSuffix = matchResultPtr.PartSuffix
 		}
-
-		// Generate expected NFO filename using template
-		templateEngine := job.TemplateEngine()
-		nfoFilename, err := templateEngine.ExecuteWithContext(ctx, cfg.Metadata.NFO.FilenameTemplate, tmplCtx)
-		if err != nil {
-			// Fall back to default naming
-			logging.Warnf("[Batch %s] File %d: Failed to execute NFO filename template: %v, using default", job.ID, fileIndex, err)
-			sanitized := template.SanitizeFilename(movie.ID)
-			if sanitized == "" {
-				sanitized = "metadata"
-			}
-			nfoFilename = sanitized + ".nfo"
-		} else {
-			// Sanitize and ensure .nfo extension
-			basename := nfoFilename
-			lower := strings.ToLower(basename)
-			if strings.HasSuffix(lower, ".nfo") {
-				basename = basename[:len(basename)-4]
-			}
-			sanitized := template.SanitizeFilename(basename)
-			if sanitized == "" {
-				sanitized = template.SanitizeFilename(movie.ID)
-				if sanitized == "" {
-					sanitized = "metadata"
-				}
-			}
-			nfoFilename = sanitized + ".nfo"
-		}
-
-		nfoPath := filepath.Join(sourceDir, nfoFilename)
-
-		// Also try legacy paths for backward compatibility
-		legacyPaths := []string{}
-		if nfoFilename != movie.ID+".nfo" {
-			legacyPaths = append(legacyPaths, filepath.Join(sourceDir, movie.ID+".nfo"))
-		}
-		if cfg.Metadata.NFO.PerFile && matchResultPtr != nil && matchResultPtr.IsMultiPart {
-			videoName := strings.TrimSuffix(filepath.Base(filePath), filepath.Ext(filePath))
-			videoNFO := filepath.Join(sourceDir, videoName+".nfo")
-			if videoNFO != nfoPath {
-				legacyPaths = append(legacyPaths, videoNFO)
-			}
-		}
+		nfoPath, legacyPaths := nfo.ResolveNFOPath(sourceDir, movie, cfg.Metadata.NFO.FilenameTemplate, cfg.Output.GroupActress, cfg.Metadata.NFO.PerFile, isMultiPart, partSuffix, filePath)
 
 		// Check if NFO exists (try template path first, then legacy)
 		foundPath := ""

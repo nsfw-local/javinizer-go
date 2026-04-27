@@ -194,17 +194,7 @@ func processUpdateMode(job *worker.BatchJob, cfg *config.Config, db *database.DB
 		nfoFilename := nfo.ResolveNFOFilename(movie, cfg.Metadata.NFO.FilenameTemplate, cfg.Output.GroupActress, cfg.Metadata.NFO.PerFile, isMultiPart, partSuffix)
 		nfoPath := filepath.Join(sourceDir, nfoFilename)
 
-		legacyPaths := []string{}
-		if nfoFilename != movie.ID+".nfo" {
-			legacyPaths = append(legacyPaths, filepath.Join(sourceDir, movie.ID+".nfo"))
-		}
-		if cfg.Metadata.NFO.PerFile && filePath != "" {
-			videoName := strings.TrimSuffix(filepath.Base(filePath), filepath.Ext(filePath))
-			videoNFO := filepath.Join(sourceDir, videoName+".nfo")
-			if videoNFO != nfoPath {
-				legacyPaths = append(legacyPaths, videoNFO)
-			}
-		}
+		_, legacyPaths := nfo.ResolveNFOPath(sourceDir, movie, cfg.Metadata.NFO.FilenameTemplate, cfg.Output.GroupActress, cfg.Metadata.NFO.PerFile, isMultiPart, partSuffix, filePath)
 
 		foundPath := ""
 		if _, err := os.Stat(nfoPath); err == nil {
