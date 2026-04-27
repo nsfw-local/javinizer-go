@@ -262,6 +262,11 @@ func Run(cmd *cobra.Command, args []string, configFile string, deps *commandutil
 		return nil, nil, fmt.Errorf("failed to aggregate: %w", err)
 	}
 
+	if movie.ContentID == "" && resolvedID != "" && resolvedID != id {
+		movie.ContentID = resolvedID
+		logging.Debugf("Using DMM-resolved ContentID %q as fallback (aggregator produced empty ContentID)", resolvedID)
+	}
+
 	movie.OriginalFileName = id
 
 	// Save to database (upsert: create or update)

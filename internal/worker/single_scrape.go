@@ -598,6 +598,10 @@ func RunBatchScrapeOnce(
 		if mappedQuery, ok := resolveScraperQueryForInputs(scraper, rawFilenameQuery, movieID, resolvedID); ok {
 			scraperQuery = mappedQuery
 		}
+		if scraperQuery != movieID {
+			logging.Debugf("[Batch %s] File %d: Scraper %s using resolvedID %q instead of movieID %q",
+				job.ID, fileIndex, scraper.Name(), scraperQuery, movieID)
+		}
 
 		logging.Debugf("[Batch %s] File %d: Querying scraper %s for %s", job.ID, fileIndex, scraper.Name(), scraperQuery)
 		scraperResult, err := safeSearch(ctx, scraper, scraperQuery)
@@ -712,6 +716,12 @@ func RunBatchScrapeOnce(
 
 	logging.Debugf("[Batch %s] File %d: Aggregation complete - Title: %s, Maker: %s, Actresses: %d, Genres: %d",
 		job.ID, fileIndex, movie.Title, movie.Maker, len(movie.Actresses), len(movie.Genres))
+
+	if movie.ContentID == "" && resolvedID != "" && resolvedID != movieID {
+		movie.ContentID = resolvedID
+		logging.Debugf("[Batch %s] File %d: Using DMM-resolved ContentID %q as fallback (aggregator produced empty ContentID)",
+			job.ID, fileIndex, resolvedID)
+	}
 
 	// Track which scraper won each field for frontend debugging display.
 	fieldSources := buildFieldSourcesFromScrapeResults(results, agg.GetResolvedPriorities(), selectedScrapers)
@@ -875,6 +885,22 @@ func RunBatchScrapeOnce(
 	// We save immediately even though organize hasn't happened yet
 	var finalMovie *models.Movie
 	if !usingCustomScrapers {
+		if movie.ID == "" && movie.ContentID == "" {
+			logging.Warnf("[Batch %s] File %d: Critical - aggregated movie has empty ID and ContentID (resolvedID=%q, movieID=%q, scraperResults=%d)",
+				job.ID, fileIndex, resolvedID, movieID, len(results))
+			for i, r := range results {
+				logging.Debugf("[Batch %s] File %d: Result[%d] source=%s, ID=%q, ContentID=%q, Title=%q",
+					job.ID, fileIndex, i, r.Source, r.ID, r.ContentID, r.Title)
+			}
+		}
+		if movie.Title == "" {
+			logging.Warnf("[Batch %s] File %d: Aggregated movie has empty Title (resolvedID=%q, movieID=%q, scraperResults=%d)",
+				job.ID, fileIndex, resolvedID, movieID, len(results))
+			for i, r := range results {
+				logging.Debugf("[Batch %s] File %d: Result[%d] source=%s, Title=%q, Maker=%q, Genres=%d",
+					job.ID, fileIndex, i, r.Source, r.Title, r.Maker, len(r.Genres))
+			}
+		}
 		logging.Debugf("[Batch %s] File %d: Saving metadata to database", job.ID, fileIndex)
 
 		// IMPORTANT: Don't save temp poster URLs to database

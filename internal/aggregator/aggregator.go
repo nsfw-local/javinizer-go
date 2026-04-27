@@ -555,7 +555,16 @@ func (a *Aggregator) aggregateWithPriority(results []*models.ScraperResult, prio
 
 	movie.Translations = a.buildTranslations(results, movie)
 
+	preTranslationTitle := movie.Title
+	preTranslationMaker := movie.Maker
+	preTranslationContentID := movie.ContentID
+
 	a.ApplyConfiguredTranslation(movie)
+
+	if preTranslationTitle != movie.Title || preTranslationMaker != movie.Maker || preTranslationContentID != movie.ContentID {
+		logging.Debugf("Aggregation: translation modified primary fields - Title: %q->%q, Maker: %q->%q, ContentID: %q->%q",
+			preTranslationTitle, movie.Title, preTranslationMaker, movie.Maker, preTranslationContentID, movie.ContentID)
+	}
 
 	if a.config.Metadata.NFO.DisplayTitle != "" {
 		ctx := template.NewContextFromMovie(movie)
