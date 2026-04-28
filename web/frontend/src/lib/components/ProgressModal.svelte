@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount, onDestroy } from 'svelte';
+	import { onDestroy } from 'svelte';
 	import { flip } from 'svelte/animate';
 	import { cubicOut } from 'svelte/easing';
 	import { fade, scale, slide } from 'svelte/transition';
@@ -7,6 +7,8 @@
 	import { portalToBody } from '$lib/actions/portal';
 	import { apiClient } from '$lib/api/client';
 	import { websocketStore } from '$lib/stores/websocket';
+	import { createBatchJobPollingQuery, createConfigQuery } from '$lib/query/queries';
+	import { createMutation, useQueryClient } from '@tanstack/svelte-query';
 	import type { BatchJobResponse, ProgressMessage, FileResult } from '$lib/api/types';
 	import { X, CircleCheckBig, CircleX, LoaderCircle, ChevronDown, ChevronRight } from 'lucide-svelte';
 	import Button from './ui/Button.svelte';
@@ -21,10 +23,20 @@
 
 	let { jobId, destination, updateMode = false, onClose }: Props = $props();
 
-	let job: BatchJobResponse | null = $state(null);
-	let loading = $state(true);
-	let error = $state<string | null>(null);
-	let pollInterval: ReturnType<typeof setInterval> | null = null;
+	const queryClient = useQueryClient();
+	const jobQuery = createBatchJobPollingQuery(jobId);
+	const configQuery = createConfigQuery();
+	let job = $derived(jobQuery.data ?? null);
+	let loading = $derived(jobQuery.isPending);
+	const cancelMutation = createMutation(() => ({
+		mutationFn: () => apiClient.cancelBatchJob(jobId),
+		onSuccess: () => {
+			queryClient.invalidateQueries({ queryKey: ['batch-job', jobId] });
+		},
+	}));
+
+	let error = $derived(jobQuery.error?.message ?? cancelMutation.error?.message ?? null);
+	let maxWorkers = $derived(configQuery.data?.performance?.max_workers || 5);
 	let countdown = $state(3);
 	let countdownInterval: ReturnType<typeof setInterval> | null = null;
 	let cancelRedirect = $state(false);
@@ -63,76 +75,28 @@
 		return (Object.values(job.results) as FileResult[]).filter(r => r.status === 'failed');
 	});
 
-	// Worker pool status - fetched from server config
-	let maxWorkers = $state(5); // Default to 5 until config is loaded
 	const activeWorkerCount = $derived(activeFiles.length);
 
-	// Fetch server config to get actual max_workers
-	async function fetchConfig() {
-		try {
-			const config = await apiClient.getConfig();
-			maxWorkers = config.performance?.max_workers || 5;
-		} catch (err) {
-			console.error('Failed to fetch config:', err);
-			// Keep default value of 5
-		}
-	}
-
-	async function fetchJob() {
-		try {
-			job = await apiClient.getBatchJob(jobId);
-			loading = false;
-
-			// Stop polling if job is complete (scraping finished)
-			if (
-				job &&
-				(job.status === 'completed' || job.status === 'failed' || job.status === 'cancelled')
-			) {
-				if (pollInterval) {
-					clearInterval(pollInterval);
-					pollInterval = null;
+	$effect(() => {
+		const status = jobQuery.data?.status;
+		if (status === 'completed' && !countdownInterval && !cancelRedirect) {
+			countdownInterval = setInterval(() => {
+				countdown -= 1;
+				if (countdown <= 0 && !cancelRedirect) {
+					if (countdownInterval) clearInterval(countdownInterval);
+					const params = new URLSearchParams({ destination });
+					if (updateMode) params.set('update', 'true');
+					goto(`/review/${jobId}?${params.toString()}`);
 				}
-				// Redirect to review page if completed successfully
-				if (job.status === 'completed' && !countdownInterval && !cancelRedirect) {
-					// Start countdown timer
-					countdownInterval = setInterval(() => {
-						countdown -= 1;
-						if (countdown <= 0 && !cancelRedirect) {
-							if (countdownInterval) clearInterval(countdownInterval);
-							const params = new URLSearchParams({ destination });
-							if (updateMode) params.set('update', 'true');
-							goto(`/review/${jobId}?${params.toString()}`);
-						}
-					}, 1000);
-				}
-			}
-		} catch (e) {
-			error = e instanceof Error ? e.message : 'Failed to fetch job status';
-			loading = false;
+			}, 1000);
 		}
-	}
-
-	async function handleCancel() {
-		if (!job) return;
-		try {
-			await apiClient.cancelBatchJob(jobId);
-			await fetchJob();
-		} catch (e) {
-			error = e instanceof Error ? e.message : 'Failed to cancel job';
-		}
-	}
-
-	onMount(() => {
-		fetchConfig(); // Fetch server config to get max_workers
-		fetchJob();
-		// Poll for updates every 2 seconds
-		pollInterval = setInterval(fetchJob, 2000);
 	});
 
+	async function handleCancel() {
+		cancelMutation.mutate();
+	}
+
 	onDestroy(() => {
-		if (pollInterval) {
-			clearInterval(pollInterval);
-		}
 		if (countdownInterval) {
 			clearInterval(countdownInterval);
 		}
