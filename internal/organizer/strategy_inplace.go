@@ -60,7 +60,7 @@ func (s *InPlaceStrategy) isDedicatedFolder(dir string, id string, m *matcher.Ma
 		videoCount++
 
 		matchedID := m.MatchString(entry.Name())
-		if matchedID == id {
+		if matchedID == id || strings.Contains(strings.ToUpper(entry.Name()), strings.ToUpper(id)) {
 			matchingCount++
 		}
 	}

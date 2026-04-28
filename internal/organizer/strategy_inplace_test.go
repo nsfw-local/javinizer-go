@@ -65,6 +65,22 @@ func TestInPlaceStrategy_isDedicatedFolder_MixedIDs(t *testing.T) {
 	assert.False(t, dedicated, "Folder with mixed IDs should not be dedicated")
 }
 
+func TestInPlaceStrategy_isDedicatedFolder_PrefixedID(t *testing.T) {
+	fs := afero.NewMemMapFs()
+	cfg := &config.OutputConfig{
+		FolderFormat: "<ID>",
+	}
+	m, err := matcher.NewMatcher(&config.MatchingConfig{})
+	require.NoError(t, err)
+	strategy := NewInPlaceStrategy(fs, cfg, m, nil)
+
+	_ = fs.MkdirAll("/source/200GANA-2850", 0777)
+	_ = afero.WriteFile(fs, "/source/200GANA-2850/200GANA-2850.mp4", []byte("video1"), 0644)
+
+	dedicated := strategy.isDedicatedFolder("/source/200GANA-2850", "200GANA-2850", m)
+	assert.True(t, dedicated, "Folder with prefixed ID like 200GANA-2850 should be dedicated even when matcher strips prefix to GANA-2850")
+}
+
 func TestInPlaceStrategy_isDedicatedFolder_NoVideos(t *testing.T) {
 	fs := afero.NewMemMapFs()
 	cfg := &config.OutputConfig{}
