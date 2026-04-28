@@ -1,8 +1,13 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
 	import { flip } from 'svelte/animate';
 	import { cubicOut, quintOut } from 'svelte/easing';
 	import { fade, fly, scale } from 'svelte/transition';
+	import {
+		createQuery,
+		createMutation,
+		useQueryClient,
+		keepPreviousData
+	} from '@tanstack/svelte-query';
 	import {
 		Plus,
 		RefreshCw,
@@ -38,20 +43,12 @@
 
 	const DEFAULT_LIMIT = 20;
 
-	let actresses = $state<Actress[]>([]);
-	let loading = $state(true);
-	let hasLoadedOnce = $state(false);
-	let isRefreshing = $state(false);
-	let listRenderVersion = $state(0);
-	let saving = $state(false);
-	let deletingId = $state<number | null>(null);
-	let error = $state<string | null>(null);
+	const queryClient = useQueryClient();
 
 	let queryInput = $state('');
 	let activeQuery = $state('');
 	let limit = $state(DEFAULT_LIMIT);
 	let offset = $state(0);
-	let total = $state(0);
 	let viewMode = $state<'cards' | 'compact' | 'table'>('cards');
 	let sortBy = $state<'name' | 'japanese_name' | 'id' | 'dmm_id' | 'updated_at' | 'created_at'>('name');
 	let sortOrder = $state<'asc' | 'desc'>('asc');
@@ -60,6 +57,36 @@
 	let form = $state<ActressForm>(emptyForm());
 	let formError = $state<string | null>(null);
 	let selectedIds = $state<number[]>([]);
+	let saving = $state(false);
+	let deletingId = $state<number | null>(null);
+
+	const actressesQuery = createQuery(() => ({
+		queryKey: ['actresses', { limit, offset, q: activeQuery, sort_by: sortBy, sort_order: sortOrder }],
+		queryFn: () => apiClient.listActresses({
+			limit,
+			offset,
+			q: activeQuery || undefined,
+			sort_by: sortBy,
+			sort_order: sortOrder
+		}),
+		placeholderData: keepPreviousData
+	}));
+
+	let actresses = $derived(actressesQuery.data?.actresses ?? []);
+	let total = $derived(actressesQuery.data?.total ?? 0);
+	let loading = $derived(actressesQuery.isPending && !actressesQuery.data);
+	let error = $derived(actressesQuery.error?.message ?? null);
+	let isRefreshing = $derived(actressesQuery.isFetching && !!actressesQuery.data);
+
+	$effect(() => {
+		const data = actressesQuery.data;
+		if (data && !showMergeModal) {
+			const pageIDs = new Set(
+				data.actresses.map((actress) => actress.id).filter((id): id is number => id !== undefined)
+			);
+			selectedIds = selectedIds.filter((id) => pageIDs.has(id));
+		}
+	});
 
 	let showMergeModal = $state(false);
 	let mergePrimaryId = $state<number | null>(null);
@@ -172,43 +199,6 @@
 		formError = null;
 	}
 
-	async function loadActresses() {
-		if (!hasLoadedOnce) {
-			loading = true;
-		} else {
-			isRefreshing = true;
-		}
-		error = null;
-		try {
-			const response = await apiClient.listActresses({
-				limit,
-				offset,
-				q: activeQuery || undefined,
-				sort_by: sortBy,
-				sort_order: sortOrder
-			});
-			actresses = response.actresses;
-			total = response.total;
-			if (!showMergeModal) {
-				const pageIDs = new Set(
-					response.actresses.map((actress) => actress.id).filter((id): id is number => id !== undefined)
-				);
-				selectedIds = selectedIds.filter((id) => pageIDs.has(id));
-			}
-			listRenderVersion += 1;
-			hasLoadedOnce = true;
-		} catch (e) {
-			error = e instanceof Error ? e.message : 'Failed to load actresses';
-			if (!hasLoadedOnce) {
-				actresses = [];
-				total = 0;
-			}
-		} finally {
-			loading = false;
-			isRefreshing = false;
-		}
-	}
-
 	async function saveActress() {
 		formError = validateForm();
 		if (formError) {
@@ -225,7 +215,7 @@
 				await apiClient.createActress(payload);
 				toastStore.success('Actress created');
 			}
-			await loadActresses();
+			await queryClient.invalidateQueries({ queryKey: ['actresses'] });
 			resetForm();
 		} catch (e) {
 			formError = e instanceof Error ? e.message : 'Failed to save actress';
@@ -247,10 +237,10 @@
 			if (actresses.length === 1 && offset > 0) {
 				offset = Math.max(0, offset - limit);
 			}
-			await loadActresses();
 			if (editingId === actress.id) {
 				resetForm();
 			}
+			await queryClient.invalidateQueries({ queryKey: ['actresses'] });
 		} catch (e) {
 			toastStore.error(e instanceof Error ? e.message : 'Failed to delete actress');
 		} finally {
@@ -261,19 +251,16 @@
 	function applySearch() {
 		activeQuery = queryInput.trim();
 		offset = 0;
-		loadActresses();
 	}
 
 	function clearSearch() {
 		queryInput = '';
 		activeQuery = '';
 		offset = 0;
-		loadActresses();
 	}
 
 	function applySort() {
 		offset = 0;
-		loadActresses();
 	}
 
 	function toggleSortOrder() {
@@ -284,13 +271,11 @@
 	function prevPage() {
 		if (!canGoPrev) return;
 		offset = Math.max(0, offset - limit);
-		loadActresses();
 	}
 
 	function nextPage() {
 		if (!canGoNext) return;
 		offset += limit;
-		loadActresses();
 	}
 
 	function resetMergeState() {
@@ -382,7 +367,7 @@
 			};
 			selectedIds = selectedIds.filter((id) => id !== mergeCurrentSourceId);
 			mergeSourceQueue = mergeSourceQueue.slice(1);
-			await loadActresses();
+			await queryClient.invalidateQueries({ queryKey: ['actresses'] });
 			await loadNextMergePreview();
 		} catch (e) {
 			const message = e instanceof Error ? e.message : 'Failed to merge actress';
@@ -407,10 +392,6 @@
 		mergeSourceQueue = mergeSourceQueue.slice(1);
 		await loadNextMergePreview();
 	}
-
-	onMount(() => {
-		loadActresses();
-	});
 </script>
 
 <div class="container mx-auto px-4 py-8">
@@ -424,7 +405,7 @@
 				<p class="text-muted-foreground mt-1">Create, update, and remove actress records stored in the database.</p>
 			</div>
 				<div class="flex items-center gap-2">
-					<Button variant="outline" onclick={loadActresses}>
+					<Button variant="outline" onclick={() => queryClient.invalidateQueries({ queryKey: ['actresses'] })}>
 						<RefreshCw class="h-4 w-4 {isRefreshing ? 'animate-spin' : ''}" />
 						Refresh
 					</Button>
@@ -660,7 +641,7 @@
 					</div>
 				{/if}
 
-				{#if loading && !hasLoadedOnce}
+				{#if loading}
 					<div in:fade|local={{ duration: 180 }}>
 						<Card class="p-8 text-center text-muted-foreground">Loading actresses...</Card>
 					</div>
@@ -675,7 +656,7 @@
 						<div in:scale|local={{ start: 0.98, duration: 180, easing: quintOut }} out:fade|local={{ duration: 120 }}>
 							{#if viewMode === 'cards'}
 								<div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-									{#each actresses as actress, index (`${actress.id ?? 'na'}-${index}-${listRenderVersion}`)}
+									{#each actresses as actress, index (`${actress.id ?? 'na'}-${index}`)}
 										<div animate:flip={{ duration: 220, easing: quintOut }} in:fly|local={{ y: 10, duration: 220, delay: itemDelay(index), easing: quintOut }}>
 											<Card class="p-3 h-full {isSelected(actress) ? 'ring-2 ring-primary' : ''}">
 												<div class="flex items-start gap-3 h-full">
@@ -744,7 +725,7 @@
 								</div>
 							{:else if viewMode === 'compact'}
 								<div class="space-y-2">
-									{#each actresses as actress, index (`${actress.id ?? 'na'}-${index}-${listRenderVersion}`)}
+									{#each actresses as actress, index (`${actress.id ?? 'na'}-${index}`)}
 										<div animate:flip={{ duration: 220, easing: quintOut }} in:fly|local={{ y: 8, duration: 190, delay: itemDelay(index), easing: quintOut }}>
 											<Card class="p-3 {isSelected(actress) ? 'ring-2 ring-primary' : ''}">
 												<div class="flex items-center gap-3">
@@ -805,7 +786,7 @@
 												</tr>
 											</thead>
 											<tbody>
-												{#each actresses as actress, index (`${actress.id ?? 'na'}-${index}-${listRenderVersion}`)}
+												{#each actresses as actress, index (`${actress.id ?? 'na'}-${index}`)}
 													<tr class="border-b last:border-b-0 {isSelected(actress) ? 'bg-primary/5' : ''}" in:fly|local={{ y: 6, duration: 170, delay: itemDelay(index), easing: quintOut }}>
 														<td class="px-3 py-2 text-muted-foreground">
 															<input
