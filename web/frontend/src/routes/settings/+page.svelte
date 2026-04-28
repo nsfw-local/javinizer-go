@@ -1,7 +1,8 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { createMutation, useQueryClient } from '@tanstack/svelte-query';
 	import { portalToBody } from '$lib/actions/portal';
 	import { apiClient } from '$lib/api/client';
+	import { createConfigQuery } from '$lib/query/queries';
 	import type { ScraperOption } from '$lib/api/types';
 	import { Save, RefreshCw, CircleAlert, ArrowLeft, X } from 'lucide-svelte';
 	import Button from '$lib/components/ui/Button.svelte';
@@ -41,8 +42,9 @@
 	}
 
 	let config: any = $state(null);
-	let loading = $state(true);
-	let saving = $state(false);
+	const queryClient = useQueryClient();
+	const configQuery = createConfigQuery();
+	let loading = $derived(configQuery.isPending && !configQuery.data);
 	let testingProxy = $state(false);
 	let testingFlareSolverr = $state(false);
 	let testingProfile = $state<Record<string, boolean>>({});
@@ -912,66 +914,66 @@
 		}
 	}
 
-	async function loadConfig() {
-		try {
-			const response = await apiClient.getConfig();
-			config = response;
+	$effect(() => {
+		if (configQuery.data && !config) {
+			config = configQuery.data;
+			ensureProxyProfilesInitialized();
+			ensureTranslationConfig();
+			stripLegacyDownloadProxyFields();
+			buildScraperList();
+			updateProxyConfigBaseline();
+		}
+	});
+
+	async function reloadConfig() {
+		await queryClient.invalidateQueries({ queryKey: ['config'] });
+		if (configQuery.data) {
+			config = configQuery.data;
 			ensureProxyProfilesInitialized();
 			ensureTranslationConfig();
 			stripLegacyDownloadProxyFields();
 			await buildScraperList();
-			updateProxyConfigBaseline(); // Set baseline after loading config
-			loading = false;
-		} catch (e) {
-			error = e instanceof Error ? e.message : 'Failed to load configuration';
-			loading = false;
+			updateProxyConfigBaseline();
 		}
 	}
 
-	async function handleSave() {
-		if (!config) return;
-		if (saving) return;
-
-		// Check test-before-save requirements
-		if (!canSafelySave()) {
-			toastStore.error('Test all modified proxy profiles before saving', 5000);
-			return;
-		}
-
-		// Check for unsaved proxy test results that have expired
-		for (const [name, result] of Object.entries(profileTestResults)) {
-			if (isTestExpired(result)) {
-				toastStore.error(`Test for profile "${name}" has expired. Please test again before saving.`, 5000);
-				return;
+	const saveConfigMutation = createMutation(() => ({
+		mutationFn: async () => {
+			if (!canSafelySave()) {
+				throw new Error('Test all modified proxy profiles before saving');
 			}
-		}
-
-		saving = true;
-		error = null;
-		try {
-			// Build payload with verification tokens
+			for (const [name, result] of Object.entries(profileTestResults)) {
+				if (isTestExpired(result)) {
+					throw new Error(`Test for profile "${name}" has expired. Please test again before saving.`);
+				}
+			}
 			const payload = {
 				...config,
 				proxy_verification_tokens: buildVerificationTokenPayload()
 			};
-
 			await apiClient.request('/api/v1/config', {
 				method: 'PUT',
 				body: JSON.stringify(payload)
 			});
-			// Clear test results after successful save since they're now saved
+		},
+		onSuccess: () => {
 			profileTestResults = {};
 			globalProxyTestResult = null;
 			globalFlareSolverrTestResult = null;
-			verificationTokens = {}; // Clear tokens after successful save
-			updateProxyConfigBaseline(); // Update baseline after successful save
+			verificationTokens = {};
+			updateProxyConfigBaseline();
 			toastStore.success('Configuration saved successfully', 4000);
-		} catch (e) {
-			error = e instanceof Error ? e.message : 'Failed to save configuration';
-			toastStore.error(error, 5000);
-		} finally {
-			saving = false;
+			void queryClient.invalidateQueries({ queryKey: ['config'] });
+		},
+		onError: (err: Error) => {
+			error = err.message;
+			toastStore.error(err.message, 5000);
 		}
+	}));
+
+	function handleSave() {
+		if (!config) return;
+		saveConfigMutation.mutate();
 	}
 
 	async function fetchTranslationModels() {
@@ -1117,9 +1119,7 @@
 		}
 	}
 
-	onMount(() => {
-		loadConfig();
-	});
+
 </script>
 
 <div class="container mx-auto px-4 py-8">
@@ -1141,16 +1141,16 @@
 				</div>
 			</div>
 			<div class="flex gap-2">
-				<Button variant="outline" onclick={loadConfig} disabled={loading}>
+				<Button variant="outline" onclick={reloadConfig} disabled={loading}>
 					{#snippet children()}
 						<RefreshCw class="h-4 w-4 mr-2" />
 						Reload
 					{/snippet}
 				</Button>
-				<Button onclick={handleSave} disabled={saving || loading}>
+				<Button onclick={handleSave} disabled={saveConfigMutation.isPending || loading}>
 					{#snippet children()}
 						<Save class="h-4 w-4 mr-2" />
-						{saving ? 'Saving...' : 'Save Changes'}
+						{saveConfigMutation.isPending ? 'Saving...' : 'Save Changes'}
 					{/snippet}
 				</Button>
 			</div>
@@ -1275,7 +1275,7 @@
 				{testingProfile}
 				{savingProfile}
 				{loading}
-				{saving}
+				saving={saveConfigMutation.isPending}
 				{profileTestResults}
 				{globalProxyTestResult}
 				{globalFlareSolverrTestResult}
