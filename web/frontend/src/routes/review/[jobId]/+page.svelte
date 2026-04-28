@@ -67,6 +67,7 @@
 	let showTrailerModal = $state(false);
 	let preview: OrganizePreviewResponse | null = $state(null);
 	let previewNeedsDestination = $state(false);
+	let previewDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 
 	function getEffectiveOperationMode(): string {
 		const configured = job?.operation_mode_override || config?.output?.operation_mode || 'organize';
@@ -277,6 +278,16 @@
 				? 'soft'
 				: undefined;
 
+		const isEdited = editedMovies.has(currentResult?.file_path ?? '');
+		let movieOverride: Movie | undefined;
+		if (isEdited) {
+			const edited = editedMovies.get(currentResult?.file_path ?? '');
+			movieOverride = edited ? { ...edited } : undefined;
+			if (movieOverride && movieOverride.display_title) {
+				movieOverride.title = movieOverride.display_title;
+			}
+		}
+
 		try {
 			preview = await apiClient.previewOrganize(jobId, currentMovie.id, {
 				destination: destinationPath,
@@ -284,7 +295,8 @@
 				link_mode: linkMode,
 				operation_mode: operationMode as 'organize' | 'in-place' | 'in-place-norenamefolder' | 'metadata-only' | 'preview',
 				skip_nfo: skipNfo,
-				skip_download: skipDownload
+				skip_download: skipDownload,
+				movie: movieOverride
 			});
 		} catch (e) {
 			console.error('Failed to fetch preview:', e);
@@ -299,7 +311,8 @@
 		void skipNfo;
 		void skipDownload;
 		if (organizeStatus !== 'organizing' && currentMovie && (needsDestination ? destinationPath : true)) {
-			fetchPreview();
+			if (previewDebounceTimer) clearTimeout(previewDebounceTimer);
+			previewDebounceTimer = setTimeout(() => fetchPreview(), 300);
 		} else if (organizeStatus !== 'organizing') {
 			preview = null;
 		}
@@ -351,18 +364,28 @@
 			editedMovies.delete(currentResult.file_path);
 		}
 		editedMovies = editedMovies; // Trigger reactivity
+		schedulePreviewRefresh();
 	}
 
 	function resetCurrentMovie() {
 		if (!currentResult?.data) return;
 		editedMovies.delete(currentResult.file_path);
 		editedMovies = editedMovies;
+		schedulePreviewRefresh();
+	}
+
+	function schedulePreviewRefresh() {
+		if (previewDebounceTimer) clearTimeout(previewDebounceTimer);
+		previewDebounceTimer = setTimeout(() => fetchPreview(), 300);
 	}
 
 	async function saveAllEdits() {
-		// Save all edited movies to backend
 		const savePromises = Array.from(editedMovies.entries()).map(([filePath, movie]) => {
-			return apiClient.updateBatchMovie(jobId, movie.id, movie);
+			const movieToSave = { ...movie };
+			if (movieToSave.display_title) {
+				movieToSave.title = movieToSave.display_title;
+			}
+			return apiClient.updateBatchMovie(jobId, movieToSave.id, movieToSave);
 		});
 
 		if (savePromises.length > 0) {
@@ -632,6 +655,7 @@
 	onDestroy(() => {
 		organizeController.cleanup();
 		posterCropController.cleanup();
+		if (previewDebounceTimer) clearTimeout(previewDebounceTimer);
 	});
 </script>
 

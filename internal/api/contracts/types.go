@@ -207,12 +207,13 @@ type OrganizeRequest struct {
 
 // OrganizePreviewRequest represents a preview request
 type OrganizePreviewRequest struct {
-	Destination   string `json:"destination" binding:"required" example:"/path/to/output"`
-	CopyOnly      bool   `json:"copy_only" example:"false"`
-	LinkMode      string `json:"link_mode,omitempty" binding:"omitempty,oneof=hard soft" example:"hard"`
-	OperationMode string `json:"operation_mode,omitempty" example:"organize"`
-	SkipNFO       bool   `json:"skip_nfo"`
-	SkipDownload  bool   `json:"skip_download"`
+	Destination   string        `json:"destination" binding:"required" example:"/path/to/output"`
+	CopyOnly      bool          `json:"copy_only" example:"false"`
+	LinkMode      string        `json:"link_mode,omitempty" binding:"omitempty,oneof=hard soft" example:"hard"`
+	OperationMode string        `json:"operation_mode,omitempty" example:"organize"`
+	SkipNFO       bool          `json:"skip_nfo"`
+	SkipDownload  bool          `json:"skip_download"`
+	Movie         *models.Movie `json:"movie,omitempty"` // Optional movie override for previewing unsaved edits
 }
 
 // OrganizePreviewResponse represents the expected output structure

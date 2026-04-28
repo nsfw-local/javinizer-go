@@ -650,6 +650,36 @@ func TestPreviewOrganize(t *testing.T) {
 			},
 		},
 		{
+			name: "preview with movie override uses provided movie instead of stored data",
+			setupJob: func(jq *worker.JobQueue) (string, string) {
+				job := jq.CreateJob([]string{"/path/to/IPX-535.mp4"})
+				result := &worker.FileResult{
+					FilePath: "/path/to/IPX-535.mp4",
+					MovieID:  "IPX-535",
+					Status:   worker.JobStatusCompleted,
+					Data: &models.Movie{
+						ID:    "IPX-535",
+						Title: "Original Title",
+					},
+					StartedAt: time.Now(),
+				}
+				job.UpdateFileResult("/path/to/IPX-535.mp4", result)
+				return job.ID, "IPX-535"
+			},
+			requestBody: OrganizePreviewRequest{
+				Destination: "/output",
+				Movie: &models.Movie{
+					ID:    "IPX-999",
+					Title: "Edited Title",
+				},
+			},
+			expectedStatus: 200,
+			validateFn: func(t *testing.T, resp *OrganizePreviewResponse) {
+				assert.Contains(t, resp.FolderName, "IPX-999", "preview should use the overridden movie ID")
+				assert.Contains(t, resp.FullPath, "IPX-999", "full path should reflect the overridden movie ID")
+			},
+		},
+		{
 			name: "multipart files sorted by part number for preview",
 			setupJob: func(jq *worker.JobQueue) (string, string) {
 				// Create job with multipart files - add pt2 before pt1 to test sorting

@@ -48,8 +48,11 @@
 
 	function handleDateChange(e: Event) {
 		const target = e.target as HTMLInputElement;
-		// Emit undefined when clearing (not empty string - Go's *time.Time rejects "")
-		editedMovie.release_date = target.value || undefined;
+		if (target.value) {
+			editedMovie.release_date = new Date(target.value + 'T00:00:00Z').toISOString();
+		} else {
+			editedMovie.release_date = undefined;
+		}
 		onUpdate(editedMovie);
 	}
 

@@ -205,6 +205,10 @@ definitions:
         - soft
         example: hard
         type: string
+      movie:
+        allOf:
+        - $ref: '#/definitions/models.Movie'
+        description: Optional movie override for previewing unsaved edits
       operation_mode:
         example: organize
         type: string

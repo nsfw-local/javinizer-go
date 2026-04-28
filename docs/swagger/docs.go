@@ -2368,6 +2368,14 @@ const docTemplate = `{
                     ],
                     "example": "hard"
                 },
+                "movie": {
+                    "description": "Optional movie override for previewing unsaved edits",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/models.Movie"
+                        }
+                    ]
+                },
                 "operation_mode": {
                     "type": "string",
                     "example": "organize"

@@ -253,29 +253,42 @@ func previewOrganize(deps *ServerDependencies) gin.HandlerFunc {
 			return
 		}
 
-		// Find the movie and collect all file results for this movie (for multi-part support)
 		var movie *models.Movie
 		fileResults := make([]*worker.FileResult, 0)
 
 		// Collect all results matching this movieID
 		for _, result := range job.Results {
 			if result.MovieID == movieID {
-				if result.Data != nil {
-					if m, ok := result.Data.(*models.Movie); ok {
-						movie = m
-					}
-				}
 				fileResults = append(fileResults, result)
 			}
 		}
 
 		// If not found by MovieID, try searching by the actual movie.ID (in case of content ID resolution)
-		if movie == nil {
+		if len(fileResults) == 0 {
 			for _, result := range job.Results {
 				if result.Data != nil {
 					if m, ok := result.Data.(*models.Movie); ok && m.ID == movieID {
-						movie = m
 						fileResults = append(fileResults, result)
+					}
+				}
+			}
+		}
+
+		if len(fileResults) == 0 {
+			c.JSON(404, ErrorResponse{Error: fmt.Sprintf("Movie %s not found in job", movieID)})
+			return
+		}
+
+		// Use the movie override from the request if provided (for previewing unsaved edits),
+		// otherwise fall back to the movie data stored in the job results
+		if req.Movie != nil {
+			movie = req.Movie
+		} else {
+			for _, result := range fileResults {
+				if result.Data != nil {
+					if m, ok := result.Data.(*models.Movie); ok {
+						movie = m
+						break
 					}
 				}
 			}

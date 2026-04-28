@@ -21,7 +21,8 @@
 		Calendar,
 		HardDrive,
 		ArrowUpDown,
-		ArrowRight
+		ArrowRight,
+		LoaderCircle
 	} from 'lucide-svelte';
 	import Button from './ui/Button.svelte';
 	import Card from './ui/Card.svelte';

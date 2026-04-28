@@ -56,12 +56,13 @@
 		return 'organize';
 	}
 
-	let isInPlaceImplied: boolean = $derived(
-		destinationPath.trim() !== '' &&
-		destinationPath.trim() === initialPath.trim() &&
-		(config?.output?.folder_format === '' || config?.output?.folder_format === undefined || config?.output?.folder_format === null) &&
-		(!config?.output?.subfolder_format || config.output.subfolder_format.length === 0)
-	);
+	let isInPlaceImplied: boolean = $derived.by(() => {
+		if (destinationPath.trim() === '' || destinationPath.trim() !== initialPath.trim()) return false;
+		const output = config?.output as Record<string, any> | undefined;
+		if (output?.folder_format) return false;
+		if (output?.subfolder_format && output.subfolder_format.length > 0) return false;
+		return true;
+	});
 
 	let effectiveOperationMode: OperationMode = $derived(
 		isInPlaceImplied && (operationModeOverride === 'organize' || operationModeOverride === 'in-place')

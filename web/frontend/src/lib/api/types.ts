@@ -373,6 +373,7 @@ export interface OrganizePreviewRequest {
 	operation_mode?: OperationMode;
 	skip_nfo?: boolean;
 	skip_download?: boolean;
+	movie?: Movie;
 }
 
 export interface OrganizePreviewResponse {
