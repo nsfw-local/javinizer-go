@@ -127,6 +127,7 @@
 	});
 
 	onDestroy(() => {
+		getThemeStore().destroyTheme();
 		websocketStore.disconnect();
 	});
 </script>

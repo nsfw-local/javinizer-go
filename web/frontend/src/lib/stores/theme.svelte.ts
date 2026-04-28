@@ -3,7 +3,10 @@ export type Theme = 'light' | 'dark' | 'system';
 const STORAGE_KEY = 'javinizer-theme';
 
 let current: Theme = $state<Theme>('system');
-let resolved: 'light' | 'dark' = $state<'light' | 'dark'>('light');
+let resolved: 'light' | 'dark' = $state<'light' | 'dark'>(
+	typeof document !== 'undefined' && document.documentElement.classList.contains('dark') ? 'dark' : 'light'
+);
+let mediaQueryHandler: (() => void) | null = null;
 
 function getSystemPreference(): 'light' | 'dark' {
 	if (typeof window === 'undefined') return 'light';
@@ -51,11 +54,23 @@ function initTheme(): void {
 	applyTheme(current);
 
 	if (typeof window !== 'undefined') {
-		window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+		if (mediaQueryHandler) {
+			window.matchMedia('(prefers-color-scheme: dark)').removeEventListener('change', mediaQueryHandler);
+		}
+		const handler = () => {
 			if (current === 'system') {
 				applyTheme('system');
 			}
-		});
+		};
+		mediaQueryHandler = handler;
+		window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', handler);
+	}
+}
+
+function destroyTheme(): void {
+	if (typeof window !== 'undefined' && mediaQueryHandler) {
+		window.matchMedia('(prefers-color-scheme: dark)').removeEventListener('change', mediaQueryHandler);
+		mediaQueryHandler = null;
 	}
 }
 
@@ -70,6 +85,7 @@ export function getThemeStore() {
 		get resolved() { return resolved; },
 		setTheme,
 		initTheme,
+		destroyTheme,
 		cycleTheme,
 	};
 }

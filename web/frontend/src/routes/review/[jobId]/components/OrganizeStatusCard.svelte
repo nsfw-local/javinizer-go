@@ -48,7 +48,7 @@
 			</div>
 			<div class="w-full bg-muted rounded-full h-2">
 				<div
-					class="bg-blue-600 h-2 rounded-full transition-all duration-300"
+					class="bg-blue-600 dark:bg-blue-500 h-2 rounded-full transition-all duration-300"
 					style="width: {organizeProgress}%"
 				></div>
 			</div>
@@ -59,17 +59,17 @@
 				{#each Array.from(fileStatuses.entries()) as [filePath, status] (filePath)}
 					<div
 						animate:flip={{ duration: 220, easing: quintOut }}
-						class="flex items-start gap-2 text-sm p-2 rounded {status.status === 'failed' ? 'bg-red-50' : 'bg-green-50'}"
+						class="flex items-start gap-2 text-sm p-2 rounded {status.status === 'failed' ? 'bg-red-50 dark:bg-red-900/20' : 'bg-green-50 dark:bg-green-900/20'}"
 					>
 						{#if status.status === 'failed'}
-							<CircleAlert class="h-4 w-4 text-red-600 shrink-0 mt-0.5" />
+							<CircleAlert class="h-4 w-4 text-red-600 dark:text-red-400 shrink-0 mt-0.5" />
 						{:else}
-							<Check class="h-4 w-4 text-green-600 shrink-0 mt-0.5" />
+							<Check class="h-4 w-4 text-green-600 dark:text-green-400 shrink-0 mt-0.5" />
 						{/if}
 						<div class="flex-1 min-w-0">
 							<div class="font-medium truncate">{filePath.split(/[\\/]/).pop()}</div>
 							{#if status.error}
-								<div class="text-red-700 text-xs mt-1">{status.error}</div>
+								<div class="text-red-700 dark:text-red-400 text-xs mt-1">{status.error}</div>
 							{/if}
 						</div>
 					</div>
@@ -81,17 +81,17 @@
 
 {#if organizeStatus === 'completed'}
 	{#if failures.length === 0}
-		<Card class="p-6 border-green-500 bg-green-50">
+		<Card class="p-6 border-green-500 dark:border-green-700 bg-green-50 dark:bg-green-900/20">
 			<div class="flex items-start gap-3">
-				<Check class="h-6 w-6 text-green-600 shrink-0" />
+				<Check class="h-6 w-6 text-green-600 dark:text-green-400 shrink-0" />
 				<div class="flex-1">
-					<h3 class="font-semibold mb-2 text-green-900">
+					<h3 class="font-semibold mb-2 text-green-900 dark:text-green-200">
 						{isUpdateMode ? 'Update Complete!' : 'Organization Complete!'}
 					</h3>
-					<p class="text-sm text-green-800 mb-3">
+					<p class="text-sm text-green-800 dark:text-green-300 mb-3">
 						All {successCount} file(s) {isUpdateMode ? 'updated' : 'organized'} successfully
 					</p>
-					<p class="text-xs text-green-700">Redirecting to browse page in a few seconds...</p>
+					<p class="text-xs text-green-700 dark:text-green-400">Redirecting to browse page in a few seconds...</p>
 					<div class="mt-4">
 						<Button onclick={onContinue} variant="outline">
 							{#snippet children()}
@@ -104,9 +104,9 @@
 			</div>
 		</Card>
 	{:else}
-		<Card class="p-6 border-orange-500">
+		<Card class="p-6 border-orange-500 dark:border-orange-700">
 			<div class="flex items-start gap-3">
-				<CircleAlert class="h-6 w-6 text-orange-600 shrink-0" />
+				<CircleAlert class="h-6 w-6 text-orange-600 dark:text-orange-400 shrink-0" />
 				<div class="flex-1">
 					<h3 class="font-semibold mb-2">Organization Completed with Errors</h3>
 					<p class="text-sm text-muted-foreground mb-4">
@@ -116,9 +116,9 @@
 					<div class="space-y-2 max-h-96 overflow-y-auto">
 						<h4 class="font-medium text-sm">Failed Files:</h4>
 						{#each Array.from(fileStatuses.entries()).filter(([_, s]) => s.status === 'failed') as [filePath, status]}
-							<div class="bg-red-50 p-3 rounded text-sm">
+							<div class="bg-red-50 dark:bg-red-900/20 p-3 rounded text-sm">
 								<div class="font-medium">{filePath.split(/[\\/]/).pop()}</div>
-								<div class="text-red-700 text-xs mt-1">{status.error}</div>
+								<div class="text-red-700 dark:text-red-400 text-xs mt-1">{status.error}</div>
 							</div>
 						{/each}
 					</div>

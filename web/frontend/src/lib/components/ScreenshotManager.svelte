@@ -368,7 +368,7 @@
 			<input
 				type="url"
 				bind:value={newScreenshotUrl}
-				onkeypress={handleKeyPress}
+				onkeydown={handleKeyPress}
 				placeholder="Enter screenshot URL and press Enter or click Add"
 				class="flex-1 px-3 py-2 border rounded-md bg-background focus:ring-2 focus:ring-primary focus:border-primary transition-all font-mono text-sm"
 			/>

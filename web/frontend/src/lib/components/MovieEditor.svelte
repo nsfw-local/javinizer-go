@@ -109,7 +109,7 @@
 					<span class="text-xs font-normal text-muted-foreground">{sourceText('id')}</span>
 				{/if}
 				{#if isModified('id')}
-					<CircleAlert class="h-3 w-3 text-orange-600" />
+					<CircleAlert class="h-3 w-3 text-orange-600 dark:text-orange-400" />
 				{/if}
 			</label>
 			<input
@@ -128,7 +128,7 @@
 					<span class="text-xs font-normal text-muted-foreground">{sourceText('content_id')}</span>
 				{/if}
 				{#if isModified('content_id')}
-					<CircleAlert class="h-3 w-3 text-orange-600" />
+					<CircleAlert class="h-3 w-3 text-orange-600 dark:text-orange-400" />
 				{/if}
 			</label>
 			<input
@@ -147,7 +147,7 @@
 					<span class="text-xs font-normal text-muted-foreground">{sourceText('display_title')}</span>
 				{/if}
 				{#if isModified('display_title')}
-					<CircleAlert class="h-3 w-3 text-orange-600" />
+					<CircleAlert class="h-3 w-3 text-orange-600 dark:text-orange-400" />
 				{/if}
 			</label>
 			<input
@@ -166,7 +166,7 @@
 					<span class="text-xs font-normal text-muted-foreground">{sourceText('original_title')}</span>
 				{/if}
 				{#if isModified('original_title')}
-					<CircleAlert class="h-3 w-3 text-orange-600" />
+					<CircleAlert class="h-3 w-3 text-orange-600 dark:text-orange-400" />
 				{/if}
 			</label>
 			<input
@@ -185,7 +185,7 @@
 					<span class="text-xs font-normal text-muted-foreground">{sourceText('description')}</span>
 				{/if}
 				{#if isModified('description')}
-					<CircleAlert class="h-3 w-3 text-orange-600" />
+					<CircleAlert class="h-3 w-3 text-orange-600 dark:text-orange-400" />
 				{/if}
 			</label>
 			<textarea
@@ -204,7 +204,7 @@
 					<span class="text-xs font-normal text-muted-foreground">{sourceText('release_date')}</span>
 				{/if}
 				{#if isModified('release_date')}
-					<CircleAlert class="h-3 w-3 text-orange-600" />
+					<CircleAlert class="h-3 w-3 text-orange-600 dark:text-orange-400" />
 				{/if}
 			</label>
 			<input
@@ -223,7 +223,7 @@
 					<span class="text-xs font-normal text-muted-foreground">{sourceText('runtime')}</span>
 				{/if}
 				{#if isModified('runtime')}
-					<CircleAlert class="h-3 w-3 text-orange-600" />
+					<CircleAlert class="h-3 w-3 text-orange-600 dark:text-orange-400" />
 				{/if}
 			</label>
 			<input
@@ -243,7 +243,7 @@
 					<span class="text-xs font-normal text-muted-foreground">{sourceText('director')}</span>
 				{/if}
 				{#if isModified('director')}
-					<CircleAlert class="h-3 w-3 text-orange-600" />
+					<CircleAlert class="h-3 w-3 text-orange-600 dark:text-orange-400" />
 				{/if}
 			</label>
 			<input
@@ -262,7 +262,7 @@
 					<span class="text-xs font-normal text-muted-foreground">{sourceText('maker')}</span>
 				{/if}
 				{#if isModified('maker')}
-					<CircleAlert class="h-3 w-3 text-orange-600" />
+					<CircleAlert class="h-3 w-3 text-orange-600 dark:text-orange-400" />
 				{/if}
 			</label>
 			<input
@@ -281,7 +281,7 @@
 					<span class="text-xs font-normal text-muted-foreground">{sourceText('label')}</span>
 				{/if}
 				{#if isModified('label')}
-					<CircleAlert class="h-3 w-3 text-orange-600" />
+					<CircleAlert class="h-3 w-3 text-orange-600 dark:text-orange-400" />
 				{/if}
 			</label>
 			<input
@@ -300,7 +300,7 @@
 					<span class="text-xs font-normal text-muted-foreground">{sourceText('series')}</span>
 				{/if}
 				{#if isModified('series')}
-					<CircleAlert class="h-3 w-3 text-orange-600" />
+					<CircleAlert class="h-3 w-3 text-orange-600 dark:text-orange-400" />
 				{/if}
 			</label>
 			<input
@@ -319,7 +319,7 @@
 					<span class="text-xs font-normal text-muted-foreground">{sourceText('rating_score')}</span>
 				{/if}
 				{#if isModified('rating_score')}
-					<CircleAlert class="h-3 w-3 text-orange-600" />
+					<CircleAlert class="h-3 w-3 text-orange-600 dark:text-orange-400" />
 				{/if}
 			</label>
 			<input
@@ -350,7 +350,7 @@
 					<span class="text-xs font-normal text-muted-foreground">{sourceText('rating_votes')}</span>
 				{/if}
 				{#if isModified('rating_votes')}
-					<CircleAlert class="h-3 w-3 text-orange-600" />
+					<CircleAlert class="h-3 w-3 text-orange-600 dark:text-orange-400" />
 				{/if}
 			</label>
 			<input
@@ -372,7 +372,7 @@
 					<span class="text-xs font-normal text-muted-foreground">{sourceText('genres')}</span>
 				{/if}
 				{#if isModified('genres')}
-					<CircleAlert class="h-3 w-3 text-orange-600" />
+					<CircleAlert class="h-3 w-3 text-orange-600 dark:text-orange-400" />
 				{/if}
 			</label>
 

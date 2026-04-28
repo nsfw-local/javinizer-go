@@ -416,20 +416,20 @@
 
 	// Use manual override if available, then cropped_poster_url, then poster_url.
 	// Manual overrides add a cache-buster so updated temp posters refresh immediately.
+	function resolvePosterUrl(movie: Movie, filePath: string): string | undefined {
+		const override = posterPreviewOverrides.get(filePath);
+		const baseURL = override?.url || movie.cropped_poster_url || movie.poster_url;
+		if (!baseURL) return undefined;
+		if (!override) return baseURL;
+		if (baseURL.includes('v=')) return baseURL;
+		const separator = baseURL.includes('?') ? '&' : '?';
+		return `${baseURL}${separator}v=${override.version}`;
+	}
+
 	const displayPosterUrl = $derived<string | undefined>(
 		(() => {
 			if (!currentMovie || !currentResult) return undefined;
-
-			const override = posterPreviewOverrides.get(currentResult.file_path);
-			const baseURL = override?.url || currentMovie.cropped_poster_url || currentMovie.poster_url;
-			if (!baseURL) return undefined;
-
-			if (!override) return baseURL;
-
-			if (baseURL.includes('v=')) return baseURL;
-
-			const separator = baseURL.includes('?') ? '&' : '?';
-			return `${baseURL}${separator}v=${override.version}`;
+			return resolvePosterUrl(currentMovie, currentResult.file_path);
 		})()
 	);
 
@@ -906,13 +906,7 @@
 							displayPosterUrl={(() => {
 								const movie = group.primaryResult.data;
 								if (!movie) return undefined;
-								const override = posterPreviewOverrides.get(group.primaryResult.file_path);
-								const baseURL = override?.url || movie.cropped_poster_url || movie.poster_url;
-								if (!baseURL) return undefined;
-								if (!override) return baseURL;
-								if (baseURL.includes('v=')) return baseURL;
-								const separator = baseURL.includes('?') ? '&' : '?';
-								return `${baseURL}${separator}v=${override.version}`;
+								return resolvePosterUrl(movie, group.primaryResult.file_path);
 							})()}
 							previewImageURL={reviewPageController.previewImageURL}
 							onclick={() => {

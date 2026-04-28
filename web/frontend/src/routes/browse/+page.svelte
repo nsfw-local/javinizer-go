@@ -695,7 +695,7 @@
 						<input
 							type="checkbox"
 							bind:checked={forceRefresh}
-							class="h-4 w-4 rounded border-gray-300 text-primary focus:ring-2 focus:ring-primary"
+							class="h-4 w-4 rounded border-input text-primary focus:ring-2 focus:ring-primary"
 						/>
 						<div class="flex-1">
 							<span class="text-sm font-medium">Force Refresh</span>
@@ -709,7 +709,7 @@
 						<input
 							type="checkbox"
 							bind:checked={showScraperSelector}
-							class="h-4 w-4 rounded border-gray-300 text-primary focus:ring-2 focus:ring-primary"
+							class="h-4 w-4 rounded border-input text-primary focus:ring-2 focus:ring-primary"
 						/>
 						<div class="flex-1">
 							<span class="text-sm font-medium">Manual Scraper Selection</span>
@@ -760,7 +760,7 @@
 						<input
 							type="checkbox"
 							bind:checked={recursiveScan}
-							class="h-3.5 w-3.5 rounded border-gray-300 text-primary focus:ring-1 focus:ring-primary"
+							class="h-3.5 w-3.5 rounded border-input text-primary focus:ring-1 focus:ring-primary"
 						/>
 						<span class="text-muted-foreground hidden sm:inline">Recursive</span>
 					</label>

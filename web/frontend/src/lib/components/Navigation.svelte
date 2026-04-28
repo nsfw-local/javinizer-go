@@ -63,7 +63,7 @@
 	}
 </script>
 
-<svelte:window onclick={handleClickOutside} />
+<svelte:window onclick={handleClickOutside} onkeydown={(e) => { if (e.key === 'Escape' && subMenuOpen) subMenuOpen = false; }} />
 
 <nav
 	class="sticky top-0 z-50 border-b bg-card/95 backdrop-blur supports-backdrop-filter:bg-card/80"
@@ -98,6 +98,8 @@
 					<button
 						type="button"
 						onclick={toggleSubMenu}
+						aria-expanded={subMenuOpen}
+						aria-haspopup="true"
 						class="flex items-center gap-1.5 px-3 py-2 rounded-md transition-all duration-200 {isSubMenuActive
 							? 'bg-primary text-primary-foreground shadow-sm -translate-y-0.5'
 							: 'hover:bg-accent hover:-translate-y-px'}"
