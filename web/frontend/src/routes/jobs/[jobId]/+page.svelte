@@ -1,9 +1,9 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
 	import { page } from '$app/stores';
 	import { goto } from '$app/navigation';
 	import { fade, fly } from 'svelte/transition';
 	import { quintOut } from 'svelte/easing';
+	import { createMutation, useQueryClient } from '@tanstack/svelte-query';
 	import {
 		ArrowLeft,
 		AlertTriangle,
@@ -17,35 +17,69 @@
 	import OperationRow from '$lib/components/history/OperationRow.svelte';
 	import { apiClient } from '$lib/api/client';
 	import { toastStore } from '$lib/stores/toast';
-	import type { JobListItem, OperationItem } from '$lib/api/types';
+	import { createJobDetailQuery, createJobOperationsQuery, createConfigQuery } from '$lib/query/queries';
+	import type { OperationItem } from '$lib/api/types';
 
-	// Route param
 	let jobId = $derived($page.params.jobId ?? '');
 
-	// Data state
-	let job = $state<JobListItem | null>(null);
-	let operations = $state<OperationItem[]>([]);
-	let jobStatus = $state<string>('');
-	let loading = $state(true);
-	let error = $state<string | null>(null);
+	const queryClient = useQueryClient();
 
-	// Revert modal
+	const jobQuery = createJobDetailQuery(jobId);
+	const operationsQuery = createJobOperationsQuery(jobId);
+	let job = $derived(jobQuery.data ?? null);
+	let operations = $derived(operationsQuery.data?.operations ?? []);
+	let jobStatus = $derived(operationsQuery.data?.job_status ?? jobQuery.data?.status ?? '');
+	let loading = $derived(jobQuery.isPending || operationsQuery.isPending);
+	let error = $derived(jobQuery.error?.message ?? operationsQuery.error?.message ?? null);
+
+	const configQuery = createConfigQuery();
+	let config = $derived(configQuery.data ?? null);
+
 	let revertModalOpen = $state(false);
 	let revertModalMode = $state<'batch' | 'operation'>('batch');
 	let revertTargetMovieId = $state('');
 	let revertTargetFileName = $state('');
 	let revertFileCount = $state(0);
-
-	// Per-operation reverting state
 	let revertingMovieIds = $state<Set<string>>(new Set());
 
-	// Config state (for allow_revert check)
-	let config: any = $state<any>(null);
-
-	// Computed counts
 	const pendingCount = $derived(operations.filter((o) => o.revert_status === 'pending' || o.revert_status === 'failed').length);
 
-	// Convert job status to StatusBadge status
+	const revertBatchMutation = createMutation(() => ({
+		mutationFn: () => apiClient.revertBatchJob(jobId),
+		onSuccess: (result) => {
+			revertModalOpen = false;
+			if (result.failed === 0) {
+				toastStore.success(`Successfully reverted ${result.succeeded} file${result.succeeded !== 1 ? 's' : ''}`);
+			} else {
+				toastStore.warning(`Reverted ${result.succeeded} of ${result.total}. ${result.failed} failed.`);
+			}
+			void queryClient.invalidateQueries({ queryKey: ['job', jobId] });
+			void queryClient.invalidateQueries({ queryKey: ['job', jobId, 'operations'] });
+			void queryClient.invalidateQueries({ queryKey: ['batch-jobs'] });
+		},
+		onError: (err) => {
+			toastStore.error(`Revert failed: ${err.message}`);
+			revertModalOpen = false;
+		},
+		onSettled: () => { revertingMovieIds = new Set(); }
+	}));
+
+	const revertOperationMutation = createMutation(() => ({
+		mutationFn: (movieId: string) => apiClient.revertJobOperation(jobId, movieId),
+		onSuccess: (_, movieId) => {
+			revertModalOpen = false;
+			toastStore.success(`Reverted ${movieId}`);
+			void queryClient.invalidateQueries({ queryKey: ['job', jobId] });
+			void queryClient.invalidateQueries({ queryKey: ['job', jobId, 'operations'] });
+			void queryClient.invalidateQueries({ queryKey: ['batch-jobs'] });
+		},
+		onError: (err) => {
+			toastStore.error(`Revert failed: ${err.message}`);
+			revertModalOpen = false;
+		},
+		onSettled: () => { revertingMovieIds = new Set(); }
+	}));
+
 	function getStatusFromJobStatus(status: string): 'success' | 'failed' | 'reverted' | 'running' | 'organized' | 'cancelled' | 'partially-reverted' {
 		const s = status.toLowerCase();
 		if (s === 'organized') return 'organized';
@@ -58,37 +92,6 @@
 		return 'success';
 	}
 
-	// Data loading
-	async function loadJob() {
-		if (!jobId) return;
-		try {
-			job = await apiClient.getJob(jobId);
-			jobStatus = job.status;
-		} catch (e) {
-			error = e instanceof Error ? e.message : 'Failed to load job';
-		}
-	}
-
-	async function loadOperations() {
-		if (!jobId) return;
-		try {
-			const response = await apiClient.getJobOperations(jobId);
-			operations = response.operations || [];
-			jobStatus = response.job_status || jobStatus;
-		} catch (e) {
-			error = e instanceof Error ? e.message : 'Failed to load operations';
-			operations = [];
-		}
-	}
-
-	async function loadData() {
-		loading = true;
-		error = null;
-		await Promise.all([loadJob(), loadOperations()]);
-		loading = false;
-	}
-
-	// Revert flows
 	function openBatchRevertModal() {
 		revertModalMode = 'batch';
 		revertFileCount = pendingCount;
@@ -106,38 +109,15 @@
 		revertingMovieIds = new Set([...revertingMovieIds, movieId]);
 	}
 
-	async function handleRevertConfirm(): Promise<void> {
-		if (!jobId) return;
-		try {
-			if (revertModalMode === 'batch') {
-				const result = await apiClient.revertBatchJob(jobId);
-				revertModalOpen = false;
-
-				if (result.failed === 0) {
-					toastStore.success(`Successfully reverted ${result.succeeded} file${result.succeeded !== 1 ? 's' : ''}`);
-				} else {
-					toastStore.warning(
-						`Reverted ${result.succeeded} of ${result.total} file${result.total !== 1 ? 's' : ''}. ${result.failed} failed.`
-					);
-				}
-			} else {
-				const result = await apiClient.revertJobOperation(jobId, revertTargetMovieId);
-				revertModalOpen = false;
-				toastStore.success(`Reverted ${revertTargetMovieId}`);
-			}
-
-			// Reload data
-			await loadData();
-		} catch (e) {
-			const msg = e instanceof Error ? e.message : 'Revert failed';
-			toastStore.error(`Revert failed: ${msg}`);
-			revertModalOpen = false;
-		} finally {
-			revertingMovieIds = new Set();
+	function handleRevertConfirm(): Promise<void> {
+		if (revertModalMode === 'batch') {
+			revertBatchMutation.mutate();
+		} else {
+			revertOperationMutation.mutate(revertTargetMovieId);
 		}
+		return Promise.resolve();
 	}
 
-	// Utility functions
 	function formatDate(dateStr: string) {
 		const date = new Date(dateStr);
 		return new Intl.DateTimeFormat('en-US', {
@@ -145,12 +125,6 @@
 			timeStyle: 'short'
 		}).format(date);
 	}
-
-	onMount(() => {
-		loadData();
-		// Load config to check allow_revert setting
-		apiClient.getConfig().then((c) => { config = c; }).catch(() => {});
-	});
 </script>
 
 <div class="container mx-auto px-4 py-8">

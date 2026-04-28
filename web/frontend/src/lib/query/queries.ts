@@ -25,6 +25,22 @@ export function createBatchJobsQuery() {
 	}));
 }
 
+export function createJobDetailQuery(jobId: string) {
+	return createQuery(() => ({
+		queryKey: ['job', jobId],
+		queryFn: () => apiClient.getJob(jobId),
+		staleTime: 5_000
+	}));
+}
+
+export function createJobOperationsQuery(jobId: string) {
+	return createQuery(() => ({
+		queryKey: ['job', jobId, 'operations'],
+		queryFn: () => apiClient.getJobOperations(jobId),
+		staleTime: 5_000
+	}));
+}
+
 export function createBatchJobPollingQuery(jobId: string) {
 	return createQuery(() => ({
 		queryKey: ['batch-job', jobId],
