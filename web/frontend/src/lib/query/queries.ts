@@ -17,6 +17,14 @@ export function createScrapersQuery() {
 	}));
 }
 
+export function createBatchJobsQuery() {
+	return createQuery(() => ({
+		queryKey: ['batch-jobs'],
+		queryFn: () => apiClient.listBatchJobs(),
+		staleTime: 5_000
+	}));
+}
+
 export function createBatchJobPollingQuery(jobId: string) {
 	return createQuery(() => ({
 		queryKey: ['batch-job', jobId],

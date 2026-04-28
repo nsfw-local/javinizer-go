@@ -1,8 +1,8 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { fade, fly } from 'svelte/transition';
 	import { page } from '$app/stores';
+	import { createMutation, useQueryClient } from '@tanstack/svelte-query';
 	import {
 		Activity,
 		ArrowRight,
@@ -23,51 +23,66 @@
 	import RevertConfirmationModal from '$lib/components/RevertConfirmationModal.svelte';
 	import { apiClient } from '$lib/api/client';
 	import { toastStore } from '$lib/stores/toast';
+	import { createBatchJobsQuery, createConfigQuery } from '$lib/query/queries';
 	import type { BatchJobResponse, FileResult } from '$lib/api/types';
 
-	let jobs = $state<BatchJobResponse[]>([]);
-	let loading = $state(true);
-	let hasLoadedOnce = $state(false);
-	let isRefreshing = $state(false);
+	const queryClient = useQueryClient();
+
+	const jobsQuery = createBatchJobsQuery();
+	let jobs = $derived(jobsQuery.data?.jobs ?? []);
+	let loading = $derived(jobsQuery.isPending && !jobsQuery.data);
+	let isRefreshing = $derived(jobsQuery.isFetching && !!jobsQuery.data);
+	let hasLoadedOnce = $derived(!!jobsQuery.data);
+	let error = $derived(jobsQuery.error?.message ?? null);
+
+	const configQuery = createConfigQuery();
+	let config = $derived(configQuery.data ?? null);
+
 	let isClearing = $state(false);
 	let olderThanDays = $state(30);
 	let isCleaningHistory = $state(false);
 	let isCleaningEvents = $state(false);
-	let error = $state<string | null>(null);
-	let listRenderVersion = $state(0);
 	let activeFilter = $state<string>('all');
 
-	// Revert modal state
 	let revertModalOpen = $state(false);
 	let revertTargetId = $state('');
 	let revertFileCount = $state(0);
 
-	// Config state (for allow_revert check)
-	let config: any = $state<any>(null);
-
-	async function loadJobs() {
-		if (!hasLoadedOnce) {
-			loading = true;
+	$effect(() => {
+		const statusParam = $page.url.searchParams.get('status');
+		if (statusParam && ['running', 'completed', 'failed', 'cancelled', 'organized', 'reverted'].includes(statusParam)) {
+			activeFilter = statusParam;
 		} else {
-			isRefreshing = true;
+			activeFilter = 'all';
 		}
-		error = null;
+	});
 
-		try {
-			const response = await apiClient.listBatchJobs();
-			jobs = response.jobs;
-			listRenderVersion += 1;
-			hasLoadedOnce = true;
-		} catch (e) {
-			error = e instanceof Error ? e.message : 'Failed to load jobs';
-			if (!hasLoadedOnce) {
-				jobs = [];
+	const cancelJobMutation = createMutation(() => ({
+		mutationFn: (id: string) => apiClient.cancelBatchJob(id),
+		onSuccess: () => { void queryClient.invalidateQueries({ queryKey: ['batch-jobs'] }); }
+	}));
+
+	const dismissJobMutation = createMutation(() => ({
+		mutationFn: (id: string) => apiClient.deleteBatchJob(id),
+		onSuccess: () => { void queryClient.invalidateQueries({ queryKey: ['batch-jobs'] }); }
+	}));
+
+	const revertBatchMutation = createMutation(() => ({
+		mutationFn: () => apiClient.revertBatchJob(revertTargetId),
+		onSuccess: (result) => {
+			revertModalOpen = false;
+			if (result.failed === 0) {
+				toastStore.success(`Successfully reverted ${result.succeeded} file${result.succeeded !== 1 ? 's' : ''}`);
+			} else {
+				toastStore.warning(`Reverted ${result.succeeded} of ${result.total}. ${result.failed} failed.`);
 			}
-		} finally {
-			loading = false;
-			isRefreshing = false;
+			void queryClient.invalidateQueries({ queryKey: ['batch-jobs'] });
+		},
+		onError: (err) => {
+			toastStore.error(`Revert failed: ${err.message}`);
+			revertModalOpen = false;
 		}
-	}
+	}));
 
 	function setFilter(filter: string) {
 		activeFilter = filter;
@@ -95,24 +110,6 @@
 		return getJobsByStatus(activeFilter);
 	});
 
-	async function cancelJob(jobId: string) {
-		try {
-			await apiClient.cancelBatchJob(jobId);
-			await loadJobs();
-		} catch (e) {
-			error = e instanceof Error ? e.message : 'Failed to cancel job';
-		}
-	}
-
-	async function dismissJob(jobId: string) {
-		try {
-			await apiClient.deleteBatchJob(jobId);
-			await loadJobs();
-		} catch (e) {
-			error = e instanceof Error ? e.message : 'Failed to dismiss job';
-		}
-	}
-
 	async function clearAllJobs() {
 		const clearableJobs = jobs.filter(job => job.status.toLowerCase() !== 'running');
 		if (clearableJobs.length === 0) return;
@@ -121,7 +118,6 @@
 		if (!confirmed) return;
 
 		isClearing = true;
-		error = null;
 		let failedCount = 0;
 
 		try {
@@ -134,10 +130,10 @@
 			}
 
 			if (failedCount > 0) {
-				error = `Failed to clear ${failedCount} job(s). Some jobs may still be removed.`;
+				toastStore.error(`Failed to clear ${failedCount} job(s). Some jobs may still be removed.`);
 			}
 
-			await loadJobs();
+			void queryClient.invalidateQueries({ queryKey: ['batch-jobs'] });
 		} finally {
 			isClearing = false;
 		}
@@ -185,20 +181,9 @@
 		return job.operation_count - (job.reverted_count ?? 0);
 	}
 
-	async function handleRevertConfirm(): Promise<void> {
-		try {
-			const result = await apiClient.revertBatchJob(revertTargetId);
-			revertModalOpen = false;
-			if (result.failed === 0) {
-				toastStore.success(`Successfully reverted ${result.succeeded} file${result.succeeded !== 1 ? 's' : ''}`);
-			} else {
-				toastStore.warning(`Reverted ${result.succeeded} of ${result.total}. ${result.failed} failed.`);
-			}
-			await loadJobs();
-		} catch (e) {
-			toastStore.error(`Revert failed: ${e instanceof Error ? e.message : 'Unknown error'}`);
-			revertModalOpen = false;
-		}
+	function handleRevertConfirm(): Promise<void> {
+		revertBatchMutation.mutate();
+		return Promise.resolve();
 	}
 
 	function formatDate(dateStr: string): string {
@@ -259,18 +244,6 @@
 		const first = files[0].split('/').pop() || files[0];
 		return `${first} +${files.length - 1} more`;
 	}
-
-	onMount(() => {
-		const statusParam = $page.url.searchParams.get('status');
-		if (statusParam && ['running', 'completed', 'failed', 'cancelled', 'organized', 'reverted'].includes(statusParam)) {
-			activeFilter = statusParam;
-		} else {
-			activeFilter = 'all';
-		}
-		loadJobs();
-		// Load config to check allow_revert setting
-		apiClient.getConfig().then((c) => { config = c; }).catch(() => {});
-	});
 </script>
 
 <div class="min-h-screen bg-background">
@@ -281,7 +254,7 @@
 				<p class="text-muted-foreground text-sm mt-1">Manage your batch jobs and organize history</p>
 			</div>
 			<div class="flex items-center gap-2">
-				<Button variant="outline" size="sm" onclick={loadJobs} disabled={isRefreshing || isClearing}>
+				<Button variant="outline" size="sm" onclick={() => queryClient.invalidateQueries({ queryKey: ['batch-jobs'] })} disabled={isRefreshing || isClearing}>
 					<RefreshCw class="h-4 w-4 mr-1.5 {isRefreshing ? 'animate-spin' : ''}" />
 					Refresh
 				</Button>
@@ -381,9 +354,8 @@
 				<p class="text-muted-foreground">No jobs match this filter</p>
 			</Card>
 		{:else}
-			{#key listRenderVersion}
-				<div class="space-y-3" in:fade={{ duration: 150 }}>
-					{#each filteredJobs() as job, index (`${job.id}-${listRenderVersion}`)}
+			<div class="space-y-3" in:fade={{ duration: 150 }}>
+					{#each filteredJobs() as job, index (job.id)}
 						{@const statusConfig = getStatusConfig(job.status)}
 						{@const poster = getFirstPoster(job)}
 						<div
@@ -447,7 +419,7 @@
 
 									<div class="flex items-center gap-1.5 flex-shrink-0">
 										{#if job.status.toLowerCase() === 'running'}
-											<Button variant="outline" size="sm" onclick={() => cancelJob(job.id)}>
+											<Button variant="outline" size="sm" onclick={() => cancelJobMutation.mutate(job.id)} disabled={cancelJobMutation.isPending}>
 												Cancel
 											</Button>
 											<Button variant="default" size="sm" onclick={() => goto(`/review/${job.id}`)}>
@@ -458,7 +430,7 @@
 											<Button variant="default" size="sm" onclick={() => goto(`/review/${job.id}`)}>
 												Review & Organize
 											</Button>
-											<Button variant="ghost" size="sm" onclick={() => dismissJob(job.id)} title="Dismiss">
+											<Button variant="ghost" size="sm" onclick={() => dismissJobMutation.mutate(job.id)} disabled={dismissJobMutation.isPending} title="Dismiss">
 												<Trash2 class="h-4 w-4 text-muted-foreground" />
 											</Button>
 										{:else if job.status.toLowerCase() === 'organized'}
@@ -482,11 +454,11 @@
 												<Eye class="h-4 w-4 mr-1" />
 												Review
 											</Button>
-											<Button variant="ghost" size="sm" onclick={() => dismissJob(job.id)} title="Dismiss">
+											<Button variant="ghost" size="sm" onclick={() => dismissJobMutation.mutate(job.id)} disabled={dismissJobMutation.isPending} title="Dismiss">
 												<Trash2 class="h-4 w-4 text-muted-foreground" />
 											</Button>
 										{:else}
-											<Button variant="ghost" size="sm" onclick={() => dismissJob(job.id)} title="Dismiss">
+											<Button variant="ghost" size="sm" onclick={() => dismissJobMutation.mutate(job.id)} disabled={dismissJobMutation.isPending} title="Dismiss">
 												<Trash2 class="h-4 w-4 text-muted-foreground" />
 											</Button>
 										{/if}
@@ -496,7 +468,6 @@
 						</div>
 					{/each}
 				</div>
-			{/key}
 		{/if}
 	</div>
 </div>
