@@ -31,7 +31,7 @@
 	const cancelMutation = createMutation(() => ({
 		mutationFn: () => apiClient.cancelBatchJob(jobId),
 		onSuccess: () => {
-			queryClient.invalidateQueries({ queryKey: ['batch-job', jobId] });
+			queryClient.invalidateQueries({ queryKey: ['batch-job-slim', jobId] });
 		},
 	}));
 

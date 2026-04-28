@@ -103,7 +103,9 @@ class APIClient {
 			throw new Error(error.error || 'API request failed');
 		}
 
-		return response.json();
+		const text = await response.text();
+		if (!text || !text.trim()) return undefined as T;
+		return JSON.parse(text) as T;
 	}
 
 	// Health check
@@ -423,11 +425,10 @@ class APIClient {
 	}
 
 	// Delete a genre replacement by original genre name
-	async deleteGenreReplacement(original: string): Promise<{ message: string; original: string }> {
+	async deleteGenreReplacement(original: string): Promise<void> {
 		await this.request(`/api/v1/genres/replacements?original=${encodeURIComponent(original)}`, {
 			method: 'DELETE'
 		});
-		return { message: 'deleted', original };
 	}
 
 	// Get history records with optional filtering

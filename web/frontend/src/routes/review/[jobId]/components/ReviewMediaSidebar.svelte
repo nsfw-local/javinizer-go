@@ -77,7 +77,7 @@
 							class="absolute h-full"
 							style="right: 0; width: auto; min-width: 211.8%; object-fit: cover; object-position: right center;"
 							onerror={(e) => {
-								(e.currentTarget as HTMLImageElement).src = 'https://via.placeholder.com/300x450?text=No+Poster';
+								(e.currentTarget as HTMLImageElement).src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='450' fill='%23374151'%3E%3Crect width='300' height='450'/%3E%3Ctext x='50%25' y='50%25' dominant-baseline='middle' text-anchor='middle' fill='%239CA3AF' font-family='system-ui' font-size='14'%3ENo Poster%3C/text%3E%3C/svg%3E";
 							}}
 						/>
 					{:else}
@@ -86,7 +86,7 @@
 							alt="Poster"
 							class="w-full h-full object-contain"
 							onerror={(e) => {
-								(e.currentTarget as HTMLImageElement).src = 'https://via.placeholder.com/300x450?text=No+Poster';
+								(e.currentTarget as HTMLImageElement).src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='450' fill='%23374151'%3E%3Crect width='300' height='450'/%3E%3Ctext x='50%25' y='50%25' dominant-baseline='middle' text-anchor='middle' fill='%239CA3AF' font-family='system-ui' font-size='14'%3ENo Poster%3C/text%3E%3C/svg%3E";
 							}}
 						/>
 					{/if}
@@ -113,7 +113,7 @@
 						class="rounded border object-contain"
 						style="max-width: 100%; max-height: 400px; width: auto;"
 						onerror={(e) => {
-							(e.currentTarget as HTMLImageElement).src = 'https://via.placeholder.com/400x225?text=No+Cover';
+							(e.currentTarget as HTMLImageElement).src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='400' height='225' fill='%23374151'%3E%3Crect width='400' height='225'/%3E%3Ctext x='50%25' y='50%25' dominant-baseline='middle' text-anchor='middle' fill='%239CA3AF' font-family='system-ui' font-size='14'%3ENo Cover%3C/text%3E%3C/svg%3E";
 						}}
 					/>
 				</button>
@@ -152,7 +152,7 @@
 								alt="Screenshot"
 								class="w-full aspect-video object-cover rounded border"
 								onerror={(e) => {
-									(e.currentTarget as HTMLImageElement).src = 'https://via.placeholder.com/400x225?text=Error';
+									(e.currentTarget as HTMLImageElement).src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='400' height='225' fill='%23374151'%3E%3Crect width='400' height='225'/%3E%3Ctext x='50%25' y='50%25' dominant-baseline='middle' text-anchor='middle' fill='%239CA3AF' font-family='system-ui' font-size='14'%3EError%3C/text%3E%3C/svg%3E";
 								}}
 							/>
 						</button>

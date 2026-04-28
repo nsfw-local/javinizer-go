@@ -1,12 +1,12 @@
 <script lang="ts">
+	import { untrack } from 'svelte';
 	import { flip } from 'svelte/animate';
 	import { cubicOut, quintOut } from 'svelte/easing';
 	import { fade, fly, scale } from 'svelte/transition';
 	import {
 		createQuery,
 		createMutation,
-		useQueryClient,
-		keepPreviousData
+		useQueryClient
 	} from '@tanstack/svelte-query';
 	import {
 		Plus,
@@ -66,7 +66,7 @@
 			sort_by: sortBy,
 			sort_order: sortOrder
 		}),
-		placeholderData: keepPreviousData
+		placeholderData: (prev) => prev
 	}));
 
 	let actresses = $derived(actressesQuery.data?.actresses ?? []);
@@ -117,12 +117,16 @@
 
 	$effect(() => {
 		const data = actressesQuery.data;
-		if (data && !showMergeModal) {
-			const pageIDs = new Set(
-				data.actresses.map((actress) => actress.id).filter((id): id is number => id !== undefined)
-			);
-			selectedIds = selectedIds.filter((id) => pageIDs.has(id));
-		}
+		if (!data || showMergeModal) return;
+		const pageIDs = new Set(
+			data.actresses.map((actress) => actress.id).filter((id): id is number => id !== undefined)
+		);
+		untrack(() => {
+			const pruned = selectedIds.filter((id) => pageIDs.has(id));
+			if (pruned.length !== selectedIds.length) {
+				selectedIds = pruned;
+			}
+		});
 	});
 
 	let showMergeModal = $state(false);
@@ -175,8 +179,11 @@
 	}));
 
 	$effect(() => {
-		if (mergePreviewQuery.data) {
-			mergeResolutions = { ...mergePreviewQuery.data.default_resolutions };
+		const data = mergePreviewQuery.data;
+		if (data) {
+			untrack(() => {
+				mergeResolutions = { ...data.default_resolutions };
+			});
 		}
 	});
 
@@ -186,12 +193,14 @@
 		if (mergePreviewQuery.isError && mergeCurrentSourceId && mergeCurrentSourceId !== lastPreviewErrorSourceId) {
 			lastPreviewErrorSourceId = mergeCurrentSourceId;
 			const message = mergePreviewQuery.error?.message ?? 'Failed to preview merge';
-			mergeSummary = {
-				...mergeSummary,
-				failed: mergeSummary.failed + 1,
-				messages: [...mergeSummary.messages, `Skipped #${mergeCurrentSourceId}: ${message}`]
-			};
-			mergeSourceQueue = mergeSourceQueue.slice(1);
+			untrack(() => {
+				mergeSummary = {
+					...mergeSummary,
+					failed: mergeSummary.failed + 1,
+					messages: [...mergeSummary.messages, `Skipped #${mergeCurrentSourceId}: ${message}`]
+				};
+				mergeSourceQueue = mergeSourceQueue.slice(1);
+			});
 			advanceMergeQueue();
 		}
 	});

@@ -53,11 +53,11 @@
 	<!-- Modal overlay -->
 	<div class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" use:portalToBody in:fade|local={{ duration: 140 }} out:fade|local={{ duration: 120 }}>
 		<!-- Modal content -->
-		<div class="relative max-h-[90vh] w-full max-w-5xl overflow-hidden rounded-lg bg-white dark:bg-gray-900 shadow-xl" in:scale|local={{ start: 0.97, duration: 180, easing: quintOut }} out:scale|local={{ start: 1, opacity: 0.7, duration: 130, easing: quintOut }}>
+		<div class="relative max-h-[90vh] w-full max-w-5xl overflow-hidden rounded-lg bg-background shadow-xl" in:scale|local={{ start: 0.97, duration: 180, easing: quintOut }} out:scale|local={{ start: 1, opacity: 0.7, duration: 130, easing: quintOut }}>
 			<!-- Header -->
-			<div class="flex items-center justify-between border-b border-gray-200 dark:border-gray-700 px-6 py-4">
+			<div class="flex items-center justify-between border-b border-border px-6 py-4">
 				<div class="flex items-center gap-3">
-					<h2 class="text-xl font-bold text-gray-900 dark:text-white">NFO Comparison</h2>
+					<h2 class="text-xl font-bold text-foreground">NFO Comparison</h2>
 					{#if comparison.nfo_exists}
 						<span class="rounded-full bg-green-100 dark:bg-green-900/20 px-3 py-1 text-xs font-medium text-green-800 dark:text-green-300">
 							NFO Found
@@ -70,7 +70,7 @@
 				</div>
 				<button
 					onclick={onClose}
-					class="rounded-full p-1 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+					class="rounded-full p-1 hover:bg-muted transition-colors"
 					aria-label="Close"
 				>
 					<X class="h-5 w-5" />
@@ -89,18 +89,18 @@
 			{/if}
 
 			<!-- Tabs -->
-			<div class="border-b border-gray-200 dark:border-gray-700">
+			<div class="border-b border-border">
 				<nav class="flex gap-4 px-6" aria-label="Tabs">
 					<button
 						onclick={() => (activeTab = 'differences')}
 						class="border-b-2 px-1 py-3 text-sm font-medium transition-colors {activeTab ===
 						'differences'
 							? 'border-primary text-primary'
-							: 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300'}"
+							: 'border-transparent text-muted-foreground hover:border-border hover:text-foreground'}"
 					>
 						Differences
 						{#if comparison.differences}
-							<span class="ml-2 rounded-full bg-gray-200 dark:bg-gray-700 px-2 py-0.5 text-xs">
+							<span class="ml-2 rounded-full bg-muted px-2 py-0.5 text-xs">
 								{comparison.differences.length}
 							</span>
 						{/if}
@@ -110,7 +110,7 @@
 						class="border-b-2 px-1 py-3 text-sm font-medium transition-colors {activeTab ===
 						'stats'
 							? 'border-primary text-primary'
-							: 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300'}"
+							: 'border-transparent text-muted-foreground hover:border-border hover:text-foreground'}"
 					>
 						Statistics
 					</button>
@@ -119,7 +119,7 @@
 						class="border-b-2 px-1 py-3 text-sm font-medium transition-colors {activeTab ===
 						'raw'
 							? 'border-primary text-primary'
-							: 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300'}"
+							: 'border-transparent text-muted-foreground hover:border-border hover:text-foreground'}"
 					>
 						Raw Data
 					</button>
@@ -137,7 +137,7 @@
 									<div class="space-y-3">
 										<!-- Field header -->
 										<div class="flex items-center justify-between">
-											<h3 class="font-medium text-gray-900 dark:text-white">
+											<h3 class="font-medium text-foreground">
 												{formatFieldName(diff.field)}
 											</h3>
 											{#if comparison.provenance?.[diff.field]}
@@ -153,11 +153,11 @@
 										<div class="grid grid-cols-1 md:grid-cols-3 gap-4">
 											<!-- NFO Value -->
 											<div class="space-y-1">
-												<div class="flex items-center gap-2 text-xs font-medium text-gray-500 dark:text-gray-400">
+												<div class="flex items-center gap-2 text-xs font-medium text-muted-foreground">
 													<span>NFO</span>
 												</div>
 												<div class="rounded bg-green-50 dark:bg-green-900/10 border border-green-200 dark:border-green-800 p-3">
-													<code class="text-sm text-gray-900 dark:text-gray-100 break-all">
+													<code class="text-sm text-foreground break-all">
 														{formatValue(diff.nfo_value)}
 													</code>
 												</div>
@@ -170,11 +170,11 @@
 
 											<!-- Scraped Value -->
 											<div class="space-y-1">
-												<div class="flex items-center gap-2 text-xs font-medium text-gray-500 dark:text-gray-400">
+												<div class="flex items-center gap-2 text-xs font-medium text-muted-foreground">
 													<span>Scraper</span>
 												</div>
 												<div class="rounded bg-blue-50 dark:bg-blue-900/10 border border-blue-200 dark:border-blue-800 p-3">
-													<code class="text-sm text-gray-900 dark:text-gray-100 break-all">
+													<code class="text-sm text-foreground break-all">
 														{formatValue(diff.scraped_value)}
 													</code>
 												</div>
@@ -183,14 +183,14 @@
 
 										<!-- Merged value (if different from both) -->
 										{#if diff.merged_value !== undefined && diff.merged_value !== diff.nfo_value && diff.merged_value !== diff.scraped_value}
-											<div class="mt-3 pt-3 border-t border-gray-200 dark:border-gray-700">
+											<div class="mt-3 pt-3 border-t border-border">
 												<div class="space-y-1">
-													<div class="flex items-center gap-2 text-xs font-medium text-gray-500 dark:text-gray-400">
+													<div class="flex items-center gap-2 text-xs font-medium text-muted-foreground">
 														<Check class="h-3 w-3" />
 														<span>Merged Result</span>
 													</div>
 													<div class="rounded bg-purple-50 dark:bg-purple-900/10 border border-purple-200 dark:border-purple-800 p-3">
-														<code class="text-sm text-gray-900 dark:text-gray-100 break-all">
+														<code class="text-sm text-foreground break-all">
 															{formatValue(diff.merged_value)}
 														</code>
 													</div>
@@ -200,7 +200,7 @@
 
 										<!-- Reason (if provided) -->
 										{#if diff.reason}
-											<div class="flex items-start gap-2 text-xs text-gray-600 dark:text-gray-400">
+											<div class="flex items-start gap-2 text-xs text-muted-foreground">
 												<CircleAlert class="h-3 w-3 mt-0.5 shrink-0" />
 												<span>{diff.reason}</span>
 											</div>
@@ -213,10 +213,10 @@
 					{:else}
 						<div class="text-center py-12">
 							<Check class="h-12 w-12 mx-auto text-green-500 mb-4" />
-							<p class="text-lg font-medium text-gray-900 dark:text-white mb-2">
+							<p class="text-lg font-medium text-foreground mb-2">
 								No Differences Found
 							</p>
-							<p class="text-sm text-gray-600 dark:text-gray-400">
+							<p class="text-sm text-muted-foreground">
 								NFO data and scraped data are identical
 							</p>
 						</div>
@@ -229,7 +229,7 @@
 									<div class="text-3xl font-bold text-blue-600 dark:text-blue-400">
 										{comparison.merge_stats.total_fields}
 									</div>
-									<div class="text-sm text-gray-600 dark:text-gray-400 mt-1">Total Fields</div>
+									<div class="text-sm text-muted-foreground mt-1">Total Fields</div>
 								</div>
 							</Card>
 
@@ -238,7 +238,7 @@
 									<div class="text-3xl font-bold text-green-600 dark:text-green-400">
 										{comparison.merge_stats.from_scraper}
 									</div>
-									<div class="text-sm text-gray-600 dark:text-gray-400 mt-1">From Scraper</div>
+									<div class="text-sm text-muted-foreground mt-1">From Scraper</div>
 								</div>
 							</Card>
 
@@ -247,7 +247,7 @@
 									<div class="text-3xl font-bold text-teal-600 dark:text-teal-400">
 										{comparison.merge_stats.from_nfo}
 									</div>
-									<div class="text-sm text-gray-600 dark:text-gray-400 mt-1">From NFO</div>
+									<div class="text-sm text-muted-foreground mt-1">From NFO</div>
 								</div>
 							</Card>
 
@@ -256,7 +256,7 @@
 									<div class="text-3xl font-bold text-purple-600 dark:text-purple-400">
 										{comparison.merge_stats.merged_arrays}
 									</div>
-									<div class="text-sm text-gray-600 dark:text-gray-400 mt-1">Merged Arrays</div>
+									<div class="text-sm text-muted-foreground mt-1">Merged Arrays</div>
 								</div>
 							</Card>
 
@@ -265,26 +265,26 @@
 									<div class="text-3xl font-bold text-orange-600 dark:text-orange-400">
 										{comparison.merge_stats.conflicts_resolved}
 									</div>
-									<div class="text-sm text-gray-600 dark:text-gray-400 mt-1">Conflicts Resolved</div>
+									<div class="text-sm text-muted-foreground mt-1">Conflicts Resolved</div>
 								</div>
 							</Card>
 
 							<Card>
 								<div class="text-center">
-									<div class="text-3xl font-bold text-gray-600 dark:text-gray-400">
+									<div class="text-3xl font-bold text-muted-foreground">
 										{comparison.merge_stats.empty_fields}
 									</div>
-									<div class="text-sm text-gray-600 dark:text-gray-400 mt-1">Empty Fields</div>
+									<div class="text-sm text-muted-foreground mt-1">Empty Fields</div>
 								</div>
 							</Card>
 						</div>
 					{:else}
 						<div class="text-center py-12">
 							<CircleAlert class="h-12 w-12 mx-auto text-gray-400 mb-4" />
-							<p class="text-lg font-medium text-gray-900 dark:text-white mb-2">
+							<p class="text-lg font-medium text-foreground mb-2">
 								No Statistics Available
 							</p>
-							<p class="text-sm text-gray-600 dark:text-gray-400">
+							<p class="text-sm text-muted-foreground">
 								Merge statistics will be available after merging
 							</p>
 						</div>
@@ -293,9 +293,9 @@
 					<div class="space-y-4">
 						{#if comparison.nfo_data}
 							<div>
-								<h3 class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">NFO Data</h3>
-								<div class="rounded-lg bg-gray-50 dark:bg-gray-800 p-4 overflow-x-auto">
-									<pre class="text-xs text-gray-900 dark:text-gray-100"><code>{JSON.stringify(
+								<h3 class="text-sm font-medium text-foreground mb-2">NFO Data</h3>
+								<div class="rounded-lg bg-muted/50 p-4 overflow-x-auto">
+									<pre class="text-xs text-foreground"><code>{JSON.stringify(
 										comparison.nfo_data,
 										null,
 										2
@@ -306,11 +306,11 @@
 
 						{#if comparison.scraped_data}
 							<div>
-								<h3 class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+								<h3 class="text-sm font-medium text-foreground mb-2">
 									Scraped Data
 								</h3>
-								<div class="rounded-lg bg-gray-50 dark:bg-gray-800 p-4 overflow-x-auto">
-									<pre class="text-xs text-gray-900 dark:text-gray-100"><code>{JSON.stringify(
+								<div class="rounded-lg bg-muted/50 p-4 overflow-x-auto">
+									<pre class="text-xs text-foreground"><code>{JSON.stringify(
 										comparison.scraped_data,
 										null,
 										2
@@ -321,11 +321,11 @@
 
 						{#if comparison.merged_data}
 							<div>
-								<h3 class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+								<h3 class="text-sm font-medium text-foreground mb-2">
 									Merged Data
 								</h3>
-								<div class="rounded-lg bg-gray-50 dark:bg-gray-800 p-4 overflow-x-auto">
-									<pre class="text-xs text-gray-900 dark:text-gray-100"><code>{JSON.stringify(
+								<div class="rounded-lg bg-muted/50 p-4 overflow-x-auto">
+									<pre class="text-xs text-foreground"><code>{JSON.stringify(
 										comparison.merged_data,
 										null,
 										2
@@ -338,8 +338,8 @@
 			</div>
 
 			<!-- Footer -->
-			<div class="border-t border-gray-200 dark:border-gray-700 px-6 py-4 flex justify-between items-center">
-				<div class="text-sm text-gray-600 dark:text-gray-400">
+			<div class="border-t border-border px-6 py-4 flex justify-between items-center">
+				<div class="text-sm text-muted-foreground">
 					{#if comparison.nfo_path}
 						<span class="font-mono">{comparison.nfo_path}</span>
 					{/if}

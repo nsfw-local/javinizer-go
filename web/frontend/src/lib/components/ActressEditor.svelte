@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { untrack } from 'svelte';
 	import { flip } from 'svelte/animate';
 	import { quintOut } from 'svelte/easing';
 	import { fade, scale } from 'svelte/transition';
@@ -35,7 +36,7 @@
 	let isSearchFocused = $state(false);
 
 	// Filtered results based on search query (client-side filtering)
-	const filteredActresses = $derived(() => {
+	const filteredActresses = $derived.by(() => {
 		if (!searchQuery || searchQuery.trim().length === 0) {
 			return allActresses;
 		}
@@ -49,7 +50,8 @@
 
 	// Sync actresses when movie prop changes
 	$effect(() => {
-		actresses = movie.actresses || [];
+		const data = movie.actresses;
+		untrack(() => { actresses = data || []; });
 	});
 
 	// Helper to get full name
@@ -231,7 +233,7 @@
 								class="w-full aspect-2/3 object-cover rounded"
 								onerror={(e) => {
 									(e.currentTarget as HTMLImageElement).src =
-										'https://via.placeholder.com/200x300?text=No+Image';
+										"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='300' fill='%23374151'%3E%3Crect width='200' height='300'/%3E%3Ctext x='50%25' y='50%25' dominant-baseline='middle' text-anchor='middle' fill='%239CA3AF' font-family='system-ui' font-size='14'%3ENo Image%3C/text%3E%3C/svg%3E";
 								}}
 							/>
 						{:else}
@@ -317,13 +319,13 @@
 						/>
 
 						{#if showSearchResults}
-							{#if filteredActresses().length > 0}
+							{#if filteredActresses.length > 0}
 								<div class="absolute z-10 w-full mt-1 bg-background border rounded-md shadow-lg max-h-64 overflow-y-auto">
-									{#each filteredActresses() as actress}
+									{#each filteredActresses as actress}
 										<button
 											type="button"
 											onclick={() => selectActressFromSearch(actress)}
-											class="w-full px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-800 text-left flex items-center gap-3 border-b last:border-b-0 transition-colors cursor-pointer"
+											class="w-full px-3 py-2 hover:bg-muted text-left flex items-center gap-3 border-b last:border-b-0 transition-colors cursor-pointer"
 										>
 											{#if actress.thumb_url}
 												<img

@@ -5,7 +5,7 @@
 	import FormToggle from '$lib/components/settings/FormToggle.svelte';
 	import FormNumberInput from '$lib/components/settings/FormNumberInput.svelte';
 	import FormTextInput from '$lib/components/settings/FormTextInput.svelte';
-	import type { BrowserConfig, ScrapersConfig, Config } from '$lib/types/config';
+	import type { BrowserConfig, ScrapersConfig, Config } from '$lib/api/types';
 
 	interface Props {
 		config: Config;

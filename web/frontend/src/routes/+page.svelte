@@ -33,32 +33,38 @@
 
 	const healthQuery = createQuery(() => ({
 		queryKey: ['health'],
-		queryFn: () => apiClient.health()
+		queryFn: () => apiClient.health(),
+		staleTime: 30_000
 	}));
 
 	const statsQuery = createQuery(() => ({
 		queryKey: ['history', 'stats'],
-		queryFn: () => apiClient.getHistoryStats()
+		queryFn: () => apiClient.getHistoryStats(),
+		staleTime: 30_000
 	}));
 
 	const recentRunsQuery = createQuery(() => ({
 		queryKey: ['history', 'recent'],
-		queryFn: () => apiClient.getHistory({ limit: 8, offset: 0 })
+		queryFn: () => apiClient.getHistory({ limit: 8, offset: 0 }),
+		staleTime: 30_000
 	}));
 
 	const historyWindowQuery = createQuery(() => ({
 		queryKey: ['history', 'window'],
-		queryFn: () => apiClient.getHistory({ limit: 200, offset: 0 })
+		queryFn: () => apiClient.getHistory({ limit: 200, offset: 0 }),
+		staleTime: 30_000
 	}));
 
 	const actressCountQuery = createQuery(() => ({
 		queryKey: ['actresses', 'count'],
-		queryFn: () => apiClient.listActresses({ limit: 1, offset: 0 })
+		queryFn: () => apiClient.listActresses({ limit: 1, offset: 0 }),
+		staleTime: 30_000
 	}));
 
 	const cwdQuery = createQuery(() => ({
 		queryKey: ['cwd'],
-		queryFn: () => apiClient.getCurrentWorkingDirectory()
+		queryFn: () => apiClient.getCurrentWorkingDirectory(),
+		staleTime: 30_000
 	}));
 
 	let health = $derived(healthQuery.data ?? null);
@@ -70,7 +76,11 @@
 
 	let inputPath = $state('');
 	let outputPath = $state('');
-	let recentRenderVersion = $state(0);
+	let recentRenderKey = $derived.by(() => {
+		const records = recentRunsQuery.data?.records;
+		if (!records) return 0;
+		return records.reduce((hash, r) => ((hash * 31 + r.id) | 0), 0);
+	});
 
 	let loading = $derived(
 		healthQuery.isPending &&
@@ -114,11 +124,6 @@
 		outputPath = savedOutput || cwd;
 	});
 
-	$effect(() => {
-		if (recentRunsQuery.data) {
-			recentRenderVersion += 1;
-		}
-	});
 
 	const wsState = $derived($websocketStore);
 	const recentRunCount = $derived(recentRuns.length);
@@ -389,9 +394,9 @@
 					{:else if recentRuns.length === 0}
 						<div class="text-sm text-muted-foreground py-10 text-center">No operations recorded yet.</div>
 					{:else}
-						{#key recentRenderVersion}
+						{#key recentRenderKey}
 							<div class="space-y-2" in:fade|local={{ duration: 150 }}>
-								{#each recentRuns as run, index (`${run.id}-${recentRenderVersion}`)}
+								{#each recentRuns as run, index (`${run.id}-${recentRenderKey}`)}
 									<div animate:flip={{ duration: 220, easing: quintOut }} in:fly|local={{ y: 8, duration: 180, delay: itemDelay(index), easing: quintOut }}>
 										<div class="rounded-md border p-3 hover:bg-accent/40 transition-colors">
 											<div class="flex flex-wrap items-center justify-between gap-2">

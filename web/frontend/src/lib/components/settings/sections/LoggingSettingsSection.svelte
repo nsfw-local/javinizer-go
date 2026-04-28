@@ -1,21 +1,8 @@
 <script lang="ts">
+	import { untrack } from 'svelte';
 	import SettingsSection from '$lib/components/settings/SettingsSection.svelte';
 	import SettingsSubsection from '$lib/components/settings/SettingsSubsection.svelte';
-
-	interface LoggingConfig {
-		level: string;
-		format: string;
-		output: string;
-		max_size_mb: number;
-		max_backups: number;
-		max_age_days: number;
-		compress: boolean;
-	}
-
-	interface Config {
-		logging: LoggingConfig;
-		[key: string]: any;
-	}
+	import type { Config } from '$lib/api/types';
 
 	interface Props {
 		config: Config;
@@ -30,6 +17,23 @@
 		if (isNaN(num) || num < 0) return 0;
 		return num;
 	}
+
+	function ensureLoggingDefaults(cfg: Config): void {
+		if (!cfg.logging) cfg.logging = {};
+		cfg.logging.level ??= 'info';
+		cfg.logging.format ??= 'text';
+		cfg.logging.output ??= 'stdout';
+		cfg.logging.max_size_mb ??= 0;
+		cfg.logging.max_backups ??= 0;
+		cfg.logging.max_age_days ??= 0;
+		cfg.logging.compress ??= false;
+	}
+
+	$effect(() => {
+		if (config) {
+			untrack(() => ensureLoggingDefaults(config));
+		}
+	});
 </script>
 
 <SettingsSection title="Logging Settings" description="Configure logging level, format, and output destination" defaultExpanded={false}>
@@ -74,7 +78,7 @@
 						id="log-max-size"
 						type="number"
 						value={config.logging.max_size_mb}
-						onchange={(e) => { config.logging.max_size_mb = coerceToInt((e.target as HTMLInputElement).value); }}
+						oninput={(e) => { config.logging.max_size_mb = coerceToInt((e.target as HTMLInputElement).value); }}
 						class={inputClass}
 						min="0"
 						placeholder="10"
@@ -90,7 +94,7 @@
 						id="log-max-backups"
 						type="number"
 						value={config.logging.max_backups}
-						onchange={(e) => { config.logging.max_backups = coerceToInt((e.target as HTMLInputElement).value); }}
+						oninput={(e) => { config.logging.max_backups = coerceToInt((e.target as HTMLInputElement).value); }}
 						class={inputClass}
 						min="0"
 						placeholder="5"
@@ -106,7 +110,7 @@
 						id="log-max-age"
 						type="number"
 						value={config.logging.max_age_days}
-						onchange={(e) => { config.logging.max_age_days = coerceToInt((e.target as HTMLInputElement).value); }}
+						oninput={(e) => { config.logging.max_age_days = coerceToInt((e.target as HTMLInputElement).value); }}
 						class={inputClass}
 						min="0"
 						placeholder="0"

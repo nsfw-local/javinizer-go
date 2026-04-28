@@ -103,7 +103,7 @@
 		return getJobsByStatus(status).length;
 	}
 
-	let filteredJobs = $derived(() => {
+	let filteredJobs = $derived.by(() => {
 		if (activeFilter === 'all') {
 			return jobs;
 		}
@@ -349,13 +349,13 @@
 					Start Your First Scrape
 				</Button>
 			</Card>
-		{:else if filteredJobs().length === 0}
+		{:else if filteredJobs.length === 0}
 			<Card class="p-8 text-center">
 				<p class="text-muted-foreground">No jobs match this filter</p>
 			</Card>
 		{:else}
 			<div class="space-y-3" in:fade={{ duration: 150 }}>
-					{#each filteredJobs() as job, index (job.id)}
+					{#each filteredJobs as job, index (job.id)}
 						{@const statusConfig = getStatusConfig(job.status)}
 						{@const poster = getFirstPoster(job)}
 						<div

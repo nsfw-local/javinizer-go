@@ -122,7 +122,7 @@
 	const PAGE_SIZE = 100;
 
 	// Filter and sort items
-	const sortedAndFilteredItems = $derived(() => {
+	const sortedAndFilteredItems = $derived.by(() => {
 		// First filter
 		let result = items;
 		if (filterText.trim()) {
@@ -154,13 +154,12 @@
 		});
 	});
 
-	const pagedItems = $derived(() => {
-		const all = sortedAndFilteredItems();
+	const pagedItems = $derived.by(() => {
 		const start = (currentPage - 1) * PAGE_SIZE;
-		return all.slice(start, start + PAGE_SIZE);
+		return sortedAndFilteredItems.slice(start, start + PAGE_SIZE);
 	});
 
-	const totalPages = $derived(Math.max(1, Math.ceil(sortedAndFilteredItems().length / PAGE_SIZE)));
+	const totalPages = $derived(Math.max(1, Math.ceil(sortedAndFilteredItems.length / PAGE_SIZE)));
 
 	$effect(() => {
 		filterText;
@@ -179,7 +178,7 @@
 	}
 
 	function handleScan() {
-		const visibleFiles = sortedAndFilteredItems().filter((f) => !f.is_dir);
+		const visibleFiles = sortedAndFilteredItems.filter((f) => !f.is_dir);
 		onScan?.(currentPath, recursiveScan, visibleFiles, filterText, selectedFolders);
 	}
 
@@ -325,11 +324,11 @@
 	}
 
 	function getFolderPathsSorted(): string[] {
-		return sortedAndFilteredItems().filter((i) => i.is_dir).map((i) => i.path);
+		return sortedAndFilteredItems.filter((i) => i.is_dir).map((i) => i.path);
 	}
 
 	function getFilePathsSorted(): string[] {
-		return sortedAndFilteredItems().filter((i) => !i.is_dir).map((i) => i.path);
+		return sortedAndFilteredItems.filter((i) => !i.is_dir).map((i) => i.path);
 	}
 
 	function handleItemClick(item: FileInfo, event: MouseEvent) {
@@ -408,8 +407,8 @@
 	}
 
 	function selectAll() {
-		const allFiles = sortedAndFilteredItems().filter((item) => !item.is_dir && isVideoFile(item.name)).map((item) => item.path);
-		const allFolders = sortedAndFilteredItems().filter((item) => item.is_dir).map((item) => item.path);
+		const allFiles = sortedAndFilteredItems.filter((item) => !item.is_dir && isVideoFile(item.name)).map((item) => item.path);
+		const allFolders = sortedAndFilteredItems.filter((item) => item.is_dir).map((item) => item.path);
 		externalSelectedFiles = [...new Set([...externalSelectedFiles, ...allFiles])];
 		selectedFolders = [...new Set([...selectedFolders, ...allFolders])];
 		if (allFiles.length > 0) {
@@ -422,7 +421,7 @@
 	}
 
 	function selectNone() {
-		const visiblePaths = new Set(sortedAndFilteredItems().filter((item) => !item.is_dir && isVideoFile(item.name)).map((item) => item.path));
+		const visiblePaths = new Set(sortedAndFilteredItems.filter((item) => !item.is_dir && isVideoFile(item.name)).map((item) => item.path));
 		externalSelectedFiles = externalSelectedFiles.filter(f => !visiblePaths.has(f));
 		selectedFolders = [];
 		anchorFolderPath = null;
@@ -431,7 +430,7 @@
 	}
 
 	function selectMatched() {
-		const matchedFiles = sortedAndFilteredItems()
+		const matchedFiles = sortedAndFilteredItems
 			.filter((item) => !item.is_dir && item.matched)
 			.map((item) => item.path);
 		externalSelectedFiles = [...new Set([...externalSelectedFiles, ...matchedFiles])];
@@ -442,9 +441,9 @@
 	}
 
 	// Derived state for file counts (based on filtered items)
-	const fileCount = $derived(sortedAndFilteredItems().filter((item) => !item.is_dir).length);
-	const matchedCount = $derived(sortedAndFilteredItems().filter((item) => !item.is_dir && item.matched).length);
-	const folderCount = $derived(sortedAndFilteredItems().filter((item) => item.is_dir).length);
+	const fileCount = $derived(sortedAndFilteredItems.filter((item) => !item.is_dir).length);
+	const matchedCount = $derived(sortedAndFilteredItems.filter((item) => !item.is_dir && item.matched).length);
+	const folderCount = $derived(sortedAndFilteredItems.filter((item) => item.is_dir).length);
 	const VIDEO_EXTENSIONS = new Set([
 		'.mp4', '.mkv', '.avi', '.wmv', '.flv', '.mov',
 		'.m4v', '.webm', '.mpg', '.mpeg', '.m2ts', '.ts'
@@ -454,11 +453,11 @@
 		return VIDEO_EXTENSIONS.has(name.slice(name.lastIndexOf('.')).toLowerCase());
 	}
 
-	const selectableFileCount = $derived(sortedAndFilteredItems().filter((i) => !i.is_dir && isVideoFile(i.name)).length);
+	const selectableFileCount = $derived(sortedAndFilteredItems.filter((i) => !i.is_dir && isVideoFile(i.name)).length);
 
 	const visibleSelectedCount = $derived(
 		(() => {
-			const visible = sortedAndFilteredItems();
+			const visible = sortedAndFilteredItems;
 			const filePaths = new Set(externalSelectedFiles);
 			const visibleFileSelected = visible.filter((i) => !i.is_dir && isVideoFile(i.name) && filePaths.has(i.path)).length;
 			return selectedFolders.length + visibleFileSelected;
@@ -697,7 +696,7 @@
 	{#if items.length > 0 && totalPages > 1}
 		<div class="mb-4 pb-4 border-b flex items-center justify-between gap-4">
 			<span class="text-xs text-muted-foreground">
-				Page {currentPage} of {totalPages} ({sortedAndFilteredItems().length} items)
+				Page {currentPage} of {totalPages} ({sortedAndFilteredItems.length} items)
 			</span>
 			<div class="flex items-center gap-2">
 				<Button variant="outline" size="sm" onclick={() => currentPage = 1} disabled={currentPage === 1}>
@@ -731,7 +730,7 @@
 			<div class="text-center py-8 text-muted-foreground">
 				<p>Empty directory</p>
 			</div>
-		{:else if sortedAndFilteredItems().length === 0}
+		{:else if sortedAndFilteredItems.length === 0}
 			<div class="text-center py-8 text-muted-foreground">
 				<p>No files or folders match "{filterText}"</p>
 				<button onclick={clearFilter} class="text-primary hover:underline text-sm mt-2">
@@ -739,7 +738,7 @@
 				</button>
 			</div>
 		{:else}
-			{#each pagedItems() as item (item.path)}
+			{#each pagedItems as item (item.path)}
 				<div>
 					{#if item.is_dir}
 					<button
@@ -834,7 +833,7 @@
 			{#if totalPages > 1}
 				<div class="flex items-center justify-between pt-4 border-t mt-4">
 					<span class="text-xs text-muted-foreground">
-						Page {currentPage} of {totalPages} ({sortedAndFilteredItems().length} items)
+						Page {currentPage} of {totalPages} ({sortedAndFilteredItems.length} items)
 					</span>
 					<div class="flex items-center gap-2">
 						<Button variant="outline" size="sm" onclick={() => currentPage = 1} disabled={currentPage === 1}>

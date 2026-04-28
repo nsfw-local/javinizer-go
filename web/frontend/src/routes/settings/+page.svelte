@@ -3,7 +3,8 @@
 	import { portalToBody } from '$lib/actions/portal';
 	import { apiClient } from '$lib/api/client';
 	import { createConfigQuery } from '$lib/query/queries';
-	import type { ScraperOption } from '$lib/api/types';
+	import { untrack } from 'svelte';
+	import type { ScraperOption, Config } from '$lib/api/types';
 	import { Save, RefreshCw, CircleAlert, ArrowLeft, X } from 'lucide-svelte';
 	import Button from '$lib/components/ui/Button.svelte';
 	import Card from '$lib/components/ui/Card.svelte';
@@ -41,7 +42,8 @@
 		options: ScraperOption[];
 	}
 
-	let config: any = $state(null);
+	let config: Config | null = $state(null);
+	let configInitialized = $state(false);
 	const queryClient = useQueryClient();
 	const configQuery = createConfigQuery();
 	let loading = $derived(configQuery.isPending && !configQuery.data);
@@ -182,14 +184,14 @@
 	// Build scraper list from config and API
 	async function buildScraperList() {
 		if (!config) return;
-		if (!config.scrapers) config.scrapers = {};
-		if (!Array.isArray(config.scrapers.priority)) config.scrapers.priority = [];
+		const cfg = config;
+		if (!cfg.scrapers) cfg.scrapers = {};
+		const sc = cfg.scrapers;
+		if (!Array.isArray(sc.priority)) sc.priority = [];
 
 		try {
-			// Fetch available scrapers from backend
 			const response = await apiClient.getAvailableScrapers();
 
-			// Create maps from API data
 			const scraperDisplayNames: Record<string, string> = {};
 			const scraperOptionsMap: Record<string, ScraperOption[]> = {};
 			const scraperEnabledMap: Record<string, boolean> = {};
@@ -200,12 +202,10 @@
 				scraperEnabledMap[scraper.name] = scraper.enabled;
 			});
 
-			// Merge configured priority order with all backend-supported scrapers.
-			// This keeps user ordering while ensuring missing scraper sections are still visible.
 			const mergedOrder: string[] = [];
 			const seen = new Set<string>();
 
-			(config.scrapers.priority || []).forEach((name: string) => {
+			(sc.priority || []).forEach((name: string) => {
 				if (!seen.has(name)) {
 					mergedOrder.push(name);
 					seen.add(name);
@@ -220,15 +220,15 @@
 			});
 
 			scrapers = mergedOrder.map((name: string) => {
-				if (!config.scrapers[name]) {
-					config.scrapers[name] = { enabled: scraperEnabledMap[name] ?? false };
-				} else if (config.scrapers[name].enabled === undefined && scraperEnabledMap[name] !== undefined) {
-					config.scrapers[name].enabled = scraperEnabledMap[name];
+				if (!sc[name]) {
+					sc[name] = { enabled: scraperEnabledMap[name] ?? false };
+				} else if (sc[name].enabled === undefined && scraperEnabledMap[name] !== undefined) {
+					sc[name].enabled = scraperEnabledMap[name];
 				}
 
 				return {
 					name,
-					enabled: config.scrapers[name]?.enabled ?? false,
+					enabled: sc[name]?.enabled ?? false,
 					displayName: scraperDisplayNames[name] || name,
 					expanded: false,
 					options: scraperOptionsMap[name] || []
@@ -237,18 +237,17 @@
 			refreshLocalProxyProfileChoices();
 		} catch (e) {
 			console.error('Failed to fetch scrapers from API:', e);
-			// Fallback to configured order + any scraper sections present in config
 			const mergedOrder: string[] = [];
 			const seen = new Set<string>();
 
-			(config.scrapers.priority || []).forEach((name: string) => {
+			(sc.priority || []).forEach((name: string) => {
 				if (!seen.has(name)) {
 					mergedOrder.push(name);
 					seen.add(name);
 				}
 			});
 
-			Object.keys(config.scrapers)
+			Object.keys(sc)
 				.filter((name: string) => name !== 'priority' && name !== 'proxy')
 				.forEach((name: string) => {
 					if (!seen.has(name)) {
@@ -259,7 +258,7 @@
 
 			scrapers = mergedOrder.map((name: string) => ({
 				name,
-				enabled: config.scrapers[name]?.enabled ?? false,
+				enabled: sc[name]?.enabled ?? false,
 				displayName: name,
 				expanded: false,
 				options: []
@@ -422,45 +421,53 @@
 	}
 
 	function handleScraperUserAgentInput(e: Event) {
+		if (!config) return;
+		if (!config.scrapers) config.scrapers = {};
 		const target = e.target as HTMLInputElement;
 		config.scrapers.user_agent = sanitizeHeaderValue(target.value);
 	}
 
 	function handleScraperRefererInput(e: Event) {
+		if (!config) return;
+		if (!config.scrapers) config.scrapers = {};
 		const target = e.target as HTMLInputElement;
 		config.scrapers.referer = sanitizeHeaderValue(target.value);
 	}
 
 	function ensureProxyProfilesInitialized(): void {
-		if (!config?.scrapers) config.scrapers = {};
-		if (!config.scrapers.proxy) config.scrapers.proxy = {};
-		if (!config.scrapers.proxy.profiles || typeof config.scrapers.proxy.profiles !== 'object' || Array.isArray(config.scrapers.proxy.profiles)) {
-			config.scrapers.proxy.profiles = {};
+		if (!config) return;
+		const cfg = config;
+		if (!cfg.scrapers) cfg.scrapers = {};
+		if (!cfg.scrapers.proxy) cfg.scrapers.proxy = {};
+		if (!cfg.scrapers.proxy.profiles || typeof cfg.scrapers.proxy.profiles !== 'object' || Array.isArray(cfg.scrapers.proxy.profiles)) {
+			cfg.scrapers.proxy.profiles = {};
 		}
 
-		const profiles = config.scrapers.proxy.profiles;
+		const profiles = cfg.scrapers.proxy.profiles;
 		if (Object.keys(profiles).length === 0) {
 			profiles.main = {
-				url: config.scrapers.proxy?.url ?? '',
-				username: config.scrapers.proxy?.username ?? '',
-				password: config.scrapers.proxy?.password ?? ''
+				url: cfg.scrapers.proxy?.url ?? '',
+				username: cfg.scrapers.proxy?.username ?? '',
+				password: cfg.scrapers.proxy?.password ?? ''
 			};
 		}
 
-		const defaultProfile = config.scrapers.proxy.default_profile;
+		const defaultProfile = cfg.scrapers.proxy.default_profile;
 		if (!defaultProfile || !profiles[defaultProfile]) {
 			const names = Object.keys(profiles).sort();
-			config.scrapers.proxy.default_profile = names.includes('main') ? 'main' : (names[0] ?? '');
+			cfg.scrapers.proxy.default_profile = names.includes('main') ? 'main' : (names[0] ?? '');
 		}
 	}
 
 	function ensureTranslationConfig(): void {
-		if (!config?.metadata) config.metadata = {};
-		if (!config.metadata.translation || typeof config.metadata.translation !== 'object') {
-			config.metadata.translation = {};
+		if (!config) return;
+		const cfg = config;
+		if (!cfg.metadata) cfg.metadata = {};
+		if (!cfg.metadata.translation || typeof cfg.metadata.translation !== 'object') {
+			cfg.metadata.translation = {};
 		}
 
-		const translation = config.metadata.translation;
+		const translation = cfg.metadata.translation;
 		if (translation.enabled === undefined) translation.enabled = false;
 		if (!translation.provider) translation.provider = 'openai';
 		if (!translation.source_language) translation.source_language = 'en';
@@ -513,8 +520,9 @@
 
 	function updateScraperProfileRefs(oldName: string, newName: string): void {
 		if (!config?.scrapers) return;
+		const sc = config.scrapers;
 		getScraperConfigNames().forEach((scraperName: string) => {
-			const scraperCfg = config.scrapers[scraperName];
+			const scraperCfg = sc[scraperName];
 			if (scraperCfg?.proxy?.profile === oldName) scraperCfg.proxy.profile = newName;
 		});
 	}
@@ -552,26 +560,29 @@
 	}
 
 	function addProxyProfile(): void {
+		if (!config) return;
 		ensureProxyProfilesInitialized();
+		const sc = config.scrapers;
+		if (!sc) return;
 		let idx = 1;
 		let name = `profile-${idx}`;
-		while (config.scrapers.proxy.profiles[name]) {
+		while (sc.proxy.profiles[name]) {
 			idx += 1;
 			name = `profile-${idx}`;
 		}
 
-		config.scrapers.proxy.profiles[name] = {
+		sc.proxy.profiles[name] = {
 			url: '',
 			username: '',
 			password: ''
 		};
 
-		if (!config.scrapers.proxy.default_profile) {
-			config.scrapers.proxy.default_profile = name;
+		if (!sc.proxy.default_profile) {
+			sc.proxy.default_profile = name;
 		}
-		config.scrapers.proxy.profiles = { ...config.scrapers.proxy.profiles };
+		sc.proxy.profiles = { ...sc.proxy.profiles };
 		refreshLocalProxyProfileChoices();
-		invalidateGlobalProxyTest(); // New profile may become default
+		invalidateGlobalProxyTest();
 	}
 
 	function removeProxyProfile(name: string): void {
@@ -774,14 +785,13 @@
 	function updateConfigFromScrapers() {
 		if (!config) return;
 		if (!config.scrapers) config.scrapers = {};
+		const sc = config.scrapers;
 
-		// Update priority order
-		config.scrapers.priority = scrapers.map(s => s.name);
+		sc.priority = scrapers.map(s => s.name);
 
-		// Update enabled status
 		scrapers.forEach(scraper => {
-			if (!config.scrapers[scraper.name]) config.scrapers[scraper.name] = {};
-			config.scrapers[scraper.name].enabled = scraper.enabled;
+			if (!sc[scraper.name]) sc[scraper.name] = {};
+			sc[scraper.name].enabled = scraper.enabled;
 		});
 	}
 
@@ -897,44 +907,43 @@
 	// Remove scraper from all priority lists
 	function removeScraperFromPriorities(scraperName: string) {
 		if (!config) return;
+		const cfg = config;
 
 		// Remove from global priority
-		if (config.scrapers?.priority) {
-			config.scrapers.priority = config.scrapers.priority.filter((s: string) => s !== scraperName);
+		if (cfg.scrapers?.priority) {
+			cfg.scrapers.priority = cfg.scrapers.priority.filter((s: string) => s !== scraperName);
 		}
 
 		// Remove from all field-specific priorities
-		if (config.metadata?.priority) {
-			Object.keys(config.metadata.priority).forEach((fieldKey) => {
-				const fieldPriority = config.metadata.priority[fieldKey];
+		if (cfg.metadata?.priority) {
+			const md = cfg.metadata;
+			Object.keys(md.priority).forEach((fieldKey) => {
+				const fieldPriority = md.priority[fieldKey];
 				if (Array.isArray(fieldPriority)) {
-					config.metadata.priority[fieldKey] = fieldPriority.filter((s: string) => s !== scraperName);
+					md.priority[fieldKey] = fieldPriority.filter((s: string) => s !== scraperName);
 				}
 			});
 		}
 	}
 
 	$effect(() => {
-		if (configQuery.data && !config) {
-			config = configQuery.data;
-			ensureProxyProfilesInitialized();
-			ensureTranslationConfig();
-			stripLegacyDownloadProxyFields();
-			buildScraperList();
-			updateProxyConfigBaseline();
+		const data = configQuery.data;
+		if (data && !configInitialized) {
+			untrack(() => {
+				configInitialized = true;
+				config = JSON.parse(JSON.stringify(data));
+				ensureProxyProfilesInitialized();
+				ensureTranslationConfig();
+				stripLegacyDownloadProxyFields();
+				buildScraperList();
+				updateProxyConfigBaseline();
+			});
 		}
 	});
 
 	async function reloadConfig() {
-		await queryClient.invalidateQueries({ queryKey: ['config'] });
-		if (configQuery.data) {
-			config = configQuery.data;
-			ensureProxyProfilesInitialized();
-			ensureTranslationConfig();
-			stripLegacyDownloadProxyFields();
-			await buildScraperList();
-			updateProxyConfigBaseline();
-		}
+		configInitialized = false;
+		await queryClient.refetchQueries({ queryKey: ['config'] });
 	}
 
 	const saveConfigMutation = createMutation(() => ({
@@ -1178,7 +1187,7 @@
 						<input
 							id="scrapers-user-agent"
 							type="text"
-							value={config.scrapers.user_agent}
+							value={config?.scrapers?.user_agent ?? ''}
 							oninput={handleScraperUserAgentInput}
 							class={inputClass}
 							placeholder="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
@@ -1190,7 +1199,7 @@
 						<input
 							id="scrapers-referer"
 							type="text"
-							value={config.scrapers.referer}
+							value={config?.scrapers?.referer ?? ''}
 							oninput={handleScraperRefererInput}
 							class={inputClass}
 							placeholder="https://www.dmm.co.jp/"
@@ -1205,8 +1214,9 @@
 					id="global-scrape-actress"
 					label="Scrape Actress Information (Global Default)"
 					description="Default setting for actress scraping across all scrapers. Individual scrapers can override this in their settings."
-					checked={config.scrapers?.scrape_actress ?? true}
+					checked={config?.scrapers?.scrape_actress ?? true}
 					onchange={(val) => {
+						if (!config) return;
 						if (!config.scrapers) config.scrapers = {};
 						config.scrapers.scrape_actress = val;
 					}}

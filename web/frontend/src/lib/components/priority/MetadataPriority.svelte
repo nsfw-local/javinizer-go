@@ -208,14 +208,14 @@
 	}
 
 	// Filtered fields based on showOnlyOverrides
-	const filteredFields = $derived(() => {
+	const filteredFields = $derived.by(() => {
 		if (!showOnlyOverrides) return metadataFields;
 		return metadataFields.filter((field) => isFieldOverridden(field.key));
 	});
 
 	// Group fields by category
-	const groupedFields = $derived(() => {
-		const fields = filteredFields();
+	const groupedFields = $derived.by(() => {
+		const fields = filteredFields;
 		const groups: Record<string, typeof metadataFields> = {};
 		fields.forEach((field) => {
 			if (!groups[field.category]) groups[field.category] = [];
@@ -300,7 +300,7 @@
 					</label>
 				</div>
 
-				{#each Object.entries(groupedFields()) as [category, fields] (category)}
+				{#each Object.entries(groupedFields) as [category, fields] (category)}
 					<div class="space-y-2" in:fly|local={{ y: 6, duration: 180, easing: cubicOut }} out:fade|local={{ duration: 120 }}>
 						<h4 class="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
 							{category}

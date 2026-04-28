@@ -50,6 +50,11 @@
 						<Calendar class="h-4 w-4" />
 						{new Date(movie.release_date).toLocaleDateString()}
 					</div>
+				{:else if movie.release_year}
+					<div class="flex items-center gap-1">
+						<Calendar class="h-4 w-4" />
+						{movie.release_year}
+					</div>
 				{/if}
 				{#if movie.runtime}
 					<div class="flex items-center gap-1">
@@ -66,7 +71,19 @@
 						{/if}
 					</div>
 				{/if}
+				{#if movie.original_filename}
+					<div class="flex items-center gap-1 max-w-48">
+						<Film class="h-4 w-4 shrink-0" />
+						<span class="truncate">{movie.original_filename}</span>
+					</div>
+				{/if}
 			</div>
+
+			{#if movie.source_name}
+				<div class="text-xs text-muted-foreground">
+					Source: {movie.source_name}
+				</div>
+			{/if}
 
 			<!-- Maker & Label -->
 			{#if movie.maker || movie.label}
@@ -101,7 +118,7 @@
 				<div class="flex flex-wrap gap-1">
 					{#each movie.genres.slice(0, 5) as genre}
 						<span class="px-2 py-0.5 bg-secondary text-secondary-foreground rounded text-xs">
-							{genre}
+							{genre.name}
 						</span>
 					{/each}
 					{#if movie.genres.length > 5}

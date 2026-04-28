@@ -236,6 +236,7 @@ export interface Movie {
 	original_title?: string;
 	description?: string;
 	release_date?: string;
+	release_year?: number;
 	runtime?: number;
 	director?: string;
 	maker?: string;
@@ -254,7 +255,26 @@ export interface Movie {
 	original_should_crop_poster?: boolean;
 	screenshot_urls?: string[];
 	trailer_url?: string;
-	original_file_name?: string;
+	original_filename?: string;
+	source_name?: string;
+	source_url?: string;
+	translations?: MovieTranslation[];
+	created_at?: string;
+	updated_at?: string;
+}
+
+export interface MovieTranslation {
+	id?: number;
+	movie_id?: string;
+	language?: string;
+	title?: string;
+	original_title?: string;
+	description?: string;
+	director?: string;
+	maker?: string;
+	label?: string;
+	series?: string;
+	source_name?: string;
 	created_at?: string;
 	updated_at?: string;
 }
@@ -501,6 +521,28 @@ export interface TestResult {
 	tokenExpiresAt?: number;
 }
 
+export interface BrowserConfig {
+	enabled: boolean;
+	binary_path?: string;
+	timeout: number;
+	max_retries: number;
+	headless: boolean;
+	stealth_mode: boolean;
+	window_width: number;
+	window_height: number;
+	slow_mo: number;
+	block_images: boolean;
+	block_css: boolean;
+	user_agent?: string;
+	debug_visible: boolean;
+}
+
+export interface ScrapersConfig {
+	browser?: BrowserConfig;
+	scrape_actress?: boolean;
+	[key: string]: any;
+}
+
 // Config types
 export interface PerformanceConfig {
 	max_workers: number;
@@ -509,9 +551,22 @@ export interface PerformanceConfig {
 	update_interval: number;
 }
 
+export interface LoggingConfig {
+	level?: string;
+	format?: string;
+	output?: string;
+	max_size_mb?: number;
+	max_backups?: number;
+	max_age_days?: number;
+	compress?: boolean;
+}
+
 export interface Config {
 	performance: PerformanceConfig;
-	// Other config fields can be added here as needed
+	logging: LoggingConfig;
+	scrapers?: ScrapersConfig;
+	metadata?: Record<string, any>;
+	output?: Record<string, any>;
 	[key: string]: any;
 }
 
@@ -519,6 +574,7 @@ export interface Config {
 export interface HistoryRecord {
 	id: number;
 	movie_id: string;
+	batch_job_id?: string;
 	operation: 'scrape' | 'organize' | 'download' | 'nfo';
 	original_path: string;
 	new_path: string;

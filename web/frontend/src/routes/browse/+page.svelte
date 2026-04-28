@@ -1,5 +1,6 @@
 <script lang="ts">
-	import { createQuery } from '@tanstack/svelte-query';
+	import { untrack } from 'svelte';
+	import { createQuery, useQueryClient } from '@tanstack/svelte-query';
 	import { flip } from 'svelte/animate';
 	import { quintOut } from 'svelte/easing';
 	import { fade, scale, slide } from 'svelte/transition';
@@ -35,6 +36,7 @@
 	let currentBrowserPath = $state('');
 	const configQuery = createConfigQuery();
 	const scrapersQuery = createScrapersQuery();
+	const queryClient = useQueryClient();
 	const cwdQuery = createQuery(() => ({
 		queryKey: ['cwd'],
 		queryFn: () => apiClient.getCurrentWorkingDirectory(),
@@ -44,11 +46,17 @@
 	let availableScrapers = $derived(scrapersQuery.data ?? []);
 	let selectedScrapers: string[] = $state([]);
 	let showScraperSelector = $state(false);
+	let scrapersInitialized = $state(false);
 
 	$effect(() => {
 		const scrapers = scrapersQuery.data;
-		if (scrapers && scrapers.length > 0 && selectedScrapers.length === 0) {
-			selectedScrapers = scrapers.filter((s) => s.enabled).map((s) => s.name);
+		if (scrapers && scrapers.length > 0) {
+			untrack(() => {
+				if (!scrapersInitialized) {
+					scrapersInitialized = true;
+					selectedScrapers = scrapers.filter((s) => s.enabled).map((s) => s.name);
+				}
+			});
 		}
 	});
 
@@ -259,6 +267,7 @@
 				operation_mode: effectiveOperationMode,
 			});
 			currentJobId = response.job_id;
+			void queryClient.invalidateQueries({ queryKey: ['batch-jobs'] });
 
 			const modeText = isUpdateMode ? 'Updating metadata' : 'Batch scraping';
 			toastStore.success(

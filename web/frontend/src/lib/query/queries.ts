@@ -51,7 +51,7 @@ export function createGenreReplacementsQuery() {
 
 export function createBatchJobPollingQuery(jobId: string) {
 	return createQuery(() => ({
-		queryKey: ['batch-job', jobId],
+		queryKey: ['batch-job-slim', jobId],
 		queryFn: () => apiClient.getBatchJob(jobId),
 		refetchInterval: (query) => {
 			const status = query.state.data?.status;
