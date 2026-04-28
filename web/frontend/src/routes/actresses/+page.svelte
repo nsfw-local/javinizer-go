@@ -28,7 +28,6 @@
 	import type {
 		Actress,
 		ActressUpsertRequest,
-		ActressMergePreviewResponse,
 		ActressMergeResolution
 	} from '$lib/api/types';
 
@@ -130,14 +129,71 @@
 	let mergePrimaryId = $state<number | null>(null);
 	let mergeSourceQueue = $state<number[]>([]);
 	let mergeCurrentSourceId = $state<number | null>(null);
-	let mergePreview = $state<ActressMergePreviewResponse | null>(null);
 	let mergeResolutions = $state<Record<string, ActressMergeResolution>>({});
-	let mergeLoadingPreview = $state(false);
-	let mergeRunning = $state(false);
 	let mergeSummary = $state<{ success: number; failed: number; messages: string[] }>({
 		success: 0,
 		failed: 0,
 		messages: []
+	});
+
+	const mergePreviewQuery = createQuery(() => ({
+		queryKey: ['actress-merge-preview', mergePrimaryId, mergeCurrentSourceId],
+		queryFn: () => apiClient.previewActressMerge({
+			target_id: mergePrimaryId!,
+			source_id: mergeCurrentSourceId!
+		}),
+		enabled: !!mergePrimaryId && !!mergeCurrentSourceId
+	}));
+
+	let mergePreview = $derived(mergePreviewQuery.data ?? null);
+
+	const mergeActressMutation = createMutation(() => ({
+		mutationFn: (params: { target_id: number; source_id: number; resolutions: Record<string, ActressMergeResolution> }) =>
+			apiClient.mergeActresses(params),
+		onSuccess: (result, variables) => {
+			mergeSummary = {
+				...mergeSummary,
+				success: mergeSummary.success + 1,
+				messages: [...mergeSummary.messages, `Merged #${result.merged_from_id} into #${variables.target_id}`]
+			};
+			selectedIds = selectedIds.filter((id) => id !== variables.source_id);
+			mergeSourceQueue = mergeSourceQueue.slice(1);
+			queryClient.invalidateQueries({ queryKey: ['actresses'] });
+			queryClient.invalidateQueries({ queryKey: ['actress-merge-preview'] });
+			advanceMergeQueue();
+		},
+		onError: (err: Error, variables) => {
+			mergeSummary = {
+				...mergeSummary,
+				failed: mergeSummary.failed + 1,
+				messages: [...mergeSummary.messages, `Failed #${variables.source_id}: ${err.message}`]
+			};
+			mergeSourceQueue = mergeSourceQueue.slice(1);
+			queryClient.invalidateQueries({ queryKey: ['actress-merge-preview'] });
+			advanceMergeQueue();
+		}
+	}));
+
+	$effect(() => {
+		if (mergePreviewQuery.data) {
+			mergeResolutions = { ...mergePreviewQuery.data.default_resolutions };
+		}
+	});
+
+	let lastPreviewErrorSourceId = $state<number | null>(null);
+
+	$effect(() => {
+		if (mergePreviewQuery.isError && mergeCurrentSourceId && mergeCurrentSourceId !== lastPreviewErrorSourceId) {
+			lastPreviewErrorSourceId = mergeCurrentSourceId;
+			const message = mergePreviewQuery.error?.message ?? 'Failed to preview merge';
+			mergeSummary = {
+				...mergeSummary,
+				failed: mergeSummary.failed + 1,
+				messages: [...mergeSummary.messages, `Skipped #${mergeCurrentSourceId}: ${message}`]
+			};
+			mergeSourceQueue = mergeSourceQueue.slice(1);
+			advanceMergeQueue();
+		}
 	});
 
 	const currentPage = $derived(Math.floor(offset / limit) + 1);
@@ -283,10 +339,8 @@
 	function resetMergeState() {
 		mergeSourceQueue = [];
 		mergeCurrentSourceId = null;
-		mergePreview = null;
 		mergeResolutions = {};
-		mergeLoadingPreview = false;
-		mergeRunning = false;
+		lastPreviewErrorSourceId = null;
 		mergeSummary = { success: 0, failed: 0, messages: [] };
 	}
 
@@ -304,13 +358,13 @@
 		mergePrimaryId = selectedIds[0];
 		showMergeModal = true;
 		resetMergeState();
-		void resetMergeQueueAndPreview();
+		resetMergeQueueAndPreview();
 	}
 
-	async function resetMergeQueueAndPreview() {
+	function resetMergeQueueAndPreview() {
 		if (!mergePrimaryId) return;
 		mergeSourceQueue = selectedIds.filter((id) => id !== mergePrimaryId);
-		await loadNextMergePreview();
+		advanceMergeQueue();
 	}
 
 	function formatMergeValue(value: unknown): string {
@@ -322,77 +376,32 @@
 		mergeResolutions = { ...mergeResolutions, [field]: decision };
 	}
 
-	async function loadNextMergePreview() {
+	function advanceMergeQueue() {
 		if (!mergePrimaryId || mergeSourceQueue.length === 0) {
 			mergeCurrentSourceId = null;
-			mergePreview = null;
 			return;
 		}
-
-		const sourceID = mergeSourceQueue[0];
-		mergeCurrentSourceId = sourceID;
-		mergeLoadingPreview = true;
-		try {
-			const preview = await apiClient.previewActressMerge({
-				target_id: mergePrimaryId,
-				source_id: sourceID
-			});
-			mergePreview = preview;
-			mergeResolutions = { ...preview.default_resolutions };
-		} catch (e) {
-			const message = e instanceof Error ? e.message : 'Failed to preview merge';
-			mergeSummary = {
-				...mergeSummary,
-				failed: mergeSummary.failed + 1,
-				messages: [...mergeSummary.messages, `Skipped #${sourceID}: ${message}`]
-			};
-			mergeSourceQueue = mergeSourceQueue.slice(1);
-			await loadNextMergePreview();
-		} finally {
-			mergeLoadingPreview = false;
-		}
+		lastPreviewErrorSourceId = null;
+		mergeCurrentSourceId = mergeSourceQueue[0];
 	}
 
-	async function applyCurrentMerge() {
-		if (!mergePrimaryId || !mergeCurrentSourceId || !mergePreview || mergeRunning) return;
-		mergeRunning = true;
-		try {
-			const result = await apiClient.mergeActresses({
-				target_id: mergePrimaryId,
-				source_id: mergeCurrentSourceId,
-				resolutions: mergeResolutions
-			});
-			mergeSummary = {
-				...mergeSummary,
-				success: mergeSummary.success + 1,
-				messages: [...mergeSummary.messages, `Merged #${result.merged_from_id} into #${mergePrimaryId}`]
-			};
-			selectedIds = selectedIds.filter((id) => id !== mergeCurrentSourceId);
-			mergeSourceQueue = mergeSourceQueue.slice(1);
-			await queryClient.invalidateQueries({ queryKey: ['actresses'] });
-			await loadNextMergePreview();
-		} catch (e) {
-			const message = e instanceof Error ? e.message : 'Failed to merge actress';
-			mergeSummary = {
-				...mergeSummary,
-				failed: mergeSummary.failed + 1,
-				messages: [...mergeSummary.messages, `Failed #${mergeCurrentSourceId}: ${message}`]
-			};
-			mergeSourceQueue = mergeSourceQueue.slice(1);
-			await loadNextMergePreview();
-		} finally {
-			mergeRunning = false;
-		}
+	function applyCurrentMerge() {
+		if (!mergePrimaryId || !mergeCurrentSourceId || !mergePreviewQuery.data || mergeActressMutation.isPending) return;
+		mergeActressMutation.mutate({
+			target_id: mergePrimaryId,
+			source_id: mergeCurrentSourceId,
+			resolutions: mergeResolutions
+		});
 	}
 
-	async function skipCurrentMerge() {
-		if (!mergeCurrentSourceId || mergeRunning) return;
+	function skipCurrentMerge() {
+		if (!mergeCurrentSourceId || mergeActressMutation.isPending) return;
 		mergeSummary = {
 			...mergeSummary,
 			messages: [...mergeSummary.messages, `Skipped #${mergeCurrentSourceId}`]
 		};
 		mergeSourceQueue = mergeSourceQueue.slice(1);
-		await loadNextMergePreview();
+		advanceMergeQueue();
 	}
 </script>
 
@@ -875,7 +884,7 @@
 							onchange={(event) => {
 								const value = Number.parseInt((event.currentTarget as HTMLSelectElement).value, 10);
 								mergePrimaryId = Number.isNaN(value) ? null : value;
-								void resetMergeQueueAndPreview();
+								resetMergeQueueAndPreview();
 							}}
 						>
 							{#each selectedIds as selectedID}
@@ -891,7 +900,7 @@
 						{/if}
 					</div>
 
-					{#if mergeLoadingPreview}
+					{#if mergePreviewQuery.isFetching && mergeCurrentSourceId}
 						<p class="text-sm text-muted-foreground">Loading merge preview...</p>
 					{:else if mergePreview && mergeCurrentSourceId}
 						<div class="space-y-3">
@@ -940,11 +949,11 @@
 							{/if}
 
 							<div class="flex items-center gap-2">
-								<Button variant="outline" onclick={skipCurrentMerge} disabled={mergeRunning}>
+								<Button variant="outline" onclick={skipCurrentMerge} disabled={mergeActressMutation.isPending}>
 									Skip
 								</Button>
-								<Button onclick={applyCurrentMerge} disabled={mergeRunning}>
-									{mergeRunning ? 'Merging...' : 'Apply Merge'}
+								<Button onclick={applyCurrentMerge} disabled={mergeActressMutation.isPending}>
+									{mergeActressMutation.isPending ? 'Merging...' : 'Apply Merge'}
 								</Button>
 							</div>
 						</div>
