@@ -122,7 +122,7 @@ func TestGenreReplacementDelete(t *testing.T) {
 
 	router := setupRouter(deps)
 
-	req := httptest.NewRequest("DELETE", "/genres/replacements/HD", nil)
+	req := httptest.NewRequest("DELETE", "/genres/replacements?original=HD", nil)
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
 
@@ -138,11 +138,41 @@ func TestGenreReplacementDeleteNotFound(t *testing.T) {
 	deps := newTestDeps(t)
 	router := setupRouter(deps)
 
-	req := httptest.NewRequest("DELETE", "/genres/replacements/nonexistent", nil)
+	req := httptest.NewRequest("DELETE", "/genres/replacements?original=nonexistent", nil)
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusNotFound, w.Code)
+}
+
+func TestGenreReplacementDeleteWithSpecialCharacters(t *testing.T) {
+	deps := newTestDeps(t)
+	repo := deps.GenreReplacementRepo
+	require.NoError(t, repo.Create(&models.GenreReplacement{Original: "Threesome / Foursome", Replacement: "Group"}))
+
+	router := setupRouter(deps)
+
+	req := httptest.NewRequest("DELETE", "/genres/replacements?original=Threesome+%2F+Foursome", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var resp map[string]interface{}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	assert.Equal(t, "genre replacement deleted", resp["message"])
+	assert.Equal(t, "Threesome / Foursome", resp["original"])
+}
+
+func TestGenreReplacementDeleteMissingOriginal(t *testing.T) {
+	deps := newTestDeps(t)
+	router := setupRouter(deps)
+
+	req := httptest.NewRequest("DELETE", "/genres/replacements", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
 }
 
 func TestGenreReplacementCreateEmptyOriginal(t *testing.T) {

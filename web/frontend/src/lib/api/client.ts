@@ -415,7 +415,7 @@ class APIClient {
 
 	// Delete a genre replacement by original genre name
 	async deleteGenreReplacement(original: string): Promise<{ message: string; original: string }> {
-		await this.request(`/api/v1/genres/replacements/${encodeURIComponent(original)}`, {
+		await this.request(`/api/v1/genres/replacements?original=${encodeURIComponent(original)}`, {
 			method: 'DELETE'
 		});
 		return { message: 'deleted', original };

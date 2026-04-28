@@ -96,7 +96,11 @@ func createGenreReplacement(deps *core.ServerDependencies) gin.HandlerFunc {
 
 func deleteGenreReplacement(deps *core.ServerDependencies) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		original := c.Param("original")
+		original := c.Query("original")
+		if original == "" {
+			c.JSON(http.StatusBadRequest, ErrorResponse{Error: "original query parameter is required"})
+			return
+		}
 
 		existing, err := deps.GenreReplacementRepo.FindByOriginal(original)
 		if err != nil {
