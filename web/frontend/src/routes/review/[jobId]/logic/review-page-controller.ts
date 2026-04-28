@@ -20,8 +20,8 @@ interface ReviewPageControllerDeps {
 	toastSuccess: (message: string, duration?: number) => void;
 	toastError: (message: string, duration?: number) => void;
 	navigateBatch: () => void | Promise<void>;
+	excludeMovie: (jobId: string, movieId: string) => void;
 	api: {
-		excludeBatchMovie: (jobId: string, movieId: string) => Promise<unknown>;
 		getPreviewImageURL: (url: string) => string;
 	};
 }
@@ -74,28 +74,12 @@ export function createReviewPageController(deps: ReviewPageControllerDeps) {
 		deps.setShowImageViewer(false);
 	}
 
-	async function excludeCurrentMovie() {
+	function excludeCurrentMovie() {
 		const currentMovie = deps.getCurrentMovie();
 		const job = deps.getJob();
 		if (!currentMovie || !job) return;
 
-		try {
-			await deps.api.excludeBatchMovie(job.id, currentMovie.id);
-			deps.toastSuccess(`Movie ${currentMovie.id} excluded from organization`);
-			await deps.refetchJob();
-
-			const movieResultsLength = deps.getMovieResultsLength();
-			if (movieResultsLength === 0) {
-				await deps.navigateBatch();
-				return;
-			}
-
-			if (deps.getCurrentMovieIndex() >= movieResultsLength) {
-				deps.setCurrentMovieIndex(movieResultsLength - 1);
-			}
-		} catch (err) {
-			deps.toastError(`Failed to exclude movie: ${err}`);
-		}
+		deps.excludeMovie(job.id, currentMovie.id);
 	}
 
 	return {

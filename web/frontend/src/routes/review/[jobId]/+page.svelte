@@ -4,8 +4,9 @@
 	import { browser } from '$app/environment';
 	import { page } from '$app/stores';
 	import { goto } from '$app/navigation';
+	import { createMutation, useQueryClient } from '@tanstack/svelte-query';
 	import { apiClient } from '$lib/api/client';
-	import type { BatchJobResponse, FileResult, Movie, OrganizePreviewResponse, PosterFromURLResponse, Scraper, UpdateRequest } from '$lib/api/types';
+	import type { BatchJobResponse, FileResult, Movie, OrganizePreviewResponse, PosterCropResponse, PosterFromURLResponse, Scraper, UpdateRequest } from '$lib/api/types';
 	import { toastStore } from '$lib/stores/toast';
 	import { websocketStore } from '$lib/stores/websocket';
 	import Button from '$lib/components/ui/Button.svelte';
@@ -58,64 +59,114 @@
 	let loading = $state(true);
 	let error = $state<string | null>(null);
 
-	let posterFromUrlLoading = $state(false);
+	const queryClient = useQueryClient();
 
-	function applyPosterFromUrl(movieId: string, url: string) {
-		if (!job || posterFromUrlLoading) return;
-
-		posterFromUrlLoading = true;
-		apiClient.updateBatchMoviePosterFromURL(jobId, movieId, { url })
-			.then((data: PosterFromURLResponse) => {
-				const currentJob = job;
-				if (currentJob) {
-					const updatedJob: BatchJobResponse = {
-						...currentJob,
-						results: { ...currentJob.results }
-					};
-					for (const [filePath, result] of Object.entries(updatedJob.results)) {
-						const r = result as FileResult;
-						if (r.movie_id === movieId && r.data) {
-							updatedJob.results[filePath] = {
-								...r,
-								data: {
-									...r.data,
-									poster_url: data.poster_url,
-									cropped_poster_url: data.cropped_poster_url,
-									should_crop_poster: false
-								}
-							};
-						}
-					}
-					job = updatedJob;
-
-					const updatedEdited = new Map(editedMovies);
-					for (const [filePath, movie] of updatedEdited) {
-						if (movie.id === movieId) {
-							updatedEdited.set(filePath, {
-								...movie,
+	const posterFromUrlMutation = createMutation(() => ({
+		mutationFn: async ({ movieId, url }: { movieId: string; url: string }) => {
+			return apiClient.updateBatchMoviePosterFromURL(jobId, movieId, { url });
+		},
+		onSuccess: (data: PosterFromURLResponse, { movieId }) => {
+			const currentJob = job;
+			if (currentJob) {
+				const updatedJob: BatchJobResponse = {
+					...currentJob,
+					results: { ...currentJob.results }
+				};
+				for (const [filePath, result] of Object.entries(updatedJob.results)) {
+					const r = result as FileResult;
+					if (r.movie_id === movieId && r.data) {
+						updatedJob.results[filePath] = {
+							...r,
+							data: {
+								...r.data,
 								poster_url: data.poster_url,
 								cropped_poster_url: data.cropped_poster_url,
 								should_crop_poster: false
-							});
-						}
+							}
+						};
 					}
-					editedMovies = updatedEdited;
 				}
+				job = updatedJob;
 
-				if (currentResult) {
-					posterPreviewOverrides = new Map(posterPreviewOverrides).set(currentResult.file_path, {
-						url: data.cropped_poster_url,
-						version: Date.now()
-					});
+				const updatedEdited = new Map(editedMovies);
+				for (const [filePath, movie] of updatedEdited) {
+					if (movie.id === movieId) {
+						updatedEdited.set(filePath, {
+							...movie,
+							poster_url: data.poster_url,
+							cropped_poster_url: data.cropped_poster_url,
+							should_crop_poster: false
+						});
+					}
 				}
-			})
-			.catch((err: Error) => {
-				toastStore.error(`Failed to set poster from screenshot: ${err.message}`);
-			})
-			.finally(() => {
-				posterFromUrlLoading = false;
-			});
+				editedMovies = updatedEdited;
+			}
+
+			if (currentResult) {
+				posterPreviewOverrides = new Map(posterPreviewOverrides).set(currentResult.file_path, {
+					url: data.cropped_poster_url,
+					version: Date.now()
+				});
+			}
+
+			void queryClient.invalidateQueries({ queryKey: ['batch-job', jobId] });
+		},
+		onError: (err: Error) => {
+			toastStore.error(`Failed to set poster from screenshot: ${err.message}`);
+		}
+	}));
+
+	function applyPosterFromUrl(movieId: string, url: string) {
+		if (!job || posterFromUrlMutation.isPending) return;
+		posterFromUrlMutation.mutate({ movieId, url });
 	}
+
+	const excludeMovieMutation = createMutation(() => ({
+		mutationFn: async ({ jobId: mutationJobId, movieId }: { jobId: string; movieId: string }) => {
+			return apiClient.excludeBatchMovie(mutationJobId, movieId);
+		},
+		onSuccess: async (_data, { movieId }) => {
+			toastStore.success(`Movie ${movieId} excluded from organization`);
+			await fetchJob();
+
+			const movieResultsLength = movieResults.length;
+			if (movieResultsLength === 0) {
+				await goto('/jobs');
+				return;
+			}
+
+			if (currentMovieIndex >= movieResultsLength) {
+				currentMovieIndex = movieResultsLength - 1;
+			}
+
+			void queryClient.invalidateQueries({ queryKey: ['batch-job', jobId] });
+		},
+		onError: (err: Error) => {
+			toastStore.error(`Failed to exclude movie: ${err.message}`);
+		}
+	}));
+
+	const saveEditsMutation = createMutation(() => ({
+		mutationFn: async () => {
+			const savePromises = Array.from(editedMovies.entries()).map(([filePath, movie]) => {
+				const movieToSave = { ...movie };
+				if (movieToSave.display_title) {
+					movieToSave.title = movieToSave.display_title;
+				}
+				return apiClient.updateBatchMovie(jobId, movieToSave.id, movieToSave);
+			});
+
+			if (savePromises.length > 0) {
+				await Promise.all(savePromises);
+			}
+		},
+		onSuccess: () => {
+			void queryClient.invalidateQueries({ queryKey: ['batch-job', jobId] });
+		},
+		onError: (err: Error) => {
+			toastStore.error(`Failed to save edits: ${err.message}`);
+		}
+	}));
 	let currentMovieIndex = $state(0);
 	let editedMovies = $state<Map<string, Movie>>(new Map());
 	let originalPosterState = $state<Map<string, { poster_url: string; cropped_poster_url: string; should_crop_poster: boolean }>>(new Map());
@@ -498,17 +549,7 @@
 	}
 
 	async function saveAllEdits() {
-		const savePromises = Array.from(editedMovies.entries()).map(([filePath, movie]) => {
-			const movieToSave = { ...movie };
-			if (movieToSave.display_title) {
-				movieToSave.title = movieToSave.display_title;
-			}
-			return apiClient.updateBatchMovie(jobId, movieToSave.id, movieToSave);
-		});
-
-		if (savePromises.length > 0) {
-			await Promise.all(savePromises);
-		}
+		return saveEditsMutation.mutateAsync();
 	}
 
 	const organizeController = createOrganizeController({
@@ -702,8 +743,10 @@
 		toastSuccess: (message, duration) => toastStore.success(message, duration),
 		toastError: (message, duration) => toastStore.error(message, duration),
 		navigateBatch: () => goto('/jobs'),
+		excludeMovie: (mutationJobId, movieId) => {
+			excludeMovieMutation.mutate({ jobId: mutationJobId, movieId });
+		},
 		api: {
-			excludeBatchMovie: (nextJobId, movieId) => apiClient.excludeBatchMovie(nextJobId, movieId),
 			getPreviewImageURL: (url) => apiClient.getPreviewImageURL(url)
 		}
 	});
