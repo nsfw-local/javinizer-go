@@ -60,9 +60,17 @@ prepare_internal_path() {
     target_path="$1"
     target_uid="$2"
     target_gid="$3"
+    recursive="${4:-no}"
 
     mkdir -p "${target_path}"
-    if ! awk -v path="${target_path}" '$2 == path { found=1; exit } END { exit found ? 0 : 1 }' /proc/mounts; then
+    if [ "${target_uid}" = "0" ] && [ "${target_gid}" = "0" ]; then
+        return 0
+    fi
+    if [ "${recursive}" = "yes" ]; then
+        if ! chown -R "${target_uid}:${target_gid}" "${target_path}" 2>/dev/null; then
+            echo "WARNING: chown -R on ${target_path} partially failed (some files may retain prior ownership)"
+        fi
+    elif ! awk -v path="${target_path}" '$2 == path { found=1; exit } END { exit found ? 0 : 1 }' /proc/mounts; then
         chown -R "${target_uid}:${target_gid}" "${target_path}"
     else
         chown "${target_uid}:${target_gid}" "${target_path}"
@@ -81,13 +89,8 @@ fi
 if [ "${container_uid}" = "0" ] && [ "${JAVINIZER_RUNTIME_DROPPED:-0}" != "1" ]; then
     ensure_group_entry "${requested_gid}"
     ensure_user_entry "${requested_uid}" "${requested_gid}"
-    prepare_internal_path /javinizer "${requested_uid}" "${requested_gid}"
+    prepare_internal_path /javinizer "${requested_uid}" "${requested_gid}" yes
     prepare_internal_path /media "${requested_uid}" "${requested_gid}"
-    # Prepare app-specific directories before privilege drop
-    # These are subdirectories within mount points, so prepare_internal_path will chown them
-    prepare_internal_path /javinizer/logs "${requested_uid}" "${requested_gid}"
-    prepare_internal_path /javinizer/cache "${requested_uid}" "${requested_gid}"
-    prepare_internal_path /javinizer/temp "${requested_uid}" "${requested_gid}"
     export JAVINIZER_RUNTIME_DROPPED=1
     exec su-exec "${requested_uid}:${requested_gid}" /usr/local/bin/docker-entrypoint.sh "$@"
 fi
@@ -110,7 +113,7 @@ if [ ! -d "/javinizer" ]; then
     exit 1
 fi
 
-if ! mkdir -p /javinizer/logs /javinizer/cache; then
+if ! mkdir -p /javinizer/logs /javinizer/cache /javinizer/temp; then
     echo "ERROR: Unable to create /javinizer/logs or /javinizer/cache."
     echo "       Container is running as uid=${container_uid} gid=${container_gid}."
     echo "       On Unraid, set PUID/PGID (or USER_ID/GROUP_ID) to match share ownership."
