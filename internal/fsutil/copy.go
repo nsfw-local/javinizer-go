@@ -5,10 +5,17 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sync/atomic"
 	"time"
 
 	"github.com/javinizer/javinizer-go/internal/configutil"
 )
+
+var tempFileCounter uint64
+
+func counter() uint64 {
+	return atomic.AddUint64(&tempFileCounter, 1)
+}
 
 // CopyFileAtomic performs an atomic streaming copy from src to dst.
 // It writes to a temporary file first, then renames it to the destination.
@@ -34,7 +41,7 @@ func CopyFileAtomic(src, dst string) error {
 		return fmt.Errorf("failed to ensure destination directory: %w", err)
 	}
 
-	tmpDst := filepath.Join(dir, fmt.Sprintf("%s.tmp.%d.%d", filepath.Base(dst), time.Now().UnixNano(), os.Getpid()))
+	tmpDst := filepath.Join(dir, fmt.Sprintf("%s.tmp.%d.%d.%d", filepath.Base(dst), time.Now().UnixNano(), os.Getpid(), counter()))
 	tmpFile, err := os.OpenFile(tmpDst, os.O_CREATE|os.O_EXCL|os.O_WRONLY, configutil.FilePerm)
 	if err != nil {
 		return fmt.Errorf("failed to create temp file: %w", err)

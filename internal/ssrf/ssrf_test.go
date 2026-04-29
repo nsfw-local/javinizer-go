@@ -1,6 +1,7 @@
 package ssrf
 
 import (
+	"fmt"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -149,5 +150,98 @@ func TestCheckRedirect_BlocksPrivateIP(t *testing.T) {
 	err := CheckRedirect(req, via)
 	if err == nil {
 		t.Error("expected error for redirect to private IP, got nil")
+	}
+}
+
+func TestCheckRedirect_TooManyRedirects(t *testing.T) {
+	cleanup := SetLookupIPForTest(func(host string) ([]net.IP, error) {
+		return []net.IP{net.ParseIP("93.184.216.34")}, nil
+	})
+	defer cleanup()
+
+	req := &http.Request{Header: http.Header{}}
+	req.URL, _ = url.Parse("http://example.com/redirect")
+	via := make([]*http.Request, 10)
+
+	err := CheckRedirect(req, via)
+	if err == nil {
+		t.Error("expected error for too many redirects, got nil")
+	}
+}
+
+func TestCheckRedirect_AllowsPublicIP(t *testing.T) {
+	cleanup := SetLookupIPForTest(func(host string) ([]net.IP, error) {
+		return []net.IP{net.ParseIP("93.184.216.34")}, nil
+	})
+	defer cleanup()
+
+	req := &http.Request{Header: http.Header{}}
+	req.URL, _ = url.Parse("http://example.com/page")
+	via := []*http.Request{{}}
+
+	err := CheckRedirect(req, via)
+	if err != nil {
+		t.Errorf("expected no error for public IP redirect, got: %v", err)
+	}
+}
+
+func TestWrapTransportWithSSRFCheck(t *testing.T) {
+	cleanup := SetLookupIPForTest(func(host string) ([]net.IP, error) {
+		return []net.IP{net.ParseIP("10.0.0.1")}, nil
+	})
+	defer cleanup()
+
+	transport := &http.Transport{}
+	WrapTransportWithSSRFCheck(transport)
+
+	_, err := transport.DialContext(t.Context(), "tcp", "private.example.com:80")
+	if err == nil {
+		t.Error("expected error for private IP in WrapTransportWithSSRFCheck, got nil")
+	}
+}
+
+func TestWrapTransportWithSSRFCheck_PublicIP(t *testing.T) {
+	cleanup := SetLookupIPForTest(func(host string) ([]net.IP, error) {
+		return []net.IP{net.ParseIP("93.184.216.34")}, nil
+	})
+	defer cleanup()
+
+	transport := &http.Transport{}
+	WrapTransportWithSSRFCheck(transport)
+
+	conn, err := transport.DialContext(t.Context(), "tcp", "example.com:80")
+	if err != nil {
+		t.Logf("DialContext returned error (may be expected in test env): %v", err)
+	} else {
+		conn.Close()
+	}
+}
+
+func TestWrapTransportWithSSRFCheck_InvalidAddress(t *testing.T) {
+	transport := &http.Transport{}
+	WrapTransportWithSSRFCheck(transport)
+
+	_, err := transport.DialContext(t.Context(), "tcp", "invalid-no-port")
+	if err == nil {
+		t.Error("expected error for invalid address, got nil")
+	}
+}
+
+func TestCheckURL_EmptyHostname(t *testing.T) {
+	err := CheckURL("http:///path")
+	if err == nil {
+		t.Error("expected error for empty hostname, got nil")
+	}
+}
+
+func TestCheckURL_FailedResolve(t *testing.T) {
+	cleanup := SetLookupIPForTest(func(host string) ([]net.IP, error) {
+		return nil, fmt.Errorf("DNS failure")
+	})
+	defer cleanup()
+
+	err := CheckURL("http://nonexistent.invalid/")
+	if err == nil {
+		t.Error("expected error for failed DNS resolution, got nil")
 	}
 }

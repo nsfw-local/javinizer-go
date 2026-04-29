@@ -2,6 +2,7 @@ package nfo
 
 import (
 	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/javinizer/javinizer-go/internal/models"
@@ -80,8 +81,8 @@ func TestResolveNFOPath(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			nfoPath, legacyPaths := ResolveNFOPath(tc.baseDir, tc.movie, tc.nfoFilenameTemplate, tc.groupActress, tc.perFile, tc.isMultiPart, tc.partSuffix, tc.videoFilePath)
-			if nfoPath != tc.wantNFOPath {
-				t.Errorf("ResolveNFOPath nfoPath = %q, want %q", nfoPath, tc.wantNFOPath)
+			if filepath.ToSlash(nfoPath) != tc.wantNFOPath {
+				t.Errorf("ResolveNFOPath nfoPath = %q, want %q", filepath.ToSlash(nfoPath), tc.wantNFOPath)
 			}
 			if len(legacyPaths) != tc.wantLegacyCount {
 				t.Errorf("ResolveNFOPath legacyPaths count = %d, want %d (got %v)", len(legacyPaths), tc.wantLegacyCount, legacyPaths)
@@ -161,8 +162,8 @@ func TestFindNFOFile(t *testing.T) {
 			defer func() { osStat = origOSStat }()
 
 			got := FindNFOFile(tc.baseDir, movie, tc.nfoFilenameTemplate, false, tc.perFile, tc.isMultiPart, tc.partSuffix, tc.videoFilePath)
-			if got != tc.wantPath {
-				t.Errorf("FindNFOFile = %q, want %q", got, tc.wantPath)
+			if filepath.ToSlash(got) != tc.wantPath {
+				t.Errorf("FindNFOFile = %q, want %q", filepath.ToSlash(got), tc.wantPath)
 			}
 		})
 	}
