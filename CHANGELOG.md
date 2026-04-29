@@ -5,7 +5,72 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [v0.2.11-alpha] - 2026-04-26
+## [v0.3.0-alpha] - 2026-04-29
+
+### Added
+
+- StandardModule base struct and BaseScraperConfig eliminating ~2,150 lines of module.go boilerplate across 14 scrapers
+- ValidateCommonSettings shared validation function replacing 14 identical validation blocks
+- NewScraperHTTPClient and InitScraperClient helpers replacing 14 per-scraper httpclient.go files
+- BaseRepository[T, ID] generic struct with CRUD methods for 12 database repositories
+- ResolveNFOPath/FindNFOFile shared helpers replacing triplicated NFO path discovery logic
+- FormatActressName package-level function consolidating duplicated implementations
+- core.ParsePagination helper replacing 4 duplicated limit/offset parsing implementations
+- toHistoryRecord and paginateAndConvert helpers eliminating 4x copy-pasted conversion blocks
+- Svelte-query QueryClientProvider with SSR-safe lazy client module
+- Poster-from-url, exclude-movie, and save-edits mutations using createMutation
+- Shared query helpers for config and scrapers with cache deduplication
+- createBatchJobPollingQuery helper with refetchInterval for polling components
+- Reactive actress list query with CRUD mutations and merge flow
+- Dark mode with class-based toggle and styling across all pages
+- Grid view for review page with ReviewGridCard and viewMode toggle
+- Use-as-poster button for screenshots in review page
+- Favicon for web frontend
+- unknown_actress_mode config (skip by default, fallback for placeholder)
+- Use-as-poster backend with poster generation, reset, and cache-busting
+- Shift-click range selection for files and persistent recursive checkbox
+- Translation warnings propagated to frontend UI
+
+### Fixed
+
+- Recursive chown on /javinizer for Unraid compatibility — fixes pre-existing root-owned files from prior versions
+- Convert javstash runtime from seconds to minutes
+- JavLibrary search result parsing: handle current HTML format with videothumblist divs, multiline HTML, attribute-order independence
+- JavLibrary double language segment in URL construction when legacy pattern returns /en/?v=...
+- JavLibrary over-broad cover-screenshot filter that removed all screenshots
+- FlareSolverr proxy bypass in direct mode — removed fallback that overrode empty proxyProfile
+- URL encoding for query parameters in GetURL/ScrapeURL
+- Missing template tags and YEAR/Translations data loss
+- Template structure preservation during MaxPathLength truncation
+- Truncated path names use ~ instead of ... with improved in-place preview path display
+- Umask respected in file/directory permissions for Docker group-write support
+- MGStage prefixed IDs (GANA-2850 → 200GANA-2850) and hyphenated ID format for search queries
+- Actresses matching unknown_actress_text filtered from scraper results
+- Stale actress/genre associations cleared when upserting with empty lists
+- Global scraper priority merged as fallback when per-field overrides exclude sources
+- Actress name keys normalized in aggregator and batch jobs cancelled when all movies excluded
+- DMM-resolved ContentID propagated as fallback with diagnostic logging
+- Operation_mode forwarded in organize request
+- Organizer regression: copyOnly path, subtitle handling, truncation guards
+- OOM issue #13: reduced memory in crop/placeholder/dimension reads, persist poster crop state
+- Output preview refreshed when movie fields are edited on review page
+- Genre replacement DELETE uses query param to handle special characters
+- Local state used instead of direct onUpdate for Use as Poster
+- Live R18.dev test skips on 403 instead of failing
+- Direct proxy mode does not leak global proxy to FlareSolverr
+- Inherit proxy mode passes global proxy to FlareSolverr
+
+### Changed
+
+- All 14 scrapers migrated to shared infrastructure (StandardModule, BaseScraperConfig, shared HTTP client)
+- All frontend pages migrated from manual fetch + $state patterns to TanStack svelte-query
+- MoveToFolder/RenameFolderInPlace removed from OutputConfig, API contracts, and frontend
+- Deprecated merge_strategy removed from NFOComparisonRequest API contracts and Swagger
+- Deprecated MergeMovieMetadata() and ParseMergeStrategy() functions removed
+- No-op validateNoLegacyProxyDirectFields() stub removed, rejectUnknownProxyFields() wired
+- Stale artifacts deleted: coverage files, root binaries, orphaned testdata, stale docs
+- Preview generation refactored to use OperationStrategy.Plan()
+- 86 files changed, +3,795/-1,598 lines
 
 ### Added
 
