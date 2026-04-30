@@ -1,5 +1,6 @@
 import { createQuery } from '@tanstack/svelte-query';
 import { apiClient } from '$lib/api/client';
+import { listTokens } from '$lib/api/tokens';
 
 export function createConfigQuery() {
 	return createQuery(() => ({
@@ -53,6 +54,14 @@ export function createWordReplacementsQuery(opts?: { limit?: number }) {
 	return createQuery(() => ({
 		queryKey: ['word-replacements'],
 		queryFn: () => apiClient.listWordReplacements({ limit: opts?.limit ?? 200 }),
+		staleTime: 30_000
+	}));
+}
+
+export function createApiTokensQuery() {
+	return createQuery(() => ({
+		queryKey: ['api-tokens'],
+		queryFn: () => listTokens(),
 		staleTime: 30_000
 	}));
 }

@@ -37,6 +37,12 @@
 	});
 
 	let editingId = $state<number | null>(null);
+
+	$effect(() => {
+		if (editingId !== null) {
+			document.getElementById('genre-edit-original')?.focus();
+		}
+	});
 	let editOriginal = $state('');
 	let editReplacement = $state('');
 
@@ -216,11 +222,11 @@
 									{#if editingId === rep.id}
 										<div class="py-1.5 px-3">
 											<input
+												id="genre-edit-original"
 												type="text"
 												bind:value={editOriginal}
 												onkeydown={handleEditKeydown}
 												class="w-full rounded border border-input bg-background px-2 py-1 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-ring"
-												autofocus
 											/>
 										</div>
 										<div class="py-1.5 px-3 space-y-1">

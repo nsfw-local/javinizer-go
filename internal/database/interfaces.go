@@ -130,6 +130,18 @@ type BatchFileOperationRepositoryInterface interface {
 	CountByBatchJobIDAndRevertStatus(batchJobID string, status string) (int64, error)
 }
 
+// ApiTokenRepositoryInterface defines the contract for API token operations
+type ApiTokenRepositoryInterface interface {
+	Create(token *models.ApiToken) error
+	FindByID(id string) (*models.ApiToken, error)
+	FindByTokenHash(hash string) (*models.ApiToken, error)
+	FindByPrefix(prefix string) (*models.ApiToken, error)
+	ListActive() ([]models.ApiToken, error)
+	Revoke(id string) error
+	UpdateLastUsed(id string) error
+	Regenerate(id string, newHash string, newPrefix string) (*models.ApiToken, error)
+}
+
 // EventFilter holds optional filter parameters for composable event queries
 type EventFilter struct {
 	EventType string

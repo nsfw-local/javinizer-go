@@ -12,7 +12,9 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/javinizer/javinizer-go/internal/api/token"
 	"github.com/javinizer/javinizer-go/internal/config"
+	"github.com/javinizer/javinizer-go/internal/database"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -25,6 +27,8 @@ func setupAuthenticatedTestServer(t *testing.T) (*gin.Engine, *ServerDependencie
 	cfg := config.DefaultConfig()
 	configFile := filepath.Join(t.TempDir(), "config.yaml")
 	deps := createTestDeps(t, cfg, configFile)
+
+	deps.ApiTokenRepo = createTestApiTokenRepo(t, deps)
 
 	manager, err := NewAuthManager(configFile, time.Hour)
 	require.NoError(t, err)
@@ -758,4 +762,486 @@ func TestAuth_SetupAlreadyInitializedReturns409(t *testing.T) {
 	setupAgainW := httptest.NewRecorder()
 	router.ServeHTTP(setupAgainW, setupAgainReq)
 	assert.Equal(t, http.StatusConflict, setupAgainW.Code)
+}
+
+func createTestApiTokenRepo(t *testing.T, deps *ServerDependencies) *database.ApiTokenRepository {
+	t.Helper()
+	return database.NewApiTokenRepository(deps.DB)
+}
+
+func bearerRequest(t *testing.T, method, path, token string) *http.Request {
+	t.Helper()
+	req := httptest.NewRequest(method, path, nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	return req
+}
+
+func setupTokenAuthTestServer(t *testing.T) (*gin.Engine, *ServerDependencies) {
+	t.Helper()
+
+	router, deps := setupAuthenticatedTestServer(t)
+
+	setupReq := newJSONRequest(t, http.MethodPost, "/api/v1/auth/setup", map[string]string{
+		"username": "admin",
+		"password": "password123",
+	}, nil)
+	setupW := httptest.NewRecorder()
+	router.ServeHTTP(setupW, setupReq)
+	require.Equal(t, http.StatusOK, setupW.Code)
+
+	return router, deps
+}
+
+func createTestToken(t *testing.T, deps *ServerDependencies) string {
+	t.Helper()
+	svc := token.NewTokenService(deps.ApiTokenRepo)
+	_, fullToken, err := svc.Create("test-token")
+	require.NoError(t, err)
+	return fullToken
+}
+
+func TestRequireTokenOrSession_BearerTokenValid(t *testing.T) {
+	router, deps := setupTokenAuthTestServer(t)
+	fullToken := createTestToken(t, deps)
+
+	req := bearerRequest(t, http.MethodGet, "/api/v1/config", fullToken)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusOK, w.Code)
+}
+
+func TestRequireTokenOrSession_BearerTokenInvalid(t *testing.T) {
+	router, _ := setupTokenAuthTestServer(t)
+
+	req := bearerRequest(t, http.MethodGet, "/api/v1/config", "jv_invalidtoken1234567890abcdef")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusUnauthorized, w.Code)
+
+	var errResp ErrorResponse
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &errResp))
+	assert.Contains(t, errResp.Error, "invalid or revoked token")
+}
+
+func TestRequireTokenOrSession_NoBearerValidSession(t *testing.T) {
+	router, _ := setupTokenAuthTestServer(t)
+
+	setupReq := newJSONRequest(t, http.MethodPost, "/api/v1/auth/login", map[string]string{
+		"username": "admin",
+		"password": "password123",
+	}, nil)
+	setupW := httptest.NewRecorder()
+	router.ServeHTTP(setupW, setupReq)
+	sessionCookie := extractSessionCookie(t, setupW)
+
+	protectedReq := newJSONRequest(t, http.MethodGet, "/api/v1/config", nil, sessionCookie)
+	protectedW := httptest.NewRecorder()
+	router.ServeHTTP(protectedW, protectedReq)
+	assert.Equal(t, http.StatusOK, protectedW.Code)
+}
+
+func TestRequireTokenOrSession_NoBearerNoSession(t *testing.T) {
+	router, _ := setupTokenAuthTestServer(t)
+
+	req := newJSONRequest(t, http.MethodGet, "/api/v1/config", nil, nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusUnauthorized, w.Code)
+
+	var errResp ErrorResponse
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &errResp))
+	assert.Contains(t, errResp.Error, "authentication required")
+}
+
+func TestRequireTokenOrSession_AuthNotInitializedWithBearer(t *testing.T) {
+	t.Setenv("JAVINIZER_SETUP_SECRET", "test-bootstrap-secret")
+
+	cfg := config.DefaultConfig()
+	configFile := filepath.Join(t.TempDir(), "config.yaml")
+	deps := createTestDeps(t, cfg, configFile)
+	deps.ApiTokenRepo = createTestApiTokenRepo(t, deps)
+
+	manager, err := NewAuthManager(configFile, time.Hour)
+	require.NoError(t, err)
+	deps.Auth = manager
+
+	testRouter := gin.Default()
+	testRouter.GET("/api/v1/test", RequireTokenOrSession(deps), func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{"ok": true})
+	})
+
+	req := bearerRequest(t, http.MethodGet, "/api/v1/test", "jv_sometoken1234567890abcdef")
+	w := httptest.NewRecorder()
+	testRouter.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusServiceUnavailable, w.Code)
+
+	var errResp ErrorResponse
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &errResp))
+	assert.Contains(t, errResp.Error, "authentication is not initialized")
+}
+
+func TestRequireTokenOrSession_AuthNotInitializedNoBearer(t *testing.T) {
+	t.Setenv("JAVINIZER_SETUP_SECRET", "test-bootstrap-secret")
+
+	cfg := config.DefaultConfig()
+	configFile := filepath.Join(t.TempDir(), "config.yaml")
+	deps := createTestDeps(t, cfg, configFile)
+	deps.ApiTokenRepo = createTestApiTokenRepo(t, deps)
+
+	manager, err := NewAuthManager(configFile, time.Hour)
+	require.NoError(t, err)
+	deps.Auth = manager
+
+	testRouter := gin.Default()
+	testRouter.GET("/api/v1/test", RequireTokenOrSession(deps), func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{"ok": true})
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/test", nil)
+	w := httptest.NewRecorder()
+	testRouter.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusServiceUnavailable, w.Code)
+}
+
+func TestRequireTokenOrSession_BearerTakesPrecedenceOverSession(t *testing.T) {
+	router, deps := setupTokenAuthTestServer(t)
+	fullToken := createTestToken(t, deps)
+
+	setupReq := newJSONRequest(t, http.MethodPost, "/api/v1/auth/login", map[string]string{
+		"username": "admin",
+		"password": "password123",
+	}, nil)
+	setupW := httptest.NewRecorder()
+	router.ServeHTTP(setupW, setupReq)
+	sessionCookie := extractSessionCookie(t, setupW)
+
+	req := bearerRequest(t, http.MethodGet, "/api/v1/config", fullToken)
+	req.AddCookie(sessionCookie)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusOK, w.Code)
+}
+
+func TestRequireTokenOrSession_MalformedAuthHeaderFallsBackToSession(t *testing.T) {
+	router, _ := setupTokenAuthTestServer(t)
+
+	setupReq := newJSONRequest(t, http.MethodPost, "/api/v1/auth/login", map[string]string{
+		"username": "admin",
+		"password": "password123",
+	}, nil)
+	setupW := httptest.NewRecorder()
+	router.ServeHTTP(setupW, setupReq)
+	sessionCookie := extractSessionCookie(t, setupW)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/config", nil)
+	req.Header.Set("Authorization", "Basic dXNlcjpwYXNz")
+	req.AddCookie(sessionCookie)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusOK, w.Code)
+}
+
+func TestRequireTokenOrSession_RevokedToken(t *testing.T) {
+	router, deps := setupTokenAuthTestServer(t)
+	fullToken := createTestToken(t, deps)
+
+	svc := token.NewTokenService(deps.ApiTokenRepo)
+	tokens, err := svc.List()
+	require.NoError(t, err)
+	require.NotEmpty(t, tokens)
+	err = svc.Revoke(tokens[0].ID)
+	require.NoError(t, err)
+
+	req := bearerRequest(t, http.MethodGet, "/api/v1/config", fullToken)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusUnauthorized, w.Code)
+
+	var errResp ErrorResponse
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &errResp))
+	assert.Contains(t, errResp.Error, "invalid or revoked token")
+}
+
+func TestRequireTokenOrSession_TokenWithoutJvPrefix(t *testing.T) {
+	router, _ := setupTokenAuthTestServer(t)
+
+	req := bearerRequest(t, http.MethodGet, "/api/v1/config", "not_a_jv_token")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusUnauthorized, w.Code)
+
+	var errResp ErrorResponse
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &errResp))
+	assert.Contains(t, errResp.Error, "invalid or revoked token")
+}
+
+func TestTokenAuth_Revocation(t *testing.T) {
+	router, deps := setupTokenAuthTestServer(t)
+	fullToken := createTestToken(t, deps)
+
+	svc := token.NewTokenService(deps.ApiTokenRepo)
+	tokens, err := svc.List()
+	require.NoError(t, err)
+	require.NotEmpty(t, tokens)
+
+	req := bearerRequest(t, http.MethodGet, "/api/v1/config", fullToken)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	err = svc.Revoke(tokens[0].ID)
+	require.NoError(t, err)
+
+	req2 := bearerRequest(t, http.MethodGet, "/api/v1/config", fullToken)
+	w2 := httptest.NewRecorder()
+	router.ServeHTTP(w2, req2)
+	assert.Equal(t, http.StatusUnauthorized, w2.Code)
+}
+
+func TestTokenAuth_LastUsedAt(t *testing.T) {
+	router, deps := setupTokenAuthTestServer(t)
+	fullToken := createTestToken(t, deps)
+
+	svc := token.NewTokenService(deps.ApiTokenRepo)
+	tokens, err := svc.List()
+	require.NoError(t, err)
+	require.NotEmpty(t, tokens)
+	assert.Nil(t, tokens[0].LastUsedAt)
+
+	req := bearerRequest(t, http.MethodGet, "/api/v1/config", fullToken)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	updated, err := deps.ApiTokenRepo.FindByID(tokens[0].ID)
+	require.NoError(t, err)
+	assert.NotNil(t, updated.LastUsedAt)
+	assert.WithinDuration(t, time.Now(), *updated.LastUsedAt, 5*time.Second)
+}
+
+func TestTokenAuth_LastUsedAtNotUpdatedForSession(t *testing.T) {
+	router, deps := setupTokenAuthTestServer(t)
+	createTestToken(t, deps)
+
+	setupReq := newJSONRequest(t, http.MethodPost, "/api/v1/auth/login", map[string]string{
+		"username": "admin",
+		"password": "password123",
+	}, nil)
+	setupW := httptest.NewRecorder()
+	router.ServeHTTP(setupW, setupReq)
+	sessionCookie := extractSessionCookie(t, setupW)
+
+	protectedReq := newJSONRequest(t, http.MethodGet, "/api/v1/config", nil, sessionCookie)
+	protectedW := httptest.NewRecorder()
+	router.ServeHTTP(protectedW, protectedReq)
+	assert.Equal(t, http.StatusOK, protectedW.Code)
+
+	svc := token.NewTokenService(deps.ApiTokenRepo)
+	tokens, err := svc.List()
+	require.NoError(t, err)
+	require.NotEmpty(t, tokens)
+	assert.Nil(t, tokens[0].LastUsedAt)
+}
+
+func TestRequireAuthenticated_NilDeps(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	testRouter := gin.New()
+	called := false
+	testRouter.GET("/test", requireAuthenticated(nil), func(c *gin.Context) { called = true })
+	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+	w := httptest.NewRecorder()
+	testRouter.ServeHTTP(w, req)
+	assert.True(t, called)
+}
+
+func TestRequireAuthenticated_ExportedWrapper(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	testRouter := gin.New()
+	called := false
+	testRouter.GET("/test", RequireAuthenticated(nil), func(c *gin.Context) { called = true })
+	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+	w := httptest.NewRecorder()
+	testRouter.ServeHTTP(w, req)
+	assert.True(t, called)
+}
+
+func TestRequireTokenOrSession_ExportedWrapper(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	testRouter := gin.New()
+	called := false
+	testRouter.GET("/test", RequireTokenOrSession(nil), func(c *gin.Context) { called = true })
+	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+	w := httptest.NewRecorder()
+	testRouter.ServeHTTP(w, req)
+	assert.True(t, called)
+}
+
+func TestRequireTokenOrSession_EmptyBearerValue(t *testing.T) {
+	router, _ := setupTokenAuthTestServer(t)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/config", nil)
+	req.Header.Set("Authorization", "Bearer ")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusUnauthorized, w.Code)
+
+	var errResp ErrorResponse
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &errResp))
+	assert.Contains(t, errResp.Error, "invalid or revoked token")
+}
+
+func TestRequireTokenOrSession_EmptyBearerValueNoSession(t *testing.T) {
+	router, _ := setupTokenAuthTestServer(t)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/config", nil)
+	req.Header.Set("Authorization", "Bearer ")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusUnauthorized, w.Code)
+}
+
+func TestRequireTokenOrSession_WhitespaceOnlyToken(t *testing.T) {
+	router, _ := setupTokenAuthTestServer(t)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/config", nil)
+	req.Header.Set("Authorization", "Bearer    ")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusUnauthorized, w.Code)
+
+	var errResp ErrorResponse
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &errResp))
+	assert.Contains(t, errResp.Error, "invalid or revoked token")
+}
+
+func TestRequireTokenOrSession_ContextValuesSetOnTokenAuth(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	_, deps := setupTokenAuthTestServer(t)
+	fullToken := createTestToken(t, deps)
+
+	svc := token.NewTokenService(deps.ApiTokenRepo)
+	tokens, err := svc.List()
+	require.NoError(t, err)
+	require.NotEmpty(t, tokens)
+	expectedTokenID := tokens[0].ID
+
+	var capturedAuthMethod, capturedTokenID, capturedUsername string
+	testRouter := gin.New()
+	testRouter.GET("/api/v1/test", RequireTokenOrSession(deps), func(c *gin.Context) {
+		if v, exists := c.Get("auth_method"); exists {
+			capturedAuthMethod = v.(string)
+		}
+		if v, exists := c.Get("token_id"); exists {
+			capturedTokenID = v.(string)
+		}
+		if v, exists := c.Get("auth_username"); exists {
+			capturedUsername = v.(string)
+		}
+		c.JSON(http.StatusOK, gin.H{"ok": true})
+	})
+
+	req := bearerRequest(t, http.MethodGet, "/api/v1/test", fullToken)
+	w := httptest.NewRecorder()
+	testRouter.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, "token", capturedAuthMethod)
+	assert.Equal(t, expectedTokenID, capturedTokenID)
+	assert.Equal(t, "api_token", capturedUsername)
+}
+
+func TestRequireTokenOrSession_ContextValuesSetOnSessionAuth(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	t.Setenv("JAVINIZER_SETUP_SECRET", "test-bootstrap-secret")
+	cfg := config.DefaultConfig()
+	configFile := filepath.Join(t.TempDir(), "config.yaml")
+	deps := createTestDeps(t, cfg, configFile)
+	deps.ApiTokenRepo = createTestApiTokenRepo(t, deps)
+	manager, err := NewAuthManager(configFile, time.Hour)
+	require.NoError(t, err)
+	deps.Auth = manager
+
+	var capturedAuthMethod, capturedUsername string
+	testRouter := gin.New()
+	testRouter.GET("/api/v1/test", RequireTokenOrSession(deps), func(c *gin.Context) {
+		if v, exists := c.Get("auth_method"); exists {
+			capturedAuthMethod = v.(string)
+		}
+		if v, exists := c.Get("auth_username"); exists {
+			capturedUsername = v.(string)
+		}
+		c.JSON(http.StatusOK, gin.H{"ok": true})
+	})
+
+	setupReq := newJSONRequest(t, http.MethodPost, "/api/v1/auth/setup", map[string]string{
+		"username": "admin",
+		"password": "password123",
+	}, nil)
+	setupW := httptest.NewRecorder()
+
+	setupRouter := NewServer(deps)
+	setupRouter.ServeHTTP(setupW, setupReq)
+	require.Equal(t, http.StatusOK, setupW.Code)
+	sessionCookie := extractSessionCookie(t, setupW)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/test", nil)
+	req.AddCookie(sessionCookie)
+	w := httptest.NewRecorder()
+	testRouter.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, "session", capturedAuthMethod)
+	assert.Equal(t, "admin", capturedUsername)
+
+	t.Cleanup(func() {
+		cleanupServerHub(t, deps)
+		_ = deps.DB.Close()
+	})
+}
+
+func TestRequireTokenOrSession_MultipleTokensSameName(t *testing.T) {
+	router, deps := setupTokenAuthTestServer(t)
+
+	svc := token.NewTokenService(deps.ApiTokenRepo)
+	_, token1, err := svc.Create("same-name")
+	require.NoError(t, err)
+	_, token2, err := svc.Create("same-name")
+	require.NoError(t, err)
+
+	req1 := bearerRequest(t, http.MethodGet, "/api/v1/config", token1)
+	w1 := httptest.NewRecorder()
+	router.ServeHTTP(w1, req1)
+	assert.Equal(t, http.StatusOK, w1.Code)
+
+	req2 := bearerRequest(t, http.MethodGet, "/api/v1/config", token2)
+	w2 := httptest.NewRecorder()
+	router.ServeHTTP(w2, req2)
+	assert.Equal(t, http.StatusOK, w2.Code)
+}
+
+func TestRequireTokenOrSession_RegeneratedTokenOldFails(t *testing.T) {
+	router, deps := setupTokenAuthTestServer(t)
+	fullToken := createTestToken(t, deps)
+
+	svc := token.NewTokenService(deps.ApiTokenRepo)
+	tokens, err := svc.List()
+	require.NoError(t, err)
+	require.NotEmpty(t, tokens)
+
+	req1 := bearerRequest(t, http.MethodGet, "/api/v1/config", fullToken)
+	w1 := httptest.NewRecorder()
+	router.ServeHTTP(w1, req1)
+	assert.Equal(t, http.StatusOK, w1.Code)
+
+	_, newFullToken, err := svc.Regenerate(tokens[0].ID)
+	require.NoError(t, err)
+
+	req2 := bearerRequest(t, http.MethodGet, "/api/v1/config", fullToken)
+	w2 := httptest.NewRecorder()
+	router.ServeHTTP(w2, req2)
+	assert.Equal(t, http.StatusUnauthorized, w2.Code)
+
+	req3 := bearerRequest(t, http.MethodGet, "/api/v1/config", newFullToken)
+	w3 := httptest.NewRecorder()
+	router.ServeHTTP(w3, req3)
+	assert.Equal(t, http.StatusOK, w3.Code)
 }

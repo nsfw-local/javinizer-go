@@ -37,13 +37,13 @@ func NewServer(deps *core.ServerDependencies) *gin.Engine {
 
 	router := gin.Default()
 	system.RegisterCoreRoutes(router, deps)
-	realtime.RegisterRoutes(router, deps, RequireAuthenticated(deps))
+	realtime.RegisterRoutes(router, deps, RequireTokenOrSession(deps))
 
 	v1 := router.Group("/api/v1")
 	RegisterPublicRoutes(v1, deps)
 
 	protected := v1.Group("")
-	protected.Use(RequireAuthenticated(deps))
+	protected.Use(RequireTokenOrSession(deps))
 	movie.RegisterRoutes(protected, deps)
 	actress.RegisterRoutes(protected, deps)
 	system.RegisterRoutes(protected, deps)

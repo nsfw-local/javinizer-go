@@ -18,6 +18,7 @@ import (
 	"github.com/javinizer/javinizer-go/cmd/javinizer/commands/scrape"
 	"github.com/javinizer/javinizer-go/cmd/javinizer/commands/sort"
 	"github.com/javinizer/javinizer-go/cmd/javinizer/commands/tag"
+	"github.com/javinizer/javinizer-go/cmd/javinizer/commands/token"
 	"github.com/javinizer/javinizer-go/cmd/javinizer/commands/tui"
 	"github.com/javinizer/javinizer-go/cmd/javinizer/commands/update"
 	versioncmd "github.com/javinizer/javinizer-go/cmd/javinizer/commands/version"
@@ -72,6 +73,7 @@ func init() {
 		logs.NewCommand(),
 		scrape.NewCommand(),
 		sort.NewCommand(),
+		token.NewCommand(),
 		tag.NewCommand(),
 		tui.NewCommand(),
 		update.NewCommand(),

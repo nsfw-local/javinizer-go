@@ -12,7 +12,7 @@
 
 	let { jobId, onReopen, onDismiss }: Props = $props();
 
-	const jobQuery = createBatchJobPollingQuery(jobId);
+	let jobQuery = $derived(createBatchJobPollingQuery(jobId));
 	let job = $derived(jobQuery.data ?? null);
 	let expanded = $state(false);
 

@@ -993,6 +993,12 @@ func TestAggregateWithAllFields(t *testing.T) {
 }
 
 // TestNewAggregatorResolvesDefaultPriority tests default priority fallback
+func TestAggregator_NilReceiverMethods(t *testing.T) {
+	var agg *Aggregator
+	assert.Nil(t, agg.Config())
+	assert.Nil(t, agg.TemplateEngine())
+}
+
 func TestNewAggregatorResolvesDefaultPriority(t *testing.T) {
 	// Test with empty config - priority should be derived from scraper registrations
 	// (which won't happen in this test since scrapers aren't imported)

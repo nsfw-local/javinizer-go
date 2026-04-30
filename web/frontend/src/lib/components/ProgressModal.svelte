@@ -24,7 +24,7 @@
 	let { jobId, destination, updateMode = false, onClose }: Props = $props();
 
 	const queryClient = useQueryClient();
-	const jobQuery = createBatchJobPollingQuery(jobId);
+	let jobQuery = $derived(createBatchJobPollingQuery(jobId));
 	const configQuery = createConfigQuery();
 	let job = $derived(jobQuery.data ?? null);
 	let loading = $derived(jobQuery.isPending);

@@ -371,3 +371,22 @@ func TestInitConfig_MultipleEnvironmentVariables(t *testing.T) {
 
 	// Test passes if initConfig doesn't panic with multiple env vars
 }
+
+func TestSanitizeProxyURL(t *testing.T) {
+	testCases := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{"url with credentials", "http://user:pass@proxy:8080", "http://%5BREDACTED%5D@proxy:8080"},
+		{"url without credentials", "http://proxy:8080", "http://proxy:8080"},
+		{"invalid url returned as-is", "://not-a-url", "://not-a-url"},
+		{"empty string", "", ""},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.expected, sanitizeProxyURL(tc.input))
+		})
+	}
+}

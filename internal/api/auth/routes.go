@@ -6,6 +6,10 @@ func RequireAuthenticated(deps *ServerDependencies) gin.HandlerFunc {
 	return requireAuthenticated(deps)
 }
 
+func RequireTokenOrSession(deps *ServerDependencies) gin.HandlerFunc {
+	return requireTokenOrSession(deps)
+}
+
 func RegisterPublicRoutes(v1 *gin.RouterGroup, deps *ServerDependencies) {
 	v1.GET("/auth/status", getAuthStatus(deps))
 	v1.POST("/auth/setup", setupAuth(deps))

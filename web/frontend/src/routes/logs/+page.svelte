@@ -405,6 +405,7 @@
 					{#each displayEvents as event, index (`${event.id}-${listRenderVersion}`)}
 						{@const ctx = parseContext(event.context)}
 						{@const sevConfig = severityConfig[event.severity.toLowerCase()]}
+						{@const SevIcon = sevConfig.icon}
 						{@const isExpanded = expandedEvents.has(event.id)}
 						{@const isError = event.severity.toLowerCase() === 'error'}
 						{@const isOrganize = event.event_type.toLowerCase() === 'organize'}
@@ -422,7 +423,7 @@
 									tabindex="0"
 								>
 								<div class="flex-shrink-0 pt-0.5">
-									<svelte:component this={sevConfig.icon} class="h-4 w-4 {isError ? 'text-red-500' : event.severity.toLowerCase() === 'warn' ? 'text-amber-500' : event.severity.toLowerCase() === 'info' ? 'text-blue-500' : 'text-violet-500'}" />
+								<SevIcon class="h-4 w-4 {isError ? 'text-red-500' : event.severity.toLowerCase() === 'warn' ? 'text-amber-500' : event.severity.toLowerCase() === 'info' ? 'text-blue-500' : 'text-violet-500'}" />
 								</div>
 
 								<div class="flex-1 min-w-0">

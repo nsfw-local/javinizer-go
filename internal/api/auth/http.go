@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/javinizer/javinizer-go/internal/api/token"
 	"github.com/javinizer/javinizer-go/internal/config"
 	"github.com/javinizer/javinizer-go/internal/logging"
 )
@@ -64,6 +65,86 @@ func requireAuthenticated(deps *ServerDependencies) gin.HandlerFunc {
 			return
 		}
 
+		c.Set("auth_username", username)
+		c.Next()
+	}
+}
+
+func requireTokenOrSession(deps *ServerDependencies) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if deps == nil || deps.Auth == nil {
+			c.Next()
+			return
+		}
+
+		if !deps.Auth.IsInitialized() {
+			c.AbortWithStatusJSON(http.StatusServiceUnavailable, ErrorResponse{
+				Error: "authentication is not initialized",
+			})
+			return
+		}
+
+		authHeader := c.GetHeader("Authorization")
+		if strings.HasPrefix(authHeader, "Bearer ") {
+			rawToken := strings.TrimPrefix(authHeader, "Bearer ")
+			if !strings.HasPrefix(rawToken, token.TokenPrefix) {
+				c.AbortWithStatusJSON(http.StatusUnauthorized, ErrorResponse{
+					Error: "invalid or revoked token",
+				})
+				return
+			}
+
+			hash := token.HashToken(rawToken)
+			apiToken, err := deps.ApiTokenRepo.FindByTokenHash(hash)
+			if err != nil {
+				c.AbortWithStatusJSON(http.StatusUnauthorized, ErrorResponse{
+					Error: "invalid or revoked token",
+				})
+				return
+			}
+
+			if apiToken.RevokedAt != nil {
+				c.AbortWithStatusJSON(http.StatusUnauthorized, ErrorResponse{
+					Error: "invalid or revoked token",
+				})
+				return
+			}
+
+			if err := deps.ApiTokenRepo.UpdateLastUsed(apiToken.ID); err != nil {
+				logging.Warnf("failed to update token last_used_at for %s: %v", apiToken.ID, err)
+			}
+
+			c.Set("auth_method", "token")
+			c.Set("token_id", apiToken.ID)
+			c.Set("auth_username", "api_token")
+			c.Next()
+			return
+		}
+
+		sessionID, err := c.Cookie(sessionCookieName)
+		if err != nil || strings.TrimSpace(sessionID) == "" {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, ErrorResponse{
+				Error: "authentication required",
+			})
+			return
+		}
+
+		username, err := deps.Auth.AuthenticateSession(sessionID)
+		if err != nil {
+			if errors.Is(err, ErrAuthNotInitialized) {
+				c.AbortWithStatusJSON(http.StatusServiceUnavailable, ErrorResponse{
+					Error: "authentication is not initialized",
+				})
+				return
+			}
+			clearSessionCookie(c, securityConfig(deps))
+			c.AbortWithStatusJSON(http.StatusUnauthorized, ErrorResponse{
+				Error: "authentication required",
+			})
+			return
+		}
+
+		c.Set("auth_method", "session")
 		c.Set("auth_username", username)
 		c.Next()
 	}

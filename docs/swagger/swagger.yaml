@@ -2112,6 +2112,58 @@ definitions:
           type: string
         type: array
     type: object
+  internal_api_token.ErrorResponse:
+    properties:
+      error:
+        example: Movie not found
+        type: string
+      errors:
+        items:
+          type: string
+        type: array
+    type: object
+  internal_api_token.createTokenRequest:
+    properties:
+      name:
+        type: string
+    type: object
+  internal_api_token.tokenListItem:
+    properties:
+      created_at:
+        type: string
+      id:
+        type: string
+      last_used_at:
+        type: string
+      name:
+        type: string
+      token_prefix:
+        type: string
+    type: object
+  internal_api_token.tokenListResponse:
+    properties:
+      count:
+        type: integer
+      tokens:
+        items:
+          $ref: '#/definitions/internal_api_token.tokenListItem'
+        type: array
+    type: object
+  internal_api_token.tokenResponse:
+    properties:
+      created_at:
+        type: string
+      id:
+        type: string
+      last_used_at:
+        type: string
+      name:
+        type: string
+      token:
+        type: string
+      token_prefix:
+        type: string
+    type: object
   internal_api_version.VersionStatusResponse:
     properties:
       build_date:
@@ -4143,6 +4195,105 @@ paths:
       summary: Serve temporary poster image
       tags:
       - temp
+  /api/v1/tokens:
+    get:
+      description: List all active (non-revoked) API tokens
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_api_token.tokenListResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/internal_api_token.ErrorResponse'
+      summary: List API tokens
+      tags:
+      - tokens
+    post:
+      consumes:
+      - application/json
+      description: Create a new API token with an optional name
+      parameters:
+      - description: Token details
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/internal_api_token.createTokenRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/internal_api_token.tokenResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/internal_api_token.ErrorResponse'
+      summary: Create API token
+      tags:
+      - tokens
+  /api/v1/tokens/{id}:
+    delete:
+      description: Revoke an API token by ID, making it immediately invalid
+      parameters:
+      - description: Token ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/internal_api_token.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/internal_api_token.ErrorResponse'
+      summary: Revoke API token
+      tags:
+      - tokens
+  /api/v1/tokens/{id}/regenerate:
+    post:
+      description: Regenerate an API token by ID, returning a new token value and
+        invalidating the old one
+      parameters:
+      - description: Token ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_api_token.tokenResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/internal_api_token.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/internal_api_token.ErrorResponse'
+      summary: Regenerate API token
+      tags:
+      - tokens
   /api/v1/translation/deepl/usage:
     post:
       consumes:

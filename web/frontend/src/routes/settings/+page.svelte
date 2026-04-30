@@ -20,6 +20,9 @@
 	import LoggingSettingsSection from '$lib/components/settings/sections/LoggingSettingsSection.svelte';
 	import MediaInfoSettingsSection from '$lib/components/settings/sections/MediaInfoSettingsSection.svelte';
 	import BrowserSettingsSection from '$lib/components/settings/sections/BrowserSettingsSection.svelte';
+	import ApiTokensSection from '$lib/components/settings/sections/ApiTokensSection.svelte';
+	import TokenDisplayModal from '$lib/components/settings/TokenDisplayModal.svelte';
+	import type { CreateTokenResponse } from '$lib/types/token';
 	import FormToggle from '$lib/components/settings/FormToggle.svelte';
 	import { createSettingsStore } from './stores/settings-store.svelte';
 	import { createProxyStore } from './stores/proxy-store.svelte';
@@ -56,6 +59,16 @@
 		getProxyProfileNames: () => proxy.getProxyProfileNames(),
 		refreshLocalProxyProfileChoices: (s: ScraperItem[]) => proxy.refreshLocalProxyProfileChoices(s)
 	});
+
+	let tokenDisplayResponse = $state<CreateTokenResponse | null>(null);
+
+	function handleTokenDisplay(response: CreateTokenResponse) {
+		tokenDisplayResponse = response;
+	}
+
+	function handleCloseTokenModal() {
+		tokenDisplayResponse = null;
+	}
 </script>
 
 <div class="container mx-auto px-4 py-8">
@@ -193,6 +206,7 @@
 			<FileOperationsSettingsSection config={settings.settingsConfig} />
 			<OutputSettingsSection config={settings.settingsConfig} inputClass={settings.inputClass} />
 			<DatabaseSettingsSection config={settings.settingsConfig} inputClass={settings.inputClass} />
+			<ApiTokensSection onTokenDisplay={handleTokenDisplay} />
 			<SettingsSection title="Genre Replacements" description="Manage genre name replacements applied during scraping" defaultExpanded={false}>
 				<div class="flex items-center justify-between">
 					<p class="text-sm text-muted-foreground">
@@ -265,6 +279,8 @@
 		{/if}
 	</div>
 </div>
+
+<TokenDisplayModal tokenResponse={tokenDisplayResponse} onClose={handleCloseTokenModal} />
 
 <style>
 	:global(.sortable-ghost) {

@@ -130,6 +130,7 @@ func Run(cmd *cobra.Command, configFile string, hostFlag string, portFlag int) (
 	actressRepo := database.NewActressRepository(db)
 	genreReplacementRepo := database.NewGenreReplacementRepository(db)
 	wordReplacementRepo := database.NewWordReplacementRepository(db)
+	apiTokenRepo := database.NewApiTokenRepository(db)
 
 	database.SeedDefaultWordReplacements(wordReplacementRepo)
 
@@ -186,6 +187,7 @@ func Run(cmd *cobra.Command, configFile string, hostFlag string, portFlag int) (
 		JobQueue:             jobQueue,
 		Auth:                 authManager,
 		TokenStore:           apicore.NewTokenStore(),
+		ApiTokenRepo:         apiTokenRepo,
 		GenreReplacementRepo: genreReplacementRepo,
 		WordReplacementRepo:  wordReplacementRepo,
 	}

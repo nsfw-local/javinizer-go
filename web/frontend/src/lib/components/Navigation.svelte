@@ -122,7 +122,7 @@
 								onclick={() => themeStore.cycleTheme()}
 								class="flex items-center gap-2.5 px-3 py-2 rounded-md text-sm transition-all duration-150 hover:bg-accent hover:translate-x-0.5 w-full"
 							>
-								<svelte:component this={themeIcon} class="h-4 w-4" />
+								<themeIcon class="h-4 w-4"></themeIcon>
 								<span>{themeLabel}</span>
 							</button>
 

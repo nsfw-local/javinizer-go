@@ -21,6 +21,7 @@ import (
 	"github.com/javinizer/javinizer-go/internal/api/realtime"
 	"github.com/javinizer/javinizer-go/internal/api/system"
 	"github.com/javinizer/javinizer-go/internal/api/temp"
+	"github.com/javinizer/javinizer-go/internal/api/token"
 	apiversion "github.com/javinizer/javinizer-go/internal/api/version"
 	"github.com/javinizer/javinizer-go/internal/logging"
 	webui "github.com/javinizer/javinizer-go/web"
@@ -99,7 +100,7 @@ func registerDocumentationRoutes(router *gin.Engine) {
 
 func registerCoreRoutes(router *gin.Engine, deps *core.ServerDependencies) {
 	system.RegisterCoreRoutes(router, deps)
-	realtime.RegisterRoutes(router, deps, auth.RequireAuthenticated(deps))
+	realtime.RegisterRoutes(router, deps, auth.RequireTokenOrSession(deps))
 }
 
 func registerAPIV1Routes(router *gin.Engine, deps *core.ServerDependencies) {
@@ -107,7 +108,7 @@ func registerAPIV1Routes(router *gin.Engine, deps *core.ServerDependencies) {
 	auth.RegisterPublicRoutes(v1, deps)
 
 	protected := v1.Group("")
-	protected.Use(auth.RequireAuthenticated(deps))
+	protected.Use(auth.RequireTokenOrSession(deps))
 
 	var rateLimiter *middleware.IPRateLimiter
 	if rpm := deps.GetConfig().API.Security.RateLimit.RequestsPerMinute; rpm > 0 {
@@ -128,6 +129,7 @@ func registerAPIV1Routes(router *gin.Engine, deps *core.ServerDependencies) {
 	jobs.RegisterRoutes(protected, deps)
 	events.RegisterRoutes(protected, deps)
 	temp.RegisterRoutes(protected, deps)
+	token.RegisterRoutes(protected, deps)
 }
 
 func registerStaticWebRoutes(router *gin.Engine, assets webUIAssets) {

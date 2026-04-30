@@ -24,8 +24,8 @@
 
 	const queryClient = useQueryClient();
 
-	const jobQuery = createJobDetailQuery(jobId);
-	const operationsQuery = createJobOperationsQuery(jobId);
+	let jobQuery = $derived(createJobDetailQuery(jobId));
+	let operationsQuery = $derived(createJobOperationsQuery(jobId));
 	let job = $derived(jobQuery.data ?? null);
 	let operations = $derived(operationsQuery.data?.operations ?? []);
 	let jobStatus = $derived(operationsQuery.data?.job_status ?? jobQuery.data?.status ?? '');

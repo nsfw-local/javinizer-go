@@ -1,27 +1,28 @@
-import type { APIRequestContext, Page, Response } from '@playwright/test';
+import type { Download, Page } from '@playwright/test';
 import { test, expect } from '@playwright/test';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { readFileSync, createReadStream } from 'node:fs';
+import { createReadStream } from 'node:fs';
 import { mkdtemp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const fixturesDir = join(__dirname, '..', 'fixtures');
 
+function resolveURL(baseURL: string | undefined): string {
+  return baseURL ?? 'http://localhost:5174';
+}
+
 function fixturePath(name: string): string {
   return join(fixturesDir, name);
 }
 
-function readFixture(name: string): unknown {
-  return JSON.parse(readFileSync(fixturePath(name), 'utf-8'));
-}
-
-async function ensureLoggedIn(page: Page, baseURL: string) {
+async function ensureLoggedIn(page: Page, baseURL: string | undefined) {
+  const url = resolveURL(baseURL);
   const username = process.env.JAVINIZER_E2E_USERNAME || 'admin';
   const password = process.env.JAVINIZER_E2E_PASSWORD || 'adminpassword123';
 
-  await page.goto(`${baseURL}/`);
+  await page.goto(`${url}/`);
   await page.waitForLoadState('domcontentloaded');
   await page.waitForTimeout(500);
 
@@ -45,7 +46,7 @@ async function ensureLoggedIn(page: Page, baseURL: string) {
   await page.waitForLoadState('domcontentloaded').catch(() => {});
 }
 
-async function downloadContent(download: Awaited<ReturnType<Parameters<typeof test>[1]['page']['waitForEvent']>>) {
+async function downloadContent(download: Download) {
   const tmpDir = await mkdtemp(join(tmpdir(), 'pw-dl-'));
   const outPath = join(tmpDir, 'download');
   await download.saveAs(outPath);
@@ -58,7 +59,7 @@ test.describe('Genre Replacement Import/Export (UI)', () => {
 
   test.afterEach(async ({ page, baseURL }) => {
     try {
-      await page.goto(`${baseURL}/genres`);
+      await page.goto(`${resolveURL(baseURL)}/genres`);
       await page.waitForTimeout(500);
       for (const original of [original1, original2]) {
         const row = page.locator('table tr').filter({ hasText: original }).first();
@@ -76,7 +77,7 @@ test.describe('Genre Replacement Import/Export (UI)', () => {
   test('import via UI file upload creates genre replacements', async ({ page, baseURL }) => {
     await ensureLoggedIn(page, baseURL);
 
-    await page.goto(`${baseURL}/genres`);
+    await page.goto(`${resolveURL(baseURL)}/genres`);
     await page.waitForLoadState('domcontentloaded');
 
     page.on('dialog', async dialog => {
@@ -98,7 +99,7 @@ test.describe('Genre Replacement Import/Export (UI)', () => {
   test('export triggers download', async ({ page, baseURL }) => {
     await ensureLoggedIn(page, baseURL);
 
-    await page.goto(`${baseURL}/genres`);
+    await page.goto(`${resolveURL(baseURL)}/genres`);
     await page.waitForLoadState('domcontentloaded');
 
     const exportBtn = page.getByRole('button', { name: 'Export' }).first();
@@ -123,7 +124,7 @@ test.describe('Actress Import/Export via UI', () => {
 
   test.afterEach(async ({ page, baseURL }) => {
     try {
-      await page.goto(`${baseURL}/actresses`);
+      await page.goto(`${resolveURL(baseURL)}/actresses`);
       await page.waitForTimeout(500);
       const searchInput = page.locator('input[type="search"], input[placeholder*="Search"], input[placeholder*="search"], input[name="q"]');
       if (await searchInput.isVisible().catch(() => false)) {
@@ -140,7 +141,7 @@ test.describe('Actress Import/Export via UI', () => {
   test('import via UI file upload creates actress', async ({ page, baseURL }) => {
     await ensureLoggedIn(page, baseURL);
 
-    await page.goto(`${baseURL}/actresses`);
+    await page.goto(`${resolveURL(baseURL)}/actresses`);
     await page.waitForLoadState('domcontentloaded');
 
     page.on('dialog', async dialog => {
@@ -167,7 +168,7 @@ test.describe('Actress Import/Export via UI', () => {
   test('export triggers download', async ({ page, baseURL }) => {
     await ensureLoggedIn(page, baseURL);
 
-    await page.goto(`${baseURL}/actresses`);
+    await page.goto(`${resolveURL(baseURL)}/actresses`);
     await page.waitForLoadState('domcontentloaded');
 
     const exportBtn = page.getByRole('button', { name: 'Export' }).first();
@@ -193,7 +194,7 @@ test.describe('Word Replacement Import/Export via UI', () => {
 
   test.afterEach(async ({ page, baseURL }) => {
     try {
-      await page.goto(`${baseURL}/words`);
+      await page.goto(`${resolveURL(baseURL)}/words`);
       await page.waitForTimeout(500);
       for (const original of [wordOriginal1, wordOriginal2]) {
         const row = page.locator('table tr').filter({ hasText: original }).first();
@@ -207,7 +208,7 @@ test.describe('Word Replacement Import/Export via UI', () => {
   test('import via UI file upload creates word replacements', async ({ page, baseURL }) => {
     await ensureLoggedIn(page, baseURL);
 
-    await page.goto(`${baseURL}/words`);
+    await page.goto(`${resolveURL(baseURL)}/words`);
     await page.waitForLoadState('domcontentloaded');
 
     page.on('dialog', async dialog => {
@@ -234,7 +235,7 @@ test.describe('Word Replacement Import/Export via UI', () => {
   test('export triggers download', async ({ page, baseURL }) => {
     await ensureLoggedIn(page, baseURL);
 
-    await page.goto(`${baseURL}/words`);
+    await page.goto(`${resolveURL(baseURL)}/words`);
     await page.waitForLoadState('domcontentloaded');
 
     const exportBtn = page.getByRole('button', { name: 'Export' }).first();
@@ -258,7 +259,7 @@ test.describe('Invalid JSON Import', () => {
   test('uploading invalid JSON shows error toast', async ({ page, baseURL }) => {
     await ensureLoggedIn(page, baseURL);
 
-    await page.goto(`${baseURL}/words`);
+    await page.goto(`${resolveURL(baseURL)}/words`);
     await page.waitForLoadState('domcontentloaded');
 
     const importBtn = page.getByRole('button', { name: 'Import' }).first();

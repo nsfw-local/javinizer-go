@@ -49,6 +49,7 @@ type ServerDependencies struct {
 	Auth                 AuthProvider
 	Runtime              *RuntimeState
 	TokenStore           *TokenStore
+	ApiTokenRepo         *database.ApiTokenRepository
 	GenreReplacementRepo *database.GenreReplacementRepository
 	WordReplacementRepo  *database.WordReplacementRepository
 }
