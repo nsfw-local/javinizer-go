@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v0.3.2-alpha] - 2026-05-01
+
+### Added
+
+- API token authentication with bearer tokens (jv_ prefix, SHA-256 hash storage, one-time display)
+- Token CRUD REST endpoints: POST/GET/DELETE /api/v1/tokens, POST /api/v1/tokens/:id/regenerate
+- `requireTokenOrSession` middleware coexisting with existing session/cookie auth
+- `javinizer token create/revoke/list` CLI subcommands with `--json` output
+- API Tokens section in web UI settings with create, revoke, and regenerate flows
+- TokenDisplayModal with security warning, copy-to-clipboard, and one-time display pattern
+- Rate limiting on token write endpoints (create, revoke, regenerate)
+
+### Fixed
+
+- TokenService.Validate() now uses synchronous UpdateLastUsed matching middleware behavior
+- Token CRUD endpoints moved to writeProtected group with IP rate limiting
+
 ## [v0.3.1-alpha] - 2026-04-30
 
 ### Added
