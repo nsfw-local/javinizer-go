@@ -275,8 +275,6 @@ func TestTokenService_Validate(t *testing.T) {
 		_, err = svc.Validate(fullToken)
 		require.NoError(t, err)
 
-		time.Sleep(50 * time.Millisecond)
-
 		found, err = repo.FindByID(apiToken.ID)
 		require.NoError(t, err)
 		assert.NotNil(t, found.LastUsedAt)

@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 
 	"github.com/javinizer/javinizer-go/internal/database"
+	"github.com/javinizer/javinizer-go/internal/logging"
 	"github.com/javinizer/javinizer-go/internal/models"
 )
 
@@ -75,9 +76,9 @@ func (s *TokenService) Validate(rawToken string) (*models.ApiToken, error) {
 		return nil, err
 	}
 
-	go func() {
-		_ = s.repo.UpdateLastUsed(token.ID)
-	}()
+	if err := s.repo.UpdateLastUsed(token.ID); err != nil {
+		logging.Warnf("failed to update token last_used_at for %s: %v", token.ID, err)
+	}
 
 	return token, nil
 }

@@ -26,8 +26,9 @@ func TestRegisterRoutes(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
 	protected := router.Group("/api/v1")
+	writeProtected := router.Group("/api/v1")
 
-	RegisterRoutes(protected, deps)
+	RegisterRoutes(protected, writeProtected, deps)
 
 	routes := router.Routes()
 	routeMap := make(map[string]bool)

@@ -5,9 +5,9 @@ import (
 	"github.com/javinizer/javinizer-go/internal/api/core"
 )
 
-func RegisterRoutes(protected *gin.RouterGroup, deps *core.ServerDependencies) {
+func RegisterRoutes(protected *gin.RouterGroup, writeProtected *gin.RouterGroup, deps *core.ServerDependencies) {
 	protected.GET("/tokens", listTokens(deps))
-	protected.POST("/tokens", createToken(deps))
-	protected.DELETE("/tokens/:id", revokeToken(deps))
-	protected.POST("/tokens/:id/regenerate", regenerateToken(deps))
+	writeProtected.POST("/tokens", createToken(deps))
+	writeProtected.DELETE("/tokens/:id", revokeToken(deps))
+	writeProtected.POST("/tokens/:id/regenerate", regenerateToken(deps))
 }
