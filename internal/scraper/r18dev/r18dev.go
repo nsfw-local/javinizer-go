@@ -29,11 +29,11 @@ const (
 
 // Package-level compiled regex for performance
 var (
-	r18IDRegex          = regexp.MustCompile(`/(id|combined)=([^/?&]+)`)
-	contentIDPartsRegex = regexp.MustCompile(`^([a-z]+)(\d+)(.*)$`)
-	dmmPrefixRegex      = regexp.MustCompile(`^(\d+)([a-zA-Z].*)$`)
-	contentIDFullRegex  = regexp.MustCompile(`^(\d*)([a-z]+)(\d+)(.*)$`)
-	specialCharsRegex   = regexp.MustCompile(`[^a-z0-9_]`)
+	r18IDRegex            = regexp.MustCompile(`/(id|combined)=([^/?&]+)`)
+	dmmPrefixRegex        = regexp.MustCompile(`^(\d+)([a-zA-Z].*)$`)
+	contentIDFullRegex    = regexp.MustCompile(`^(\d*)([a-z]+)(\d+)(.*)$`)
+	underscorePrefixRegex = regexp.MustCompile(`^([a-z])_(\d+)([a-z]+)(\d+)(.*)$`)
+	specialCharsRegex     = regexp.MustCompile(`[^a-z0-9_]`)
 )
 
 // Scraper implements the R18.dev scraper
@@ -344,20 +344,14 @@ func (s *Scraper) Search(ctx context.Context, id string) (*models.ScraperResult,
 				}
 				if err := json.Unmarshal(resp.Body(), &lookupData); err == nil && lookupData.ContentID != "" {
 					returnedDVDID := strings.ToLower(strings.ReplaceAll(lookupData.DVDID, "-", ""))
-					expectedDVDID := idVariation
 
-					if returnedDVDID == expectedDVDID {
+					if returnedDVDID == idVariation || (returnedDVDID == "" && contentIDCoreMatch(lookupData.ContentID, idVariation)) {
 						contentID = lookupData.ContentID
 						successfulVariation = idVariation
 						logging.Debugf("R18: ✓ Resolved %s (tried: %s) to content-id: %s", id, idVariation, contentID)
 						break
-					} else if returnedDVDID == "" && contentIDMatchesExpected(lookupData.ContentID, expectedDVDID) {
-						contentID = lookupData.ContentID
-						successfulVariation = idVariation
-						logging.Debugf("R18: ✓ Resolved %s (tried: %s) to content-id: %s (dvd_id empty, validated via content_id)", id, idVariation, contentID)
-						break
 					} else {
-						logging.Debugf("R18: Returned dvd_id '%s' doesn't match expected '%s', skipping", returnedDVDID, expectedDVDID)
+						logging.Debugf("R18: dvd_id lookup returned mismatched content-id %s for %s, skipping", lookupData.ContentID, idVariation)
 					}
 				}
 			}
@@ -391,44 +385,12 @@ func (s *Scraper) Search(ctx context.Context, id string) (*models.ScraperResult,
 		return nil, fmt.Errorf("R18.dev returned nil response for %s", finalURL)
 	}
 
-	foundValid := false
 	if resp.StatusCode() != 200 {
-		alternateIDs := generateAlternateContentIDs(normalizeID(id))
-		if contentID != "" {
-			alternateIDs = append([]string{strings.ToLower(strings.ReplaceAll(id, "-", ""))}, alternateIDs...)
-		}
-		logging.Debugf("R18: Primary URL failed (%d), trying alternate content IDs: %v", resp.StatusCode(), alternateIDs)
-		for _, altID := range alternateIDs {
-			altURL := fmt.Sprintf("%s/videos/vod/movies/detail/-/combined=%s/json", baseURL, altID)
-			altResp, altErr := s.doRequestWithRetryCtx(ctx, altURL)
-			if altErr != nil {
-				continue
-			}
-			if altResp == nil {
-				continue
-			}
-			if altResp.StatusCode() == 200 {
-				contentType := altResp.Header().Get("Content-Type")
-				if !strings.Contains(contentType, "text/html") {
-					logging.Debugf("R18: ✓ Alternate content-id %s worked (%s)", altID, altURL)
-					resp = altResp
-					finalURL = altURL
-					foundValid = true
-					break
-				}
-				logging.Debugf("R18: Alternate content-id %s returned HTML, skipping", altID)
-			} else {
-				logging.Debugf("R18: Alternate content-id %s returned status %d", altID, altResp.StatusCode())
-			}
-		}
-
-		if !foundValid {
-			return nil, models.NewScraperStatusError(
-				"R18.dev",
-				resp.StatusCode(),
-				fmt.Sprintf("R18.dev returned status code %d", resp.StatusCode()),
-			)
-		}
+		return nil, models.NewScraperStatusError(
+			"R18.dev",
+			resp.StatusCode(),
+			fmt.Sprintf("R18.dev returned status code %d", resp.StatusCode()),
+		)
 	}
 
 	contentType := resp.Header().Get("Content-Type")
@@ -691,30 +653,36 @@ func normalizeID(id string) string {
 	return id
 }
 
-func contentIDMatchesExpected(contentID, expectedDVDID string) bool {
+func contentIDCoreMatch(contentID, expectedDVDID string) bool {
 	if contentID == "" {
 		return false
 	}
 	stripped := strings.ToLower(stripDMMPrefix(contentID))
-	strippedMatches := contentIDFullRegex.FindStringSubmatch(stripped)
-	expectedMatches := contentIDFullRegex.FindStringSubmatch(expectedDVDID)
-	if len(strippedMatches) < 4 || len(expectedMatches) < 4 {
+
+	var cSeries, cNumStr string
+	if um := underscorePrefixRegex.FindStringSubmatch(stripped); len(um) == 6 {
+		cSeries = um[3]
+		cNumStr = um[4]
+	} else if sm := contentIDFullRegex.FindStringSubmatch(stripped); len(sm) >= 4 {
+		cSeries = sm[2]
+		cNumStr = sm[3]
+	} else {
 		return false
 	}
-	if strippedMatches[2] != expectedMatches[2] {
+
+	em := contentIDFullRegex.FindStringSubmatch(expectedDVDID)
+	if len(em) < 4 {
 		return false
 	}
-	strippedNum, err1 := strconv.Atoi(strippedMatches[3])
-	expectedNum, err2 := strconv.Atoi(expectedMatches[3])
+	if cSeries != em[2] {
+		return false
+	}
+	cNum, err1 := strconv.Atoi(cNumStr)
+	eNum, err2 := strconv.Atoi(em[3])
 	if err1 != nil || err2 != nil {
-		return false
+		return cNumStr == em[3]
 	}
-	if strippedNum != expectedNum {
-		return false
-	}
-	strippedSuffix := strings.ToLower(strippedMatches[4])
-	expectedSuffix := strings.ToLower(expectedMatches[4])
-	return strippedSuffix == expectedSuffix
+	return cNum == eNum
 }
 
 // stripDMMPrefix removes DMM content ID prefix (leading digits)
@@ -733,37 +701,25 @@ func stripDMMPrefix(id string) string {
 	return id
 }
 
-func generateAlternateContentIDs(baseID string) []string {
-	matches := contentIDPartsRegex.FindStringSubmatch(baseID)
-	if len(matches) < 3 {
-		return nil
-	}
-	series := matches[1]
-	num := matches[2]
-	suffix := ""
-	if len(matches) > 3 {
-		suffix = matches[3]
-	}
-	paddedNum := num
-	if len(num) < 5 {
-		n, err := strconv.Atoi(num)
-		if err == nil {
-			paddedNum = fmt.Sprintf("%05d", n)
-		}
-	}
-	var ids []string
-	for _, prefix := range []string{"1", "2", "4", "h_"} {
-		ids = append(ids, prefix+baseID)
-		ids = append(ids, prefix+series+paddedNum+suffix)
-	}
-	ids = append(ids, series+paddedNum+suffix)
-	return ids
-}
-
 // contentIDToID converts content ID to standard ID format
-// Example: "118abw00001" -> "ABW-001", "ipx00535" -> "IPX-535"
+// Example: "118abw00001" -> "ABW-001", "ipx00535" -> "IPX-535", "h_086mesu00103" -> "MESU-103"
 func contentIDToID(contentID string) string {
-	matches := contentIDFullRegex.FindStringSubmatch(strings.ToLower(contentID))
+	lowered := strings.ToLower(contentID)
+
+	if underscoreMatches := underscorePrefixRegex.FindStringSubmatch(lowered); len(underscoreMatches) == 6 {
+		prefix := strings.ToUpper(underscoreMatches[3])
+		number := underscoreMatches[4]
+		suffix := strings.ToUpper(underscoreMatches[5])
+
+		numberInt, err := strconv.Atoi(number)
+		if err == nil {
+			number = fmt.Sprintf("%03d", numberInt)
+		}
+
+		return prefix + "-" + number + suffix
+	}
+
+	matches := contentIDFullRegex.FindStringSubmatch(lowered)
 
 	if len(matches) > 3 {
 		prefix := strings.ToUpper(matches[2])

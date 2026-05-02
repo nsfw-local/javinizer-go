@@ -3,7 +3,6 @@ package r18dev
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -1958,7 +1957,7 @@ func TestScraper_TranslationsPopulated(t *testing.T) {
 	assert.Equal(t, "r18dev", jaTranslation.SourceName)
 }
 
-func TestContentIDMatchesExpected(t *testing.T) {
+func TestContentIDCoreMatch(t *testing.T) {
 	tests := []struct {
 		name           string
 		contentID      string
@@ -1966,13 +1965,13 @@ func TestContentIDMatchesExpected(t *testing.T) {
 		expectedResult bool
 	}{
 		{
-			name:           "AP-288 style with DMM prefix",
+			name:           "AP-288 with DMM prefix matches",
 			contentID:      "1ap00288",
 			expectedDVDID:  "ap288",
 			expectedResult: true,
 		},
 		{
-			name:           "Standard IPX-535 with DMM prefix",
+			name:           "Standard IPX-535 with DMM prefix matches",
 			contentID:      "1ipx00535",
 			expectedDVDID:  "ipx535",
 			expectedResult: true,
@@ -1984,7 +1983,7 @@ func TestContentIDMatchesExpected(t *testing.T) {
 			expectedResult: true,
 		},
 		{
-			name:           "Mismatched alpha prefix rejected",
+			name:           "Mismatched series rejected",
 			contentID:      "1abw00001",
 			expectedDVDID:  "ipx535",
 			expectedResult: false,
@@ -2002,112 +2001,78 @@ func TestContentIDMatchesExpected(t *testing.T) {
 			expectedResult: false,
 		},
 		{
-			name:           "Same alpha prefix different number rejected",
-			contentID:      "1ipx99999",
-			expectedDVDID:  "ipx535",
+			name:           "Same series different number rejected (ONED-025 false positive)",
+			contentID:      "oned205",
+			expectedDVDID:  "oned025",
 			expectedResult: false,
 		},
 		{
-			name:           "Same alpha prefix different zero padding accepted",
+			name:           "Same series different zero padding accepted",
 			contentID:      "1ipx00535",
 			expectedDVDID:  "ipx535",
 			expectedResult: true,
 		},
 		{
-			name:           "Suffixed content_id rejected when expected has no suffix",
+			name:           "Suffixed content_id accepted (suffix ignored in core match)",
 			contentID:      "1ipx00535z",
 			expectedDVDID:  "ipx535",
+			expectedResult: true,
+		},
+		{
+			name:           "h_ prefix content_id matches",
+			contentID:      "h_086mesu103",
+			expectedDVDID:  "mesu103",
+			expectedResult: true,
+		},
+		{
+			name:           "h_ prefix different series rejected",
+			contentID:      "h_086abw00103",
+			expectedDVDID:  "mesu103",
 			expectedResult: false,
 		},
 		{
-			name:           "Matching suffix accepted",
-			contentID:      "1ipx00535z",
-			expectedDVDID:  "ipx535z",
-			expectedResult: true,
+			name:           "h_ prefix different number rejected",
+			contentID:      "h_086mesu00200",
+			expectedDVDID:  "mesu103",
+			expectedResult: false,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := contentIDMatchesExpected(tt.contentID, tt.expectedDVDID)
+			result := contentIDCoreMatch(tt.contentID, tt.expectedDVDID)
 			assert.Equal(t, tt.expectedResult, result)
 		})
 	}
 }
 
-func TestSearch_BlankDVDIDIntegration(t *testing.T) {
+func TestContentIDToID_UnderscorePrefix(t *testing.T) {
 	tests := []struct {
-		name          string
-		dvdIDPath     string
-		responseBody  string
-		expectedID    string
-		expectContent bool
-		description   string
+		name      string
+		contentID string
+		expected  string
 	}{
 		{
-			name:          "AP-288 blank dvd_id accepted via content_id match",
-			dvdIDPath:     "dvd_id=ap288",
-			responseBody:  `{"content_id":"1ap00288","dvd_id":""}`,
-			expectedID:    "ap288",
-			expectContent: true,
-			description:   "Should resolve content_id when dvd_id is empty but content_id matches expected pattern",
+			name:      "MESU-103 with h_086 prefix",
+			contentID: "h_086mesu00103",
+			expected:  "MESU-103",
 		},
 		{
-			name:          "Mismatched alpha prefix rejected",
-			dvdIDPath:     "dvd_id=ipx535",
-			responseBody:  `{"content_id":"1abw00001","dvd_id":""}`,
-			expectedID:    "ipx535",
-			expectContent: false,
-			description:   "Should reject content_id when dvd_id is empty and content_id doesn't match expected pattern",
+			name:      "Underscore prefix with suffix",
+			contentID: "h_086mesu00103z",
+			expected:  "MESU-103Z",
 		},
 		{
-			name:          "Same prefix different number rejected",
-			dvdIDPath:     "dvd_id=ipx535",
-			responseBody:  `{"content_id":"1ipx99999","dvd_id":""}`,
-			expectedID:    "ipx535",
-			expectContent: false,
-			description:   "Should reject content_id when dvd_id is empty and content_id has same prefix but different number",
-		},
-		{
-			name:          "Suffixed content_id rejected when expected has no suffix",
-			dvdIDPath:     "dvd_id=ipx535",
-			responseBody:  `{"content_id":"1ipx00535z","dvd_id":""}`,
-			expectedID:    "ipx535",
-			expectContent: false,
-			description:   "Should reject content_id when dvd_id is empty and content_id has unexpected suffix",
+			name:      "Underscore prefix different maker code",
+			contentID: "h_124abw00001",
+			expected:  "ABW-001",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				if strings.Contains(r.URL.Path, tt.dvdIDPath) {
-					w.Header().Set("Content-Type", "application/json")
-					_, _ = w.Write([]byte(tt.responseBody))
-					return
-				}
-				w.WriteHeader(http.StatusNotFound)
-			}))
-			defer server.Close()
-
-			cfg := createTestSettings(true)
-			scraper := New(cfg, testGlobalProxy, testGlobalFlareSolverr)
-
-			dvdIDURL := fmt.Sprintf("%s/videos/vod/movies/detail/-/%s/json", server.URL, tt.dvdIDPath)
-			resp, err := scraper.client.R().Get(dvdIDURL)
-			require.NoError(t, err)
-			require.Equal(t, 200, resp.StatusCode())
-
-			var lookupData struct {
-				ContentID string `json:"content_id"`
-				DVDID     string `json:"dvd_id"`
-			}
-			require.NoError(t, json.Unmarshal(resp.Body(), &lookupData))
-
-			returnedDVDID := strings.ToLower(strings.ReplaceAll(lookupData.DVDID, "-", ""))
-			accepted := returnedDVDID == tt.expectedID || (returnedDVDID == "" && contentIDMatchesExpected(lookupData.ContentID, tt.expectedID))
-
-			assert.Equal(t, tt.expectContent, accepted, tt.description)
+			result := contentIDToID(tt.contentID)
+			assert.Equal(t, tt.expected, result)
 		})
 	}
 }
