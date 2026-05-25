@@ -11,6 +11,7 @@ import (
 	"github.com/PuerkitoBio/goquery"
 	"github.com/go-resty/resty/v2"
 	"github.com/javinizer/javinizer-go/internal/httpclient"
+	"github.com/javinizer/javinizer-go/internal/imageutil"
 	"github.com/javinizer/javinizer-go/internal/logging"
 	"github.com/javinizer/javinizer-go/internal/models"
 	"github.com/javinizer/javinizer-go/internal/scraperutil"
@@ -264,33 +265,25 @@ func extractActressThumbURL(sel *goquery.Selection) string {
 	return normalizeActressThumbURL(extractFrom(sel.Parent()))
 }
 
-func normalizeActressThumbURL(url string) string {
-	url = strings.TrimSpace(url)
-	if url == "" {
+func normalizeActressThumbURL(rawURL string) string {
+	rawURL = strings.TrimSpace(rawURL)
+	if rawURL == "" {
 		return ""
 	}
 
-	url = strings.ReplaceAll(url, "&amp;", "&")
-	if commaIdx := strings.Index(url, ","); commaIdx != -1 {
-		url = strings.TrimSpace(url[:commaIdx])
+	rawURL = strings.ReplaceAll(rawURL, "&amp;", "&")
+	if commaIdx := strings.Index(rawURL, ","); commaIdx != -1 {
+		rawURL = strings.TrimSpace(rawURL[:commaIdx])
 	}
-	if whitespaceIdx := strings.IndexAny(url, " \t\r\n"); whitespaceIdx != -1 {
-		url = url[:whitespaceIdx]
-	}
-
-	if strings.HasPrefix(url, "//") {
-		url = "https:" + url
-	}
-	if strings.HasPrefix(url, "/") {
-		url = "https://video.dmm.co.jp" + url
-	}
-	url = strings.Replace(url, "awsimgsrc.dmm.co.jp/pics_dig", "pics.dmm.co.jp", 1)
-
-	if queryIdx := strings.Index(url, "?"); queryIdx != -1 {
-		url = url[:queryIdx]
+	if whitespaceIdx := strings.IndexAny(rawURL, " \t\r\n"); whitespaceIdx != -1 {
+		rawURL = rawURL[:whitespaceIdx]
 	}
 
-	return strings.TrimSpace(url)
+	if strings.HasPrefix(rawURL, "/") && !strings.HasPrefix(rawURL, "//") {
+		rawURL = "https://video.dmm.co.jp" + rawURL
+	}
+
+	return imageutil.NormalizeDMMScreenshotURL(rawURL)
 }
 
 func upsertActressInfo(actresses *[]models.ActressInfo, indexByID map[int]int, actress models.ActressInfo) bool {

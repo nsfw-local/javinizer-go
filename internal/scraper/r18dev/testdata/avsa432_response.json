@@ -1,0 +1,31 @@
+{
+  "dvd_id": "AVSA-432",
+  "content_id": "avsa00432",
+  "title_ja": "テストタイトル",
+  "title_en": "Test Title",
+  "description": "テスト説明",
+  "description_en": "Test description",
+  "release_date": "2024-01-15",
+  "runtime_mins": 120,
+  "jacket_full_url": "https://pics.dmm.co.jp/digital/video/avsa00432/avsa00432pl.jpg",
+  "jacket_thumb_url": "https://pics.dmm.co.jp/digital/video/avsa00432/avsa00432ps.jpg",
+  "gallery": [
+    {
+      "image_full": "https://awsimgsrc.dmm.com/dig/digital/video/avsa00432/avsa00432-1.jpg",
+      "image_thumb": "https://awsimgsrc.dmm.com/dig/digital/video/avsa00432/avsa00432-1.jpg"
+    },
+    {
+      "image_full": "https://awsimgsrc.dmm.com/dig/digital/video/avsa00432/avsa00432-2.jpg",
+      "image_thumb": "https://awsimgsrc.dmm.com/dig/digital/video/avsa00432/avsa00432-2.jpg"
+    }
+  ],
+  "sample_url": "https://cc3001.dmm.co.jp/litevideo/freepv/a/avs/avsa00432/avsa00432_mhb_w.mp4",
+  "maker_name_en": "Test Maker",
+  "maker_name_ja": "テストメーカー",
+  "label_name_en": "Test Label",
+  "label_name_ja": "テストレーベル",
+  "categories": [
+    {"name": "Drama"}
+  ],
+  "actresses": []
+}

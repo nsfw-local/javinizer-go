@@ -6,6 +6,7 @@ import (
 	"image/jpeg"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 )
@@ -45,6 +46,16 @@ func TestConstructAwsimgsrcPosterURL(t *testing.T) {
 			name:        "invalid URL format",
 			coverURL:    "https://example.com/image.jpg",
 			expectedURL: "",
+		},
+		{
+			name:        "digital amateur format",
+			coverURL:    "https://pics.dmm.co.jp/digital/amateur/oreco183/oreco183pl.jpg",
+			expectedURL: "https://awsimgsrc.dmm.com/dig/amateur/oreco183/oreco183ps.jpg",
+		},
+		{
+			name:        "awsimgsrc.dmm.co.jp domain",
+			coverURL:    "https://awsimgsrc.dmm.co.jp/pics_dig/video/sone00860/sone00860pl.jpg",
+			expectedURL: "https://awsimgsrc.dmm.co.jp/pics_dig/video/sone00860/sone00860ps.jpg",
 		},
 	}
 
@@ -123,6 +134,28 @@ func (b *testBuffer) Write(p []byte) (n int, err error) {
 
 func (b *testBuffer) Bytes() []byte {
 	return b.data
+}
+
+func TestGetOptimalPosterURL_UpgradeCoverResolution(t *testing.T) {
+	highQualityImage := createTestJPEG(t, 1000, 1500)
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "image/jpeg")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write(highQualityImage)
+	}))
+	defer server.Close()
+
+	testCoverURL := server.URL + "/digital/video/sone00860/sone00860pl.jpg"
+
+	client := &http.Client{Timeout: 5 * time.Second}
+	posterURL, shouldCrop := GetOptimalPosterURL(testCoverURL, client)
+
+	_ = shouldCrop
+
+	if strings.Contains(posterURL, "ps.jpg") {
+		t.Errorf("GetOptimalPosterURL returned ps.jpg poster %q — expected UpgradeCoverResolution to upgrade to pl.jpg", posterURL)
+	}
 }
 
 func TestGetOptimalPosterURL_WithHTTPServer(t *testing.T) {
@@ -205,7 +238,7 @@ func TestGetOptimalPosterURL_WithHTTPServer(t *testing.T) {
 }
 
 func contains(s, substr string) bool {
-	return len(s) >= len(substr) && (s == substr || len(s) > 0)
+	return strings.Contains(s, substr)
 }
 
 func TestGetImageDimensions(t *testing.T) {
@@ -380,6 +413,41 @@ func TestConstructAwsimgsrcPosterURL_UnknownPattern(t *testing.T) {
 			result := constructAwsimgsrcPosterURL(tc.coverURL)
 			if result != tc.expectedURL {
 				t.Errorf("constructAwsimgsrcPosterURL() = %v, want %v", result, tc.expectedURL)
+			}
+		})
+	}
+}
+
+func TestNormalizeThenConstructPosterURL(t *testing.T) {
+	testCases := []struct {
+		name        string
+		rawCoverURL string
+		expectedURL string
+	}{
+		{
+			name:        "awsimgsrc CDN rewritten then poster constructed",
+			rawCoverURL: "https://awsimgsrc.dmm.co.jp/pics_dig/video/sone00860/sone00860pl.jpg",
+			expectedURL: "https://awsimgsrc.dmm.com/dig/video/sone00860/sone00860ps.jpg",
+		},
+		{
+			name:        "digital video cover produces correct poster",
+			rawCoverURL: "https://pics.dmm.co.jp/digital/video/sone00860/sone00860pl.jpg",
+			expectedURL: "https://awsimgsrc.dmm.com/dig/video/sone00860/sone00860ps.jpg",
+		},
+		{
+			name:        "digital amateur cover produces correct poster",
+			rawCoverURL: "https://pics.dmm.co.jp/digital/amateur/oreco183/oreco183pl.jpg",
+			expectedURL: "https://awsimgsrc.dmm.com/dig/amateur/oreco183/oreco183ps.jpg",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			normalized := NormalizeDMMScreenshotURL(tc.rawCoverURL)
+			result := constructAwsimgsrcPosterURL(normalized)
+			if result != tc.expectedURL {
+				t.Errorf("NormalizeDMMScreenshotURL(%q) → %q, constructAwsimgsrcPosterURL() = %q, want %q",
+					tc.rawCoverURL, normalized, result, tc.expectedURL)
 			}
 		})
 	}

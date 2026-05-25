@@ -13,6 +13,7 @@ import (
 	"github.com/go-resty/resty/v2"
 	"github.com/javinizer/javinizer-go/internal/config"
 	"github.com/javinizer/javinizer-go/internal/httpclient"
+	"github.com/javinizer/javinizer-go/internal/imageutil"
 	"github.com/javinizer/javinizer-go/internal/logging"
 	"github.com/javinizer/javinizer-go/internal/models"
 	"github.com/javinizer/javinizer-go/internal/ratelimit"
@@ -364,15 +365,21 @@ func (s *Scraper) parseDetailPage(html string, id string, sourceURL string, lang
 	result.Rating = s.extractRating(html)
 
 	// Media URLs
-	result.CoverURL = s.extractCoverURL(html)
-	result.ScreenshotURL = s.extractScreenshotURLs(html)
+	result.CoverURL = imageutil.NormalizeDMMScreenshotURL(s.extractCoverURL(html))
+	result.CoverURL = imageutil.UpgradeCoverResolution(result.CoverURL)
+
+	rawScreenshots := s.extractScreenshotURLs(html)
+	normalizedScreenshots := make([]string, 0, len(rawScreenshots))
+	for _, ss := range rawScreenshots {
+		normalizedScreenshots = append(normalizedScreenshots, imageutil.NormalizeDMMScreenshotURL(ss))
+	}
+	result.ScreenshotURL = normalizedScreenshots
 	result.TrailerURL = s.extractTrailerURL(html)
 
 	// Filter out cover URL from screenshots if present
 	if result.CoverURL != "" && len(result.ScreenshotURL) > 0 {
 		filtered := make([]string, 0, len(result.ScreenshotURL))
 		for _, ss := range result.ScreenshotURL {
-			// Skip if screenshot URL exactly matches cover URL
 			if ss == result.CoverURL {
 				continue
 			}
@@ -385,9 +392,14 @@ func (s *Scraper) parseDetailPage(html string, id string, sourceURL string, lang
 		result.ScreenshotURL = filtered
 	}
 
-	// Poster: derive from cover URL (replace "pl.jpg" with "ps.jpg")
 	if result.CoverURL != "" {
-		result.PosterURL = strings.Replace(result.CoverURL, "pl.jpg", "ps.jpg", 1)
+		posterURL, shouldCrop := imageutil.GetOptimalPosterURL(result.CoverURL, s.client.GetClient())
+		result.ShouldCropPoster = shouldCrop
+		if shouldCrop {
+			result.PosterURL = result.CoverURL
+		} else {
+			result.PosterURL = posterURL
+		}
 	}
 
 	return result, nil
@@ -645,12 +657,6 @@ func (s *Scraper) extractScreenshotURLs(html string) []string {
 		if strings.Contains(url, "loading") || strings.Contains(url, "blank") ||
 			strings.Contains(url, "placeholder") || strings.Contains(url, "icon") ||
 			strings.Contains(url, "head2.jpg") { // Non-screenshot URLs on JavLibrary
-			return
-		}
-		// Filter out thumbnail versions - prefer full-size images
-		// The jp-XX.jpg pattern appears to be thumbnails while XX.jpg are full images
-		// e.g., 118abp880-1.jpg is full, 118abp880jp-1.jpg is thumbnail
-		if strings.Contains(url, "jp-") || strings.HasSuffix(url, "jp.jpg") {
 			return
 		}
 		// Filter out DMM cover URLs (pl.jpg = cover, ps.jpg = poster)

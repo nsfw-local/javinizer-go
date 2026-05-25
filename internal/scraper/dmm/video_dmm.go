@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/PuerkitoBio/goquery"
+	"github.com/javinizer/javinizer-go/internal/imageutil"
 	"github.com/javinizer/javinizer-go/internal/logging"
 	"github.com/javinizer/javinizer-go/internal/scraperutil"
 )
@@ -43,37 +44,25 @@ func (s *Scraper) extractDescriptionNewSite(doc *goquery.Document) string {
 
 // extractCoverURLNewSite extracts cover image from video.dmm.co.jp
 func (s *Scraper) extractCoverURLNewSite(doc *goquery.Document, contentID string) string {
-	// Try og:image meta tag
 	coverURL, exists := doc.Find(`meta[property="og:image"]`).Attr("content")
 	logging.Debugf("DMM Streaming: og:image exists=%v, value=%s", exists, coverURL)
 	if exists && coverURL != "" {
-		// Convert to regular pics.dmm.co.jp URL if needed
-		coverURL = strings.Replace(coverURL, "awsimgsrc.dmm.co.jp/pics_dig", "pics.dmm.co.jp", 1)
-		// Replace 'ps.jpg' with 'pl.jpg' for larger image
-		coverURL = strings.Replace(coverURL, "ps.jpg", "pl.jpg", 1)
-		// Remove query parameters
-		if idx := strings.Index(coverURL, "?"); idx != -1 {
-			coverURL = coverURL[:idx]
-		}
+		coverURL = imageutil.NormalizeDMMScreenshotURL(coverURL)
+		coverURL = imageutil.UpgradeCoverResolution(coverURL)
 		logging.Debugf("DMM Streaming: Final cover URL from og:image: %s", coverURL)
 		return coverURL
 	}
 
-	// Try to extract from CSS background-image style attributes
-	// Some amateur videos use: style="background-image: url(//pics.dmm.co.jp/digital/amateur/oreco183/oreco183jp.jpg);"
 	logging.Debug("DMM Streaming: og:image not found, trying CSS background-image")
 	var bgImageURL string
 	doc.Find("*[style*='background-image']").Each(func(i int, sel *goquery.Selection) {
 		if bgImageURL != "" {
-			return // Already found one
+			return
 		}
 		style, exists := sel.Attr("style")
 		if !exists {
 			return
 		}
-		// Extract URL from background-image: url(...)
-		// Handle both url(...) and url("...") and url('...')
-		// Also handle protocol-relative URLs starting with //
 		bgURL := extractBackgroundImageURL(style)
 		if bgURL != "" {
 			logging.Debugf("DMM Streaming: Found background-image URL: %s", bgURL)
@@ -82,54 +71,37 @@ func (s *Scraper) extractCoverURLNewSite(doc *goquery.Document, contentID string
 	})
 
 	if bgImageURL != "" {
-		// Normalize the URL
-		coverURL = normalizeImageURL(bgImageURL)
-		// For amateur videos, keep jp.jpg suffix (pl.jpg doesn't exist for amateur videos)
-		// For regular videos, convert to pl.jpg for larger image
-		if !strings.Contains(coverURL, "/amateur/") {
-			// Replace 'jp.jpg' with 'pl.jpg' for larger image (non-amateur videos)
-			coverURL = strings.Replace(coverURL, "jp.jpg", "pl.jpg", 1)
-			// Also handle standard 'ps.jpg' -> 'pl.jpg' conversion
-			coverURL = strings.Replace(coverURL, "ps.jpg", "pl.jpg", 1)
-		}
+		coverURL = imageutil.NormalizeDMMScreenshotURL(bgImageURL)
+		coverURL = imageutil.UpgradeCoverResolution(coverURL)
 		logging.Debugf("DMM Streaming: Final cover URL from background-image: %s", coverURL)
 		return coverURL
 	}
 
-	// As fallback, try to extract from img tags
 	logging.Debug("DMM Streaming: background-image not found, trying img tag fallback")
 	coverURL, _ = doc.Find(`img[src*="pl.jpg"]`).First().Attr("src")
 	logging.Debugf("DMM Streaming: img[src*='pl.jpg'] found: %s", coverURL)
 	if coverURL != "" {
-		// Convert to regular pics.dmm.co.jp URL and remove query parameters
-		coverURL = strings.Replace(coverURL, "awsimgsrc.dmm.co.jp/pics_dig", "pics.dmm.co.jp", 1)
-		if idx := strings.Index(coverURL, "?"); idx != -1 {
-			coverURL = coverURL[:idx]
-		}
+		coverURL = imageutil.NormalizeDMMScreenshotURL(coverURL)
+		coverURL = imageutil.UpgradeCoverResolution(coverURL)
 		logging.Debugf("DMM Streaming: Final cover URL from img tag: %s", coverURL)
 		return coverURL
 	}
 
-	// Debug: List all img tags to see what's available
 	imgCount := 0
 	doc.Find("img").Each(func(i int, sel *goquery.Selection) {
 		src, _ := sel.Attr("src")
-		if imgCount < 5 { // Only log first 5 to avoid spam
+		if imgCount < 5 {
 			logging.Debugf("DMM Streaming: Found img[%d]: %s", i, src)
 		}
 		imgCount++
 	})
 	logging.Debugf("DMM Streaming: Total img tags found: %d", imgCount)
 
-	// Final fallback for amateur videos: construct URL from content ID
-	// Amateur videos use pattern: https://pics.dmm.co.jp/digital/amateur/{contentid}/{contentid}jp.jpg
-	// Note: Amateur videos use 'jp.jpg' suffix, not 'pl.jpg' (pl.jpg doesn't exist for amateur videos)
-	// DMM serves cover assets on lowercase paths, so normalize to lowercase
 	if contentID != "" {
-		// Normalize to lowercase to match DMM's URL structure
 		normalizedID := strings.ToLower(contentID)
-		// Try amateur video pattern (amateur videos use jp.jpg, not pl.jpg)
 		coverURL = "https://pics.dmm.co.jp/digital/amateur/" + normalizedID + "/" + normalizedID + "jp.jpg"
+		coverURL = imageutil.NormalizeDMMScreenshotURL(coverURL)
+		coverURL = imageutil.UpgradeCoverResolution(coverURL)
 		logging.Debugf("DMM Streaming: Constructed amateur cover URL from content ID '%s': %s", contentID, coverURL)
 		return coverURL
 	}
@@ -139,76 +111,29 @@ func (s *Scraper) extractCoverURLNewSite(doc *goquery.Document, contentID string
 }
 
 // extractScreenshotsNewSite extracts screenshots from video.dmm.co.jp
+// JSON-LD screenshots are handled separately by extractMetadataFromJSONLD;
+// this function only handles the img-tag fallback path.
 func (s *Scraper) extractScreenshotsNewSite(doc *goquery.Document) []string {
 	screenshots := make([]string, 0)
 	seen := make(map[string]bool)
 
-	// Strategy 1: Try to extract from JSON-LD structured data (highest quality)
-	// JSON-LD contains an "image" array with high-quality screenshot URLs
-	doc.Find(`script[type="application/ld+json"]`).Each(func(i int, sel *goquery.Selection) {
-		jsonText := sel.Text()
-
-		// Use proper JSON parsing instead of manual string scanning
-		var data map[string]interface{}
-		if err := json.Unmarshal([]byte(jsonText), &data); err != nil {
-			return
-		}
-
-		if imageData, ok := data["image"]; ok {
-			var imageStrs []string
-			switch v := imageData.(type) {
-			case string:
-				imageStrs = []string{v}
-			case []interface{}:
-				for _, item := range v {
-					if s, ok := item.(string); ok {
-						imageStrs = append(imageStrs, s)
-					}
-				}
-			}
-
-			for _, rawURL := range imageStrs {
-				if !strings.HasPrefix(rawURL, "http") || !strings.Contains(rawURL, "pics.dmm.co.jp") {
-					continue
-				}
-				imageURL := normalizeImageURL(rawURL)
-				if qIdx := strings.Index(imageURL, "?"); qIdx != -1 {
-					imageURL = imageURL[:qIdx]
-				}
-				if !seen[imageURL] {
-					seen[imageURL] = true
-					screenshots = append(screenshots, imageURL)
-				}
-			}
-		}
-	})
-
-	// If we found screenshots in JSON-LD, return them (they're higher quality)
-	if len(screenshots) > 0 {
-		logging.Debugf("DMM Streaming: Found %d screenshots in JSON-LD data", len(screenshots))
-		return screenshots
-	}
-
-	// Strategy 2: Fallback to extracting from img tags (lower quality)
-	logging.Debug("DMM Streaming: No screenshots in JSON-LD, falling back to img tag extraction")
 	doc.Find(`img[src*="awsimgsrc.dmm.co.jp"]`).Each(func(i int, sel *goquery.Selection) {
 		src, exists := sel.Attr("src")
 		if !exists {
 			return
 		}
 
-		// Only process screenshot images (those with -1.jpg, -2.jpg, etc.)
-		if !strings.Contains(src, "-") || strings.HasSuffix(src, "pl.jpg") {
+		cleanSrc := src
+		if idx := strings.Index(cleanSrc, "?"); idx != -1 {
+			cleanSrc = cleanSrc[:idx]
+		}
+
+		if !strings.Contains(cleanSrc, "-") || strings.HasSuffix(cleanSrc, "pl.jpg") || strings.HasSuffix(cleanSrc, "ps.jpg") {
 			return
 		}
 
-		// Convert awsimgsrc to pics.dmm.co.jp and remove query parameters
-		src = strings.Replace(src, "awsimgsrc.dmm.co.jp/pics_dig", "pics.dmm.co.jp", 1)
-		if idx := strings.Index(src, "?"); idx != -1 {
-			src = src[:idx]
-		}
+		src = imageutil.NormalizeDMMScreenshotURL(src)
 
-		// Deduplicate
 		if !seen[src] {
 			seen[src] = true
 			screenshots = append(screenshots, src)
@@ -341,32 +266,6 @@ func extractBackgroundImageURL(style string) string {
 
 	url := style[start:end]
 	return strings.TrimSpace(url)
-}
-
-// normalizeImageURL normalizes image URLs from DMM
-// Handles protocol-relative URLs (//pics.dmm.co.jp/...) and converts them to HTTPS
-// Ensures lowercase paths for amateur videos
-func normalizeImageURL(url string) string {
-	// Convert awsimgsrc CDN to canonical pics domain
-	url = strings.Replace(url, "awsimgsrc.dmm.co.jp/pics_dig", "pics.dmm.co.jp", 1)
-
-	// Handle protocol-relative URLs
-	if strings.HasPrefix(url, "//") {
-		url = "https:" + url
-	}
-
-	// Normalize to lowercase for amateur video paths
-	// DMM serves amateur video assets on lowercase paths
-	if strings.Contains(url, "/digital/amateur/") {
-		url = strings.ToLower(url)
-	}
-
-	// Remove query parameters
-	if idx := strings.Index(url, "?"); idx != -1 {
-		url = url[:idx]
-	}
-
-	return url
 }
 
 // extractTrailerURLNewSite extracts trailer video URL from video.dmm.co.jp

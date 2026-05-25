@@ -48,7 +48,7 @@ func GetOptimalPosterURL(coverURL string, client *http.Client) (posterURL string
 	// Check if the poster meets quality requirements
 	if width >= MinPosterWidth && height >= MinPosterHeight {
 		logging.Debugf("ImageUtil: Using high-quality awsimgsrc poster (%dx%d): %s", width, height, awsimgsrcPosterURL)
-		return awsimgsrcPosterURL, false // Use poster as-is, backend already cropped it
+		return UpgradeCoverResolution(awsimgsrcPosterURL), false
 	}
 
 	logging.Debugf("ImageUtil: Awsimgsrc poster too small (%dx%d), backend will crop cover", width, height)
@@ -73,7 +73,7 @@ func constructAwsimgsrcPosterURL(coverURL string) string {
 	// Pattern 3: awsimgsrc already - just replace pl.jpg with ps.jpg
 
 	// If it's already awsimgsrc, just replace pl.jpg with ps.jpg
-	if strings.Contains(coverURL, "awsimgsrc.dmm.com") {
+	if strings.Contains(coverURL, "awsimgsrc.dmm.com") || strings.Contains(coverURL, "awsimgsrc.dmm.co.jp") {
 		return strings.Replace(coverURL, "pl.jpg", "ps.jpg", 1)
 	}
 
@@ -92,6 +92,9 @@ func constructAwsimgsrcPosterURL(coverURL string) string {
 	if strings.Contains(coverURL, "/digital/video/") {
 		// Digital video pattern: dig/video/[id]/[id]ps.jpg
 		awsimgsrcPath = fmt.Sprintf("dig/video/%s/%sps.jpg", contentID, contentID)
+	} else if strings.Contains(coverURL, "/digital/amateur/") {
+		// Amateur pattern: dig/amateur/[id]/[id]ps.jpg
+		awsimgsrcPath = fmt.Sprintf("dig/amateur/%s/%sps.jpg", contentID, contentID)
 	} else if strings.Contains(coverURL, "/mono/movie/") {
 		// Mono movie pattern: dig/mono/movie/[id]/[id]ps.jpg
 		awsimgsrcPath = fmt.Sprintf("dig/mono/movie/%s/%sps.jpg", contentID, contentID)

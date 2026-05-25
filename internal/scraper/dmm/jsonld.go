@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/PuerkitoBio/goquery"
+	"github.com/javinizer/javinizer-go/internal/imageutil"
 	"github.com/javinizer/javinizer-go/internal/logging"
 	"github.com/javinizer/javinizer-go/internal/scraperutil"
 )
@@ -91,15 +92,13 @@ func getImagesFromJSONLD(imageField interface{}) []string {
 
 	switch v := imageField.(type) {
 	case string:
-		// Single image as string
 		if v != "" {
-			images = append(images, normalizeImageURL(v))
+			images = append(images, v)
 		}
 	case []interface{}:
-		// Array of images
 		for _, img := range v {
 			if imgStr, ok := img.(string); ok && imgStr != "" {
-				images = append(images, normalizeImageURL(imgStr))
+				images = append(images, imgStr)
 			}
 		}
 	default:
@@ -160,13 +159,13 @@ func extractMetadataFromJSONLD(doc *goquery.Document) map[string]interface{} {
 	if product.Image != nil {
 		images := getImagesFromJSONLD(product.Image)
 		if len(images) > 0 {
-			// First image is usually the cover
-			// Images already normalized by getImagesFromJSONLD -> normalizeImageURL
-			metadata["cover_url"] = images[0]
+			metadata["cover_url"] = imageutil.UpgradeCoverResolution(imageutil.NormalizeDMMScreenshotURL(images[0]))
 
-			// Rest are screenshots (skip first which is cover)
 			if len(images) > 1 {
-				screenshots := append([]string{}, images[1:]...)
+				screenshots := make([]string, 0, len(images)-1)
+				for _, raw := range images[1:] {
+					screenshots = append(screenshots, imageutil.NormalizeDMMScreenshotURL(raw))
+				}
 				metadata["screenshots"] = screenshots
 				logging.Debugf("DMM JSON-LD: Extracted %d screenshots from image array", len(screenshots))
 			}

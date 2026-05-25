@@ -559,6 +559,8 @@ func (s *Scraper) parseResponse(ctx context.Context, data *R18Response, sourceUR
 	}
 
 	if coverImageURL != "" {
+		coverImageURL = imageutil.NormalizeDMMScreenshotURL(coverImageURL)
+		coverImageURL = imageutil.UpgradeCoverResolution(coverImageURL)
 		result.CoverURL = coverImageURL
 
 		// Try to get a high-quality poster from awsimgsrc
@@ -580,11 +582,14 @@ func (s *Scraper) parseResponse(ctx context.Context, data *R18Response, sourceUR
 		result.ScreenshotURL = make([]string, 0, len(data.Gallery))
 		for _, item := range data.Gallery {
 			if item.ImageFull != "" {
-				result.ScreenshotURL = append(result.ScreenshotURL, item.ImageFull)
+				result.ScreenshotURL = append(result.ScreenshotURL, imageutil.NormalizeDMMScreenshotURL(item.ImageFull))
 			}
 		}
 	} else if len(data.Images.SampleImages) > 0 {
-		result.ScreenshotURL = data.Images.SampleImages
+		result.ScreenshotURL = make([]string, 0, len(data.Images.SampleImages))
+		for _, url := range data.Images.SampleImages {
+			result.ScreenshotURL = append(result.ScreenshotURL, imageutil.NormalizeDMMScreenshotURL(url))
+		}
 	}
 
 	// Filter placeholder screenshots using DMM default hashes

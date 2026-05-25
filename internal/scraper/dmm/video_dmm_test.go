@@ -118,6 +118,11 @@ func TestExtractCoverURLNewSite(t *testing.T) {
 			expected: "https://pics.dmm.co.jp/video/ipx00535/ipx00535pl.jpg",
 		},
 		{
+			name:     "from img tag with awsimgsrc.dmm.com domain and query params",
+			html:     `<html><head></head><body><img src="https://awsimgsrc.dmm.com/dig/video/ipx00535/ipx00535pl.jpg?v=1" /></body></html>`,
+			expected: "https://awsimgsrc.dmm.com/dig/video/ipx00535/ipx00535pl.jpg",
+		},
+		{
 			name:      "fallback to constructed URL from content ID (amateur video uses jp.jpg)",
 			html:      `<html><head></head><body></body></html>`,
 			contentID: "oreco183",
@@ -147,14 +152,17 @@ func TestExtractCoverURLNewSite(t *testing.T) {
 }
 
 // TestExtractScreenshotsNewSite verifies screenshot extraction from video.dmm.co.jp
+// JSON-LD screenshots are handled by extractMetadataFromJSONLD; this tests
+// only the img-tag fallback path.
 func TestExtractScreenshotsNewSite(t *testing.T) {
 	tests := []struct {
 		name          string
 		html          string
 		expectedCount int
+		expectedURLs  []string
 	}{
 		{
-			name: "multiple screenshots",
+			name: "multiple screenshots via img tags",
 			html: `<html><body>
 				<img src="https://awsimgsrc.dmm.co.jp/pics_dig/video/ipx00535/ipx00535-1.jpg" />
 				<img src="https://awsimgsrc.dmm.co.jp/pics_dig/video/ipx00535/ipx00535-2.jpg?v=1" />
@@ -163,13 +171,23 @@ func TestExtractScreenshotsNewSite(t *testing.T) {
 			expectedCount: 3,
 		},
 		{
-			name: "with cover image (should skip pl.jpg)",
+			name: "with cover image (should skip pl.jpg and ps.jpg)",
 			html: `<html><body>
 				<img src="https://awsimgsrc.dmm.co.jp/pics_dig/video/ipx00535/ipx00535pl.jpg" />
+				<img src="https://awsimgsrc.dmm.co.jp/pics_dig/video/ipx00535/ipx00535ps.jpg" />
 				<img src="https://awsimgsrc.dmm.co.jp/pics_dig/video/ipx00535/ipx00535-1.jpg" />
 				<img src="https://awsimgsrc.dmm.co.jp/pics_dig/video/ipx00535/ipx00535-2.jpg" />
 			</body></html>`,
 			expectedCount: 2,
+		},
+		{
+			name: "cover image with query params filtered",
+			html: `<html><body>
+				<img src="https://awsimgsrc.dmm.co.jp/pics_dig/video/ipx00535/ipx00535pl.jpg?v=1" />
+				<img src="https://awsimgsrc.dmm.co.jp/pics_dig/video/ipx00535/ipx00535ps.jpg?t=2" />
+				<img src="https://awsimgsrc.dmm.co.jp/pics_dig/video/ipx00535/ipx00535-1.jpg" />
+			</body></html>`,
+			expectedCount: 1,
 		},
 		{
 			name: "deduplicate screenshots",
@@ -182,6 +200,11 @@ func TestExtractScreenshotsNewSite(t *testing.T) {
 		{
 			name:          "no screenshots",
 			html:          `<html><body></body></html>`,
+			expectedCount: 0,
+		},
+		{
+			name:          "JSON-LD not parsed by this function (handled by extractMetadataFromJSONLD)",
+			html:          `<html><head><script type="application/ld+json">{"image":"https://pics.dmm.co.jp/digital/video/ipx00535/ipx00535-1.jpg"}</script></head><body></body></html>`,
 			expectedCount: 0,
 		},
 	}
@@ -199,10 +222,12 @@ func TestExtractScreenshotsNewSite(t *testing.T) {
 			result := scraper.extractScreenshotsNewSite(doc)
 			assert.Len(t, result, tt.expectedCount)
 
-			// Verify all screenshots are converted to pics.dmm.co.jp
+			if tt.expectedURLs != nil {
+				assert.Equal(t, tt.expectedURLs, result)
+			}
+
 			for _, url := range result {
-				assert.Contains(t, url, "pics.dmm.co.jp")
-				assert.NotContains(t, url, "?") // Query params removed
+				assert.NotContains(t, url, "?")
 			}
 		})
 	}
@@ -375,63 +400,6 @@ func TestExtractBackgroundImageURL(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := extractBackgroundImageURL(tt.style)
-			assert.Equal(t, tt.expected, result)
-		})
-	}
-}
-
-// TestNormalizeImageURL verifies URL normalization
-func TestNormalizeImageURL(t *testing.T) {
-	tests := []struct {
-		name     string
-		url      string
-		expected string
-	}{
-		{
-			name:     "protocol-relative URL",
-			url:      "//pics.dmm.co.jp/digital/amateur/oreco183/oreco183jp.jpg",
-			expected: "https://pics.dmm.co.jp/digital/amateur/oreco183/oreco183jp.jpg",
-		},
-		{
-			name:     "HTTPS URL",
-			url:      "https://pics.dmm.co.jp/digital/amateur/oreco183/oreco183jp.jpg",
-			expected: "https://pics.dmm.co.jp/digital/amateur/oreco183/oreco183jp.jpg",
-		},
-		{
-			name:     "amateur video with mixed case (lowercase normalization)",
-			url:      "https://pics.dmm.co.jp/digital/amateur/ORECO183/ORECO183jp.jpg",
-			expected: "https://pics.dmm.co.jp/digital/amateur/oreco183/oreco183jp.jpg",
-		},
-		{
-			name:     "protocol-relative amateur video with mixed case",
-			url:      "//pics.dmm.co.jp/digital/amateur/ORECO183/ORECO183jp.jpg",
-			expected: "https://pics.dmm.co.jp/digital/amateur/oreco183/oreco183jp.jpg",
-		},
-		{
-			name:     "with query parameters",
-			url:      "https://pics.dmm.co.jp/digital/amateur/oreco183/oreco183jp.jpg?size=large",
-			expected: "https://pics.dmm.co.jp/digital/amateur/oreco183/oreco183jp.jpg",
-		},
-		{
-			name:     "non-amateur video (no lowercase normalization)",
-			url:      "https://pics.dmm.co.jp/digital/video/IPX535/IPX535pl.jpg",
-			expected: "https://pics.dmm.co.jp/digital/video/IPX535/IPX535pl.jpg",
-		},
-		{
-			name:     "awsimgsrc CDN URL converts to pics.dmm.co.jp",
-			url:      "https://awsimgsrc.dmm.co.jp/pics_dig/video/ipx00535/ipx00535pl.jpg",
-			expected: "https://pics.dmm.co.jp/video/ipx00535/ipx00535pl.jpg",
-		},
-		{
-			name:     "awsimgsrc with query parameters",
-			url:      "https://awsimgsrc.dmm.co.jp/pics_dig/video/test.jpg?size=large",
-			expected: "https://pics.dmm.co.jp/video/test.jpg",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := normalizeImageURL(tt.url)
 			assert.Equal(t, tt.expected, result)
 		})
 	}

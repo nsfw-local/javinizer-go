@@ -54,7 +54,7 @@ func TestParseDetailPage(t *testing.T) {
 	if result.CoverURL != "https://images.example.com/ipx123pl.jpg" {
 		t.Fatalf("CoverURL = %q", result.CoverURL)
 	}
-	if result.PosterURL != "https://images.example.com/ipx123ps.jpg" {
+	if result.PosterURL != "https://images.example.com/ipx123pl.jpg" {
 		t.Fatalf("PosterURL = %q", result.PosterURL)
 	}
 	if result.Runtime != 125 {
@@ -203,7 +203,7 @@ func TestSearch_SearchResultFlow(t *testing.T) {
 	if result.Title != "Search Flow Title" {
 		t.Fatalf("Title = %q", result.Title)
 	}
-	if result.CoverURL != "https://images.example.com/ipx123pl.jpg" || result.PosterURL != "https://images.example.com/ipx123ps.jpg" {
+	if result.CoverURL != "https://images.example.com/ipx123pl.jpg" || result.PosterURL != "https://images.example.com/ipx123pl.jpg" {
 		t.Fatalf("unexpected cover URLs: %q %q", result.CoverURL, result.PosterURL)
 	}
 }

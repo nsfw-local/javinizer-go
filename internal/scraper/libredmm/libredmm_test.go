@@ -909,10 +909,10 @@ func TestSearchProcessingTimeout(t *testing.T) {
 
 // TestPayloadToResultCoverURLFallback tests cover URL fallback when poster probe fails
 func TestPayloadToResult_CoverURLFallback(t *testing.T) {
-	coverURL := "https://pics.dmm.co.jp/digital/video/118abp00880/118abp00880pl.jpg"
+	coverURL := "https://pics.dmm.co.jp/digital/video/118abp880/118abp880pl.jpg"
 	payload := &moviePayload{
 		CoverImageURL:     coverURL,
-		ThumbnailImageURL: "https://pics.dmm.co.jp/digital/video/118abp00880/118abp00880ps.jpg",
+		ThumbnailImageURL: "https://pics.dmm.co.jp/digital/video/118abp880/118abp880ps.jpg",
 		NormalizedID:      "ABP-880",
 		Subtitle:          "118abp880",
 		Title:             "Movie Title",
@@ -958,87 +958,6 @@ func TestStripJSONSuffix(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := stripJSONSuffix(tt.input)
-			assert.Equal(t, tt.want, result)
-		})
-	}
-}
-
-// TestNormalizeLibredmmScreenshotURL_DMMHosts tests DMM screenshot normalization
-func TestNormalizeLibredmmScreenshotURL_DMMHosts(t *testing.T) {
-	tests := []struct {
-		name  string
-		input string
-		want  string
-	}{
-		{
-			name:  "DMM sample image gets jp marker",
-			input: "https://pics.dmm.co.jp/digital/video/ipx00535/ipx00535-1.jpg?foo=bar",
-			want:  "https://pics.dmm.co.jp/digital/video/ipx00535/ipx00535jp-1.jpg",
-		},
-		{
-			name:  "prefixed content ID normalized",
-			input: "https://pics.dmm.co.jp/digital/video/118abp00880/118abp00880jp-2.jpg",
-			want:  "https://pics.dmm.co.jp/digital/video/118abp880/118abp880jp-2.jpg",
-		},
-		{
-			name:  "atwsimgsrc.dmm.co.jp domain redirected",
-			input: "https://awsimgsrc.dmm.co.jp/pics_dig/video/ipx-123/image.jpg",
-			want:  "https://pics.dmm.co.jp/video/ipx-123/image.jpg",
-		},
-		{
-			name:  "non-DMM URL unchanged",
-			input: "https://example.com/image.jpg",
-			want:  "https://example.com/image.jpg",
-		},
-		{
-			name:  "query params removed",
-			input: "https://pics.dmm.co.jp/digital/video/test/image.jpg?param=value",
-			want:  "https://pics.dmm.co.jp/digital/video/test/image.jpg",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := normalizeLibredmmScreenshotURL(tt.input)
-			assert.Equal(t, tt.want, result)
-		})
-	}
-}
-
-// TestCanonicalizeDMMPrefixedContentID tests content ID canonicalization
-func TestCanonicalizeDMMPrefixedContentID(t *testing.T) {
-	tests := []struct {
-		name  string
-		input string
-		want  string
-	}{
-		{
-			name:  "prefix with leading zeros removed - 3+ digit prefix preserved",
-			input: "118abp00880jp-1.jpg",
-			// Regex ^(\d{3,}[a-z]+)0+(\d+.*)$ matches 118abp (prefix), 00 (zeros), 880jp-1 (tail)
-			// Since tail starts with 3 digits, no padding needed
-			want: "118abp880jp-1.jpg",
-		},
-		{
-			name:  "jp marker preserved",
-			input: "ipx-535jp.jpg",
-			want:  "ipx-535jp.jpg",
-		},
-		{
-			name:  "pl suffix preserved",
-			input: "abp-123pl.jpg",
-			want:  "abp-123pl.jpg",
-		},
-		{
-			name:  "ps suffix preserved",
-			input: "abw-456ps.jpg",
-			want:  "abw-456ps.jpg",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := canonicalizeDMMPrefixedContentID(tt.input)
 			assert.Equal(t, tt.want, result)
 		})
 	}

@@ -14,6 +14,7 @@ import (
 	"github.com/go-resty/resty/v2"
 	"github.com/javinizer/javinizer-go/internal/config"
 	"github.com/javinizer/javinizer-go/internal/httpclient"
+	"github.com/javinizer/javinizer-go/internal/imageutil"
 	"github.com/javinizer/javinizer-go/internal/logging"
 	"github.com/javinizer/javinizer-go/internal/models"
 	"github.com/javinizer/javinizer-go/internal/ratelimit"
@@ -341,8 +342,15 @@ func (s *Scraper) parseDetailPage(doc *goquery.Document, sourceURL, fallbackID s
 	result.Actresses = extractActresses(doc)
 	result.Genres = extractGenres(doc)
 
-	result.CoverURL = extractCoverURL(doc, sourceURL)
-	result.PosterURL = result.CoverURL
+	result.CoverURL = imageutil.NormalizeDMMScreenshotURL(extractCoverURL(doc, sourceURL))
+	result.CoverURL = imageutil.UpgradeCoverResolution(result.CoverURL)
+	posterURL, shouldCrop := imageutil.GetOptimalPosterURL(result.CoverURL, s.client.GetClient())
+	result.ShouldCropPoster = shouldCrop
+	if shouldCrop {
+		result.PosterURL = result.CoverURL
+	} else {
+		result.PosterURL = posterURL
+	}
 	result.ScreenshotURL = extractScreenshotURLs(doc, sourceURL)
 	result.TrailerURL = extractTrailerURL(doc)
 
@@ -625,7 +633,7 @@ func extractScreenshotURLs(doc *goquery.Document, base string) []string {
 			return
 		}
 		u := scraperutil.ResolveURL(base, raw)
-		u = normalizeJavbusImageURL(u)
+		u = imageutil.NormalizeDMMScreenshotURL(u)
 		if u == "" || seen[u] || !isLikelyImageURL(u) {
 			return
 		}
@@ -752,101 +760,4 @@ func isJavbusChallengePage(html string) bool {
 	}
 
 	return false
-}
-
-// normalizeJavbusImageURL normalizes extracted image URLs (especially DMM-hosted URLs)
-// to improve compatibility with downloader logic.
-func normalizeJavbusImageURL(raw string) string {
-	raw = strings.TrimSpace(raw)
-	if raw == "" {
-		return ""
-	}
-
-	// Handle protocol-relative URLs.
-	if strings.HasPrefix(raw, "//") {
-		raw = "https:" + raw
-	}
-
-	// Normalize awsimgsrc URLs to pics.dmm.co.jp when present.
-	raw = strings.Replace(raw, "awsimgsrc.dmm.co.jp/pics_dig", "pics.dmm.co.jp", 1)
-
-	u, err := url.Parse(raw)
-	if err != nil {
-		return raw
-	}
-
-	// Strip query/fragment for stable deduplication.
-	u.RawQuery = ""
-	u.Fragment = ""
-
-	host := strings.ToLower(u.Hostname())
-	if host == "dmm.co.jp" || strings.HasSuffix(host, ".dmm.co.jp") ||
-		host == "dmm.com" || strings.HasSuffix(host, ".dmm.com") {
-		segments := strings.Split(u.Path, "/")
-		for i, seg := range segments {
-			if seg == "" {
-				continue
-			}
-			segments[i] = canonicalizeDMMPrefixedContentID(seg)
-		}
-		u.Path = strings.Join(segments, "/")
-
-		base := path.Base(u.Path)
-		if strings.HasSuffix(strings.ToLower(base), ".jpg") &&
-			strings.Contains(base, "-") &&
-			!strings.Contains(strings.ToLower(base), "jp-") &&
-			!strings.HasSuffix(strings.ToLower(base), "pl.jpg") &&
-			!strings.HasSuffix(strings.ToLower(base), "ps.jpg") {
-			// Mirror DMM old-site normalization: xxx-1.jpg -> xxxjp-1.jpg
-			base = strings.Replace(base, "-", "jp-", 1)
-			u.Path = strings.TrimSuffix(u.Path, path.Base(u.Path)) + base
-		}
-	}
-
-	return u.String()
-}
-
-// canonicalizeDMMPrefixedContentID normalizes DMM path segments that contain
-// a numeric prefix before the studio code (e.g., 118abp00880 -> 118abp880).
-// This aligns JavBus-linked DMM URLs with the canonical URLs returned by DMM itself.
-func canonicalizeDMMPrefixedContentID(seg string) string {
-	// Split extension so normalization only targets the stem.
-	ext := ""
-	if idx := strings.LastIndex(seg, "."); idx > 0 {
-		ext = seg[idx:]
-		seg = seg[:idx]
-	}
-
-	// Preserve known suffixes like jp-1 / pl / ps while normalizing core CID.
-	suffix := ""
-	lower := strings.ToLower(seg)
-	for _, marker := range []string{"jp-", "pl", "ps"} {
-		if marker == "jp-" {
-			if idx := strings.Index(lower, marker); idx > 0 {
-				suffix = seg[idx:]
-				seg = seg[:idx]
-				lower = strings.ToLower(seg)
-				break
-			}
-			continue
-		}
-		if strings.HasSuffix(lower, marker) && len(seg) > len(marker) {
-			suffix = seg[len(seg)-len(marker):]
-			seg = seg[:len(seg)-len(marker)]
-			lower = strings.ToLower(seg)
-			break
-		}
-	}
-
-	// Only canonicalize segments with numeric prefix before letters.
-	// Examples:
-	// - 118abp00880 -> 118abp880
-	// - 118abp880   -> 118abp880 (unchanged)
-	// - ipx00535    -> ipx00535  (unchanged: no numeric prefix)
-	re := regexp.MustCompile(`^(\d+[a-z]+)0+(\d+.*)$`)
-	if matches := re.FindStringSubmatch(lower); len(matches) == 3 {
-		seg = matches[1] + matches[2]
-	}
-
-	return seg + suffix + ext
 }

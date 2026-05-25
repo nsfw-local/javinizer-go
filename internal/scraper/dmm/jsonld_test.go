@@ -369,7 +369,33 @@ func TestExtractMetadataFromJSONLD(t *testing.T) {
 </html>`,
 			expectedKeys: []string{},
 			checkValues:  map[string]interface{}{},
-			description:  "Should return empty metadata when no JSON-LD present",
+		},
+		{
+			name: "cover and screenshot normalization",
+			html: `
+<!DOCTYPE html>
+<html>
+<head>
+	<script type="application/ld+json">
+	{
+		"@context": "http://schema.org",
+		"@type": "Product",
+		"name": "Normalized Movie",
+		"image": [
+			"https://pics.dmm.co.jp/digital/video/ipx00535/ipx00535ps.jpg",
+			"https://pics.dmm.co.jp/digital/video/ipx00535/ipx00535-1.jpg",
+			"https://awsimgsrc.dmm.co.jp/pics_dig/video/ipx00535/ipx00535-2.jpg"
+		]
+	}
+	</script>
+</head>
+<body></body>
+</html>`,
+			expectedKeys: []string{"title", "cover_url", "screenshots"},
+			checkValues: map[string]interface{}{
+				"title":     "Normalized Movie",
+				"cover_url": "https://pics.dmm.co.jp/digital/video/ipx00535/ipx00535pl.jpg",
+			},
 		},
 	}
 
@@ -395,6 +421,21 @@ func TestExtractMetadataFromJSONLD(t *testing.T) {
 					assert.Equal(t, expected, actualValue, "Mismatch for key: "+key)
 				case int:
 					assert.Equal(t, expected, actualValue, "Mismatch for key: "+key)
+				}
+			}
+
+			if ss, ok := metadata["screenshots"]; ok {
+				screenshots := ss.([]string)
+				for _, u := range screenshots {
+					assert.NotContains(t, u, "?")
+					assert.NotContains(t, u, "#")
+					assert.NotContains(t, u, "awsimgsrc")
+				}
+				for _, u := range screenshots {
+					base := u[strings.LastIndex(u, "/")+1:]
+					if strings.Contains(base, "-") && !strings.Contains(strings.ToLower(base), "jp-") {
+						t.Errorf("screenshot %q missing jp- suffix: %s", base, u)
+					}
 				}
 			}
 		})

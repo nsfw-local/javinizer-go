@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/PuerkitoBio/goquery"
+	"github.com/javinizer/javinizer-go/internal/imageutil"
 	"github.com/javinizer/javinizer-go/internal/logging"
 	"github.com/javinizer/javinizer-go/internal/scraper/image/placeholder"
 )
@@ -22,18 +23,12 @@ func (s *Scraper) extractCoverURL(doc *goquery.Document, isNewSite bool, content
 		html, _ := doc.Html()
 		matches := coverPsRegex.FindStringSubmatch(html)
 		if len(matches) > 1 {
-			return strings.Replace(matches[1], "ps.jpg", "pl.jpg", 1)
+			return imageutil.UpgradeCoverResolution(imageutil.NormalizeDMMScreenshotURL(matches[1]))
 		}
 		return ""
 	}
-	coverURL = strings.Replace(coverURL, "awsimgsrc.dmm.co.jp/pics_dig", "pics.dmm.co.jp", 1)
-	coverURL = strings.Replace(coverURL, "ps.jpg", "pl.jpg", 1)
-	if !strings.Contains(coverURL, "/amateur/") {
-		coverURL = strings.Replace(coverURL, "jp.jpg", "pl.jpg", 1)
-	}
-	if idx := strings.Index(coverURL, "?"); idx != -1 {
-		coverURL = coverURL[:idx]
-	}
+	coverURL = imageutil.NormalizeDMMScreenshotURL(coverURL)
+	coverURL = imageutil.UpgradeCoverResolution(coverURL)
 	return coverURL
 }
 
@@ -51,7 +46,7 @@ func (s *Scraper) extractScreenshots(doc *goquery.Document, isNewSite bool) []st
 			imgSrc, exists = imgSel.Attr("src")
 		}
 		if exists && imgSrc != "" {
-			imgSrc = strings.Replace(imgSrc, "-", "jp-", 1)
+			imgSrc = imageutil.NormalizeDMMScreenshotURL(imgSrc)
 			screenshots = append(screenshots, imgSrc)
 		}
 	})

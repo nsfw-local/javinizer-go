@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
-	"path"
 	"regexp"
 	"strings"
 	"time"
@@ -29,9 +28,7 @@ const (
 )
 
 var (
-	cidRegex                 = regexp.MustCompile(`(?i)(?:^|[?&])(cid|id)=([^&]+)`)
-	dmmPrefixedCIDRegex      = regexp.MustCompile(`^(\d{3,}[a-z]+)0+(\d+.*)$`)
-	dmmSampleFilenamePattern = regexp.MustCompile(`(?i)\.jpe?g$`)
+	cidRegex = regexp.MustCompile(`(?i)(?:^|[?&])(cid|id)=([^&]+)`)
 	// URL extraction pattern
 	libreDMPathRegex = regexp.MustCompile(`/movies/([^/?&]+)`)
 	// ANSI escape sequence pattern for stripping terminal color codes
@@ -480,8 +477,8 @@ func payloadToResult(payload *moviePayload, sourceURL, fallbackID string, client
 	result.Genres = dedupeStrings(payload.Genres)
 	result.Actresses = parseActresses(payload.Actresses, sourceURL)
 
-	result.CoverURL = scraperutil.ResolveURL(sourceURL, payload.CoverImageURL)
-	result.PosterURL = scraperutil.ResolveURL(sourceURL, payload.ThumbnailImageURL)
+	result.CoverURL = imageutil.NormalizeDMMScreenshotURL(scraperutil.ResolveURL(sourceURL, payload.CoverImageURL))
+	result.CoverURL = imageutil.UpgradeCoverResolution(result.CoverURL)
 	if result.CoverURL != "" {
 		posterURL, shouldCrop := imageutil.GetOptimalPosterURL(result.CoverURL, client)
 		result.ShouldCropPoster = shouldCrop
@@ -563,7 +560,7 @@ func dedupeResolvedURLs(urls []string, base string) []string {
 	out := make([]string, 0, len(urls))
 
 	for _, raw := range urls {
-		u := normalizeLibredmmScreenshotURL(scraperutil.ResolveURL(base, raw))
+		u := imageutil.NormalizeDMMScreenshotURL(scraperutil.ResolveURL(base, raw))
 		if u == "" || seen[u] {
 			continue
 		}
@@ -678,94 +675,6 @@ func extractIDFromURL(raw string) string {
 	}
 
 	return ""
-}
-
-func normalizeLibredmmScreenshotURL(raw string) string {
-	raw = scraperutil.CleanString(raw)
-	if raw == "" {
-		return ""
-	}
-
-	if strings.HasPrefix(raw, "//") {
-		raw = "https:" + raw
-	}
-	raw = strings.Replace(raw, "awsimgsrc.dmm.co.jp/pics_dig", "pics.dmm.co.jp", 1)
-
-	u, err := url.Parse(raw)
-	if err != nil {
-		return raw
-	}
-
-	u.RawQuery = ""
-	u.Fragment = ""
-
-	host := strings.ToLower(u.Hostname())
-	if host == "dmm.co.jp" || strings.HasSuffix(host, ".dmm.co.jp") ||
-		host == "dmm.com" || strings.HasSuffix(host, ".dmm.com") {
-		segments := strings.Split(u.Path, "/")
-		for i, seg := range segments {
-			if seg == "" {
-				continue
-			}
-			segments[i] = canonicalizeDMMPrefixedContentID(seg)
-		}
-		u.Path = strings.Join(segments, "/")
-
-		base := path.Base(u.Path)
-		lowerBase := strings.ToLower(base)
-		if dmmSampleFilenamePattern.MatchString(lowerBase) &&
-			strings.Contains(base, "-") &&
-			!strings.Contains(lowerBase, "jp-") &&
-			!strings.HasSuffix(lowerBase, "pl.jpg") &&
-			!strings.HasSuffix(lowerBase, "ps.jpg") {
-			base = strings.Replace(base, "-", "jp-", 1)
-			u.Path = strings.TrimSuffix(u.Path, path.Base(u.Path)) + base
-		}
-	}
-
-	return u.String()
-}
-
-func canonicalizeDMMPrefixedContentID(seg string) string {
-	ext := ""
-	if idx := strings.LastIndex(seg, "."); idx > 0 {
-		ext = seg[idx:]
-		seg = seg[:idx]
-	}
-
-	suffix := ""
-	lower := strings.ToLower(seg)
-	for _, marker := range []string{"jp-", "pl", "ps"} {
-		if marker == "jp-" {
-			if idx := strings.Index(lower, marker); idx > 0 {
-				suffix = seg[idx:]
-				seg = seg[:idx]
-				lower = strings.ToLower(seg)
-				break
-			}
-			continue
-		}
-		if strings.HasSuffix(lower, marker) && len(seg) > len(marker) {
-			suffix = seg[len(seg)-len(marker):]
-			seg = seg[:len(seg)-len(marker)]
-			lower = strings.ToLower(seg)
-			break
-		}
-	}
-
-	if matches := dmmPrefixedCIDRegex.FindStringSubmatch(lower); len(matches) == 3 {
-		tail := matches[2]
-		digitPrefixLen := 0
-		for digitPrefixLen < len(tail) && tail[digitPrefixLen] >= '0' && tail[digitPrefixLen] <= '9' {
-			digitPrefixLen++
-		}
-		if digitPrefixLen > 0 && digitPrefixLen < 3 {
-			tail = strings.Repeat("0", 3-digitPrefixLen) + tail
-		}
-		seg = matches[1] + tail
-	}
-
-	return seg + suffix + ext
 }
 
 func stripJSONSuffix(raw string) string {

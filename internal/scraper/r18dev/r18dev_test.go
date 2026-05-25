@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/javinizer/javinizer-go/internal/config"
+	"github.com/javinizer/javinizer-go/internal/imageutil"
 	"github.com/javinizer/javinizer-go/internal/models"
 	"github.com/javinizer/javinizer-go/internal/scraperutil"
 	"github.com/stretchr/testify/assert"
@@ -279,7 +280,7 @@ func TestScraper_Search_LegacyFormat(t *testing.T) {
 	assert.Equal(t, "Legacy Series", result.Series)
 
 	// Verify it uses nested images structure
-	assert.Contains(t, result.CoverURL, "118abw00001pl2.jpg")
+	assert.Contains(t, result.CoverURL, "118abw1pl2.jpg")
 
 	// Verify it uses nested sample structure
 	assert.Contains(t, result.TrailerURL, "118abw00001_mhb_w.mp4")
@@ -2075,6 +2076,112 @@ func TestContentIDToID_UnderscorePrefix(t *testing.T) {
 			assert.Equal(t, tt.expected, result)
 		})
 	}
+}
+
+func TestNormalizeDMMScreenshotURL_R18DevIntegration(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{
+			name:     "AVSA-432 without jp (issue #23)",
+			input:    "https://awsimgsrc.dmm.com/dig/digital/video/avsa00432/avsa00432-1.jpg",
+			expected: "https://awsimgsrc.dmm.com/dig/digital/video/avsa00432/avsa00432jp-1.jpg",
+		},
+		{
+			name:     "Already has jp suffix",
+			input:    "https://awsimgsrc.dmm.com/dig/digital/video/avsa00432/avsa00432jp-1.jpg",
+			expected: "https://awsimgsrc.dmm.com/dig/digital/video/avsa00432/avsa00432jp-1.jpg",
+		},
+		{
+			name:     "pics.dmm.co.jp without jp",
+			input:    "https://pics.dmm.co.jp/digital/video/ipx00535/ipx00535-1.jpg",
+			expected: "https://pics.dmm.co.jp/digital/video/ipx00535/ipx00535jp-1.jpg",
+		},
+		{
+			name:     "pics.dmm.co.jp already has jp",
+			input:    "https://pics.dmm.co.jp/digital/video/ipx00535/ipx00535jp-1.jpg",
+			expected: "https://pics.dmm.co.jp/digital/video/ipx00535/ipx00535jp-1.jpg",
+		},
+		{
+			name:     "Multiple screenshots second image",
+			input:    "https://awsimgsrc.dmm.com/dig/digital/video/avsa00432/avsa00432-2.jpg",
+			expected: "https://awsimgsrc.dmm.com/dig/digital/video/avsa00432/avsa00432jp-2.jpg",
+		},
+		{
+			name:     "DMM prefix content ID without jp (1-digit prefix)",
+			input:    "https://awsimgsrc.dmm.com/dig/digital/video/1sdmm00132/1sdmm00132-1.jpg",
+			expected: "https://awsimgsrc.dmm.com/dig/digital/video/1sdmm132/1sdmm132jp-1.jpg",
+		},
+		{
+			name:     "Non-DMM URL unchanged",
+			input:    "https://example.com/images/screenshot-1.jpg",
+			expected: "https://example.com/images/screenshot-1.jpg",
+		},
+		{
+			name:     "Empty string unchanged",
+			input:    "",
+			expected: "",
+		},
+		{
+			name:     "Cover image pl.jpg unchanged",
+			input:    "https://pics.dmm.co.jp/digital/video/ipx00535/ipx00535pl.jpg",
+			expected: "https://pics.dmm.co.jp/digital/video/ipx00535/ipx00535pl.jpg",
+		},
+		{
+			name:     "Poster image ps.jpg unchanged",
+			input:    "https://awsimgsrc.dmm.com/dig/video/ipx00535/ipx00535ps.jpg",
+			expected: "https://awsimgsrc.dmm.com/dig/video/ipx00535/ipx00535ps.jpg",
+		},
+		{
+			name:     "awsimgsrc.dmm.co.jp CDN rewritten to pics.dmm.co.jp",
+			input:    "https://awsimgsrc.dmm.co.jp/pics_dig/video/ipx00535/ipx00535-2.jpg",
+			expected: "https://pics.dmm.co.jp/video/ipx00535/ipx00535jp-2.jpg",
+		},
+		{
+			name:     "Protocol-relative URL upgraded to https",
+			input:    "//pics.dmm.co.jp/digital/video/ipx00535/ipx00535-1.jpg",
+			expected: "https://pics.dmm.co.jp/digital/video/ipx00535/ipx00535jp-1.jpg",
+		},
+		{
+			name:     "Query parameters stripped",
+			input:    "https://pics.dmm.co.jp/digital/video/ipx00535/ipx00535-1.jpg?x=1",
+			expected: "https://pics.dmm.co.jp/digital/video/ipx00535/ipx00535jp-1.jpg",
+		},
+		{
+			name:     "Content ID canonicalization 118abp00880",
+			input:    "https://pics.dmm.co.jp/digital/video/118abp00880/118abp00880-1.jpg",
+			expected: "https://pics.dmm.co.jp/digital/video/118abp880/118abp880jp-1.jpg",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := imageutil.NormalizeDMMScreenshotURL(tt.input)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+func TestScraper_Search_AVSA432_ScreenshotJPFix(t *testing.T) {
+	cfg := createTestSettings(true)
+	scraper := New(cfg, testGlobalProxy, testGlobalFlareSolverr)
+
+	var data R18Response
+	err := json.Unmarshal(loadTestData(t, "avsa432_response.json"), &data)
+	require.NoError(t, err)
+
+	result, err := scraper.parseResponse(context.Background(), &data, "https://r18.dev/test")
+	require.NoError(t, err)
+	require.NotNil(t, result)
+
+	assert.Equal(t, "AVSA-432", result.ID)
+	assert.Equal(t, "avsa00432", result.ContentID)
+
+	require.Len(t, result.ScreenshotURL, 2, "Should have 2 screenshots")
+	assert.Contains(t, result.ScreenshotURL[0], "avsa00432jp-1.jpg", "First screenshot should have jp suffix inserted")
+	assert.Contains(t, result.ScreenshotURL[1], "avsa00432jp-2.jpg", "Second screenshot should have jp suffix inserted")
 }
 
 func TestSearch_AP288_BlankDVDID(t *testing.T) {
