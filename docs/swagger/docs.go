@@ -3616,6 +3616,10 @@ const docTemplate = `{
                 "file_format": {
                     "type": "string"
                 },
+                "first_name_order": {
+                    "description": "true = FirstName LastName, false = LastName FirstName (default: false)",
+                    "type": "boolean"
+                },
                 "folder_format": {
                     "type": "string"
                 },

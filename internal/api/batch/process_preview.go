@@ -119,6 +119,7 @@ func generatePreview(movie *models.Movie, fileResults []*worker.FileResult, dest
 	previewCtx := template.NewContextFromMovie(movie)
 	previewCtx.GroupActress = cfg.Output.GroupActress
 	previewCtx.GroupActressName = cfg.Output.GroupActressName
+	previewCtx.FirstNameOrder = cfg.Output.FirstNameOrder
 
 	var nfoPath string
 	var nfoPaths []string
@@ -309,6 +310,7 @@ func generateUNCPreview(movie *models.Movie, fileResults []*worker.FileResult, d
 	previewCtx := template.NewContextFromMovie(movie)
 	previewCtx.GroupActress = cfg.Output.GroupActress
 	previewCtx.GroupActressName = cfg.Output.GroupActressName
+	previewCtx.FirstNameOrder = cfg.Output.FirstNameOrder
 
 	var nfoPath string
 	var nfoPaths []string

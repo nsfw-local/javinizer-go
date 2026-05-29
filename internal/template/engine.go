@@ -397,13 +397,17 @@ func (e *Engine) resolveTag(tagName, modifier string, ctx *Context) (string, err
 			if modifier != "" {
 				delimiter = modifier
 			}
-			return strings.Join(ctx.Actresses, delimiter), nil
+			names := ctx.formatActressNames()
+			return strings.Join(names, delimiter), nil
 		}
 		return "", nil
 
 	case "ACTRESS":
 		if ctx.ActressName != "" {
 			return ctx.ActressName, nil
+		}
+		if len(ctx.ActressDetails) > 0 {
+			return ctx.formatActressName(ctx.ActressDetails[0]), nil
 		}
 		if len(ctx.Actresses) > 0 {
 			return ctx.Actresses[0], nil
@@ -446,6 +450,9 @@ func (e *Engine) resolveTag(tagName, modifier string, ctx *Context) (string, err
 	case "ACTORNAME", "ACTRESSNAME":
 		if ctx.ActressName != "" {
 			return ctx.ActressName, nil
+		}
+		if len(ctx.ActressDetails) > 0 {
+			return ctx.formatActressName(ctx.ActressDetails[0]), nil
 		}
 		if len(ctx.Actresses) > 0 {
 			return ctx.Actresses[0], nil

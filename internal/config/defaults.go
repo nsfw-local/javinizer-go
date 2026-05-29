@@ -183,7 +183,7 @@ func DefaultConfig() *Config {
 				Enabled:              true,
 				DisplayTitle:         "<TITLE>",
 				FilenameTemplate:     "<ID>.nfo",
-				FirstNameOrder:       true,
+				FirstNameOrder:       true, // NFO defaults to FirstName LastName (Kodi/Plex convention); output.first_name_order defaults to false (Japanese convention)
 				ActressLanguageJA:    false,
 				PerFile:              false,
 				UnknownActressMode:   "skip",
@@ -236,6 +236,7 @@ func DefaultConfig() *Config {
 			AllowRevert:         false,    // Opt-in: revert is disabled by default for safety
 			GroupActress:        false,    // Don't group actresses by default
 			GroupActressName:    "@Group", // Default group name when group_actress is enabled
+			FirstNameOrder:      false,    // Default to LastName FirstName (Japanese naming convention)
 			PosterFormat:        "<ID><IF:MULTIPART>-pt<PART></IF>-poster.jpg",
 			FanartFormat:        "<ID><IF:MULTIPART>-pt<PART></IF>-fanart.jpg",
 			TrailerFormat:       "<ID>-trailer.mp4",

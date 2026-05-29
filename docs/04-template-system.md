@@ -14,6 +14,12 @@ Javinizer Go uses a flexible template system for customizing folder and file nam
 - [Conditional Logic](#conditional-logic)
 - [Examples](#examples)
 - [Advanced Usage](#advanced-usage)
+  - [Handling Missing Data](#handling-missing-data)
+  - [Multiple Actresses](#multiple-actresses)
+  - [Actress Name Ordering](#actress-name-ordering)
+  - [Group Actress Organization](#group-actress-organization)
+  - [Combining Tags](#combining-tags)
+  - [NFO Templates](#nfo-templates)
 - [Special Characters](#special-characters)
 
 ## Template Syntax
@@ -75,10 +81,16 @@ BEAUTIFUL DAY
 
 | Tag | Description | Example |
 |-----|-------------|---------|
-| `<ACTRESSES>` or `<ACTORS>` | All actresses (comma-separated) | `Momo Sakura, Yua Mikami` |
+| `<ACTRESSES>` or `<ACTORS>` | All actresses (comma-separated, or group name when `group_actress` is enabled) | `Sakura Momo, Mikami Yua` |
 | `<ACTRESSES:delimiter>` | Custom delimiter | See [Modifiers](#modifiers) |
+| `<ACTRESS>` | First actress name | `Sakura Momo` |
+| `<ACTRESSNAME>` or `<ACTORNAME>` | First actress name (same as `<ACTRESS>`, used for `.actors` image filenames) | `Sakura Momo` |
 | `<FIRSTNAME>` | First actress first name | `Momo` |
 | `<LASTNAME>` | First actress last name | `Sakura` |
+
+> **Name ordering:** By default, actress names are displayed in Japanese naming convention (LastName FirstName, e.g., `Sakura Momo`). Set `output.first_name_order: true` to use Western ordering (FirstName LastName, e.g., `Momo Sakura`). See [Actress Name Ordering](#actress-name-ordering).
+
+> **Group actress:** When `output.group_actress` is enabled and a movie has multiple actresses, `<ACTRESSES>` returns the group name (default: `@Group`) instead of listing individual names. This is useful for organizing multi-actress titles into a shared folder. See [Group Actress Organization](#group-actress-organization).
 
 ### Categories
 
@@ -93,12 +105,17 @@ BEAUTIFUL DAY
 |-----|-------------|---------|
 | `<DESCRIPTION>` | Description/plot (supports [language modifiers](#language-modifiers)) | `Long description text...` |
 | `<RATING>` | Rating score (one decimal) | `7.5` |
+| `<RESOLUTION>` | Video resolution (e.g., 1080p, 720p) | `1080p` |
+| `<FILENAME>` | Original filename (without extension) | `IPX-535` |
 
-### Indexing
+### Multipart
 
 | Tag | Description | Example |
 |-----|-------------|---------|
-| `<INDEX>` | Index number (for multi-part files) | `1`, `2`, `3` |
+| `<PART>` or `<DISC>` | Part/disc number for multi-part files | `1`, `2` |
+| `<PARTSUFFIX>` | Part suffix (e.g., `-cd1`, `-pt1`) | `-cd1` |
+| `<INDEX>` | Index number (for screenshots) | `1`, `2`, `3` |
+| `<MULTIPART>` | Whether file is multi-part (for conditional logic) | `true`/empty |
 
 ## Modifiers
 
@@ -156,7 +173,7 @@ output:
 
 Result:
 ```
-Momo Sakura & Yua Mikami & Rara Anzai
+Sakura Momo & Mikami Yua & Anzai Rara
 ```
 
 **Genres with custom delimiter:**
@@ -301,7 +318,7 @@ output:
 ```
 
 Results:
-- With actresses: `IPX-535 starring Momo Sakura, Yua Mikami`
+- With actresses: `IPX-535 starring Sakura Momo, Mikami Yua`
 - Without actresses: `IPX-535`
 
 ### Use Cases
@@ -341,7 +358,9 @@ Result: `Idea Pocket/2020/IPX-535 - Beautiful Day/`
 output:
   folder_format: "<ACTRESSES>/<ID> - <TITLE>"
 ```
-Result: `Momo Sakura/IPX-535 - Beautiful Day/`
+Result: `Sakura Momo/IPX-535 - Beautiful Day/`
+
+> **Note:** Actress names use LastName FirstName order by default. Set `first_name_order: true` for FirstName LastName order.
 
 **Date-based:**
 ```yaml
@@ -385,7 +404,7 @@ Result: `IPX-535 - Beautiful Day.mp4`
 output:
   file_format: "<ID> - <ACTRESSES> - <TITLE>"
 ```
-Result: `IPX-535 - Momo Sakura - Beautiful Day.mp4`
+Result: `IPX-535 - Sakura Momo - Beautiful Day.mp4`
 
 **With Date:**
 ```yaml
@@ -438,7 +457,7 @@ Result:
 ```
 Idea Pocket/
   2020/
-    IPX-535 - Beautiful Day (Momo Sakura)/
+    IPX-535 - Beautiful Day (Sakura Momo)/
       IPX-535 - Beautiful Day.mp4
 ```
 
@@ -482,12 +501,23 @@ Template:
 
 Result:
 ```
-IPX-535 - Momo Sakura, Yua Mikami, Rara Anzai
+IPX-535 - Sakura Momo, Mikami Yua, Anzai Rara
 ```
 
 **First actress only:**
 
-Use `<FIRSTNAME>` and `<LASTNAME>`:
+Use `<ACTRESS>` or `<ACTRESSNAME>`:
+
+```
+<ID> - <ACTRESS>
+```
+
+Result:
+```
+IPX-535 - Sakura Momo
+```
+
+Or use `<FIRSTNAME>` and `<LASTNAME>` for individual name components:
 
 ```
 <ID> - <FIRSTNAME> <LASTNAME>
@@ -496,6 +526,104 @@ Use `<FIRSTNAME>` and `<LASTNAME>`:
 Result:
 ```
 IPX-535 - Momo Sakura
+```
+
+### Actress Name Ordering
+
+By default, actress names in templates follow the Japanese naming convention (**LastName FirstName**):
+
+```
+Sakura Momo, Hatano Yui
+```
+
+To use Western ordering (**FirstName LastName**), enable `first_name_order` in your config:
+
+```yaml
+output:
+  first_name_order: true
+```
+
+Result with `first_name_order: true`:
+```
+Momo Sakura, Yui Hatano
+```
+
+This affects all actress-related tags:
+
+| Tag | `first_name_order: false` (default) | `first_name_order: true` |
+|-----|--------------------------------------|--------------------------|
+| `<ACTRESSES>` | `Sakura Momo, Hatano Yui` | `Momo Sakura, Yui Hatano` |
+| `<ACTRESS>` | `Sakura Momo` | `Momo Sakura` |
+| `<ACTRESSNAME>` | `Sakura Momo` | `Momo Sakura` |
+
+> **Note:** `<FIRSTNAME>` and `<LASTNAME>` always return the raw name components regardless of `first_name_order`. They are not affected by this setting.
+
+> **NFO names are separate:** The `nfo.first_name_order` setting controls actress name formatting inside NFO files independently. It defaults to `true` (FirstName LastName) following the Kodi/Plex convention, while `output.first_name_order` defaults to `false` (LastName FirstName) following the Japanese naming convention.
+
+### Group Actress Organization
+
+When a movie has multiple actresses, you can organize them into a shared group folder instead of listing all names. This is controlled by `output.group_actress`:
+
+```yaml
+output:
+  group_actress: true
+  # group_actress_name: "@Group"  # Custom group folder name (default: @Group)
+```
+
+**How it works:**
+
+When `group_actress` is enabled and `<ACTRESSES>` appears in your folder template:
+- **Multiple actresses** → `<ACTRESSES>` resolves to the group name (default: `@Group`)
+- **Single actress** → `<ACTRESSES>` resolves to the actress name as normal
+
+**Example with group_actress enabled:**
+
+```yaml
+output:
+  group_actress: true
+  folder_format: "<ACTRESSES>/<ID> - <TITLE>"
+```
+
+Results:
+```
+# Movie with multiple actresses:
+@Group/IPX-535 - Beautiful Day/
+
+# Movie with single actress:
+Sakura Momo/IPX-535 - Solo Title/
+```
+
+**Custom group name:**
+
+```yaml
+output:
+  group_actress: true
+  group_actress_name: "Multi"
+```
+
+Result:
+```
+Multi/IPX-535 - Beautiful Day/
+```
+
+> **Important:** `group_actress` only affects the `<ACTRESSES>` tag behavior. If your folder template does not contain `<ACTRESSES>`, the group organization will not apply. Files are organized into the destination folder directly.
+
+**Combining with `first_name_order`:**
+
+```yaml
+output:
+  group_actress: true
+  first_name_order: true
+  folder_format: "<ACTRESSES>/<ID> - <TITLE>"
+```
+
+Results:
+```
+# Multiple actresses: group name is used (unaffected by first_name_order)
+@Group/IPX-535 - Beautiful Day/
+
+# Single actress: name follows first_name_order
+Momo Sakura/IPX-535 - Solo Title/
 ```
 
 ### Combining Tags

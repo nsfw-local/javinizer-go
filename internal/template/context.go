@@ -10,6 +10,14 @@ import (
 	"github.com/javinizer/javinizer-go/internal/models"
 )
 
+// ActressDetail holds raw name components for an actress,
+// enabling FirstNameOrder-aware formatting in template tags.
+type ActressDetail struct {
+	FirstName    string
+	LastName     string
+	JapaneseName string
+}
+
 // Context holds all data available for template execution
 type Context struct {
 	// Basic identifiers
@@ -26,11 +34,12 @@ type Context struct {
 	Runtime     int // in minutes
 
 	// People
-	Director    string
-	Actresses   []string // Array of actress names
-	FirstName   string   // For single actress context
-	LastName    string   // For single actress context
-	ActressName string   // Explicit actress name for .actors image filenames
+	Director       string
+	Actresses      []string        // Pre-formatted actress names (LastName FirstName via FullName). Legacy: use ActressDetails for FirstNameOrder-aware formatting.
+	ActressDetails []ActressDetail // Source of truth for name formatting; formatActressName/formatActressNames uses this first, falls back to Actresses.
+	FirstName      string          // For single actress context
+	LastName       string          // For single actress context
+	ActressName    string          // Explicit actress name for .actors image filenames
 
 	// Production info
 	Maker  string // Studio/Maker
@@ -75,6 +84,7 @@ type Context struct {
 	// Output configuration
 	GroupActress     bool   // Replace multiple actresses with group name
 	GroupActressName string // Folder name when GroupActress is enabled and multiple actresses (default: "@Group")
+	FirstNameOrder   bool   // true = FirstName LastName, false = LastName FirstName (default: false for backward compat)
 }
 
 // NewContextFromMovie creates a template context from a Movie model
@@ -106,8 +116,14 @@ func NewContextFromMovie(movie *models.Movie) *Context {
 	// Build actress list
 	if len(movie.Actresses) > 0 {
 		ctx.Actresses = make([]string, 0, len(movie.Actresses))
+		ctx.ActressDetails = make([]ActressDetail, 0, len(movie.Actresses))
 		for _, actress := range movie.Actresses {
 			ctx.Actresses = append(ctx.Actresses, actress.FullName())
+			ctx.ActressDetails = append(ctx.ActressDetails, ActressDetail{
+				FirstName:    actress.FirstName,
+				LastName:     actress.LastName,
+				JapaneseName: actress.JapaneseName,
+			})
 		}
 
 		// Set first/last name from first actress for single-actress templates
@@ -159,8 +175,14 @@ func NewContextFromScraperResult(result *models.ScraperResult) *Context {
 	// Build actress list
 	if len(result.Actresses) > 0 {
 		ctx.Actresses = make([]string, 0, len(result.Actresses))
+		ctx.ActressDetails = make([]ActressDetail, 0, len(result.Actresses))
 		for _, actress := range result.Actresses {
 			ctx.Actresses = append(ctx.Actresses, actress.FullName())
+			ctx.ActressDetails = append(ctx.ActressDetails, ActressDetail{
+				FirstName:    actress.FirstName,
+				LastName:     actress.LastName,
+				JapaneseName: actress.JapaneseName,
+			})
 		}
 
 		// Set first/last name from first actress
@@ -207,6 +229,7 @@ func (c *Context) Clone() *Context {
 		DefaultLanguage:  c.DefaultLanguage,
 		GroupActress:     c.GroupActress,
 		GroupActressName: c.GroupActressName,
+		FirstNameOrder:   c.FirstNameOrder,
 		cachedMediaInfo:  c.cachedMediaInfo,
 		mediaInfoError:   c.mediaInfoError,
 	}
@@ -214,6 +237,11 @@ func (c *Context) Clone() *Context {
 	if c.Actresses != nil {
 		clone.Actresses = make([]string, len(c.Actresses))
 		copy(clone.Actresses, c.Actresses)
+	}
+
+	if c.ActressDetails != nil {
+		clone.ActressDetails = make([]ActressDetail, len(c.ActressDetails))
+		copy(clone.ActressDetails, c.ActressDetails)
 	}
 
 	if c.Genres != nil {
@@ -294,4 +322,31 @@ func normalizeLanguageCode(lang string) string {
 	}
 
 	return lang
+}
+
+func (c *Context) formatActressName(detail ActressDetail) string {
+	if detail.FirstName != "" && detail.LastName != "" {
+		if c.FirstNameOrder {
+			return detail.FirstName + " " + detail.LastName
+		}
+		return detail.LastName + " " + detail.FirstName
+	}
+	if detail.FirstName != "" {
+		return detail.FirstName
+	}
+	if detail.LastName != "" {
+		return detail.LastName
+	}
+	return detail.JapaneseName
+}
+
+func (c *Context) formatActressNames() []string {
+	if len(c.ActressDetails) == 0 {
+		return c.Actresses
+	}
+	names := make([]string, len(c.ActressDetails))
+	for i, detail := range c.ActressDetails {
+		names[i] = c.formatActressName(detail)
+	}
+	return names
 }

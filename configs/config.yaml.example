@@ -454,6 +454,8 @@ output:
     group_actress: false
     # Folder name when group_actress is enabled and multiple actresses are found (default: "@Group")
     # group_actress_name: "@Group"
+    # Actress name ordering in templates: true = FirstName LastName, false = LastName FirstName (default: false)
+    # first_name_order: false
     # Media file naming templates (support placeholders like <ID>, <TITLE>, <INDEX>, etc.)
     poster_format: <ID><IF:MULTIPART>-pt<PART></IF>-poster.jpg    # Vertical poster image (e.g., IPX-535-poster.jpg, IPX-535-pt1-poster.jpg)
     fanart_format: <ID><IF:MULTIPART>-pt<PART></IF>-fanart.jpg    # Horizontal cover/background image (e.g., IPX-535-fanart.jpg, IPX-535-pt1-fanart.jpg)

@@ -61,6 +61,7 @@ func TestNewContextFromMovie(t *testing.T) {
 				CoverURL:         "https://example.com/cover.jpg",
 				TrailerURL:       "https://example.com/trailer.mp4",
 				Actresses:        []string{"Momo Sakura", "Hatano Yui"},
+				ActressDetails:   []ActressDetail{{FirstName: "Sakura", LastName: "Momo"}, {FirstName: "Yui", LastName: "Hatano"}},
 				Genres:           []string{"Drama", "Romance"},
 				FirstName:        "Sakura",
 				LastName:         "Momo",
@@ -103,12 +104,13 @@ func TestNewContextFromMovie(t *testing.T) {
 				},
 			},
 			want: &Context{
-				ID:           "IPX-001",
-				Title:        "Single Actress",
-				Actresses:    []string{"Actress Test"},
-				FirstName:    "Test",
-				LastName:     "Actress",
-				Translations: map[string]models.MovieTranslation{},
+				ID:             "IPX-001",
+				Title:          "Single Actress",
+				Actresses:      []string{"Actress Test"},
+				ActressDetails: []ActressDetail{{FirstName: "Test", LastName: "Actress"}},
+				FirstName:      "Test",
+				LastName:       "Actress",
+				Translations:   map[string]models.MovieTranslation{},
 			},
 		},
 		{
@@ -122,12 +124,13 @@ func TestNewContextFromMovie(t *testing.T) {
 				},
 			},
 			want: &Context{
-				ID:           "IPX-001",
-				Title:        "Japanese Names",
-				Actresses:    []string{"波多野結衣", "Uehara Ai"},
-				FirstName:    "",
-				LastName:     "",
-				Translations: map[string]models.MovieTranslation{},
+				ID:             "IPX-001",
+				Title:          "Japanese Names",
+				Actresses:      []string{"波多野結衣", "Uehara Ai"},
+				ActressDetails: []ActressDetail{{JapaneseName: "波多野結衣"}, {FirstName: "Ai", LastName: "Uehara", JapaneseName: "上原亜衣"}},
+				FirstName:      "",
+				LastName:       "",
+				Translations:   map[string]models.MovieTranslation{},
 			},
 		},
 		{
@@ -309,26 +312,27 @@ func TestNewContextFromScraperResult(t *testing.T) {
 				Genres: []string{"Drama", "Romance"},
 			},
 			want: &Context{
-				ID:            "IPX-535",
-				ContentID:     "ipx00535",
-				Title:         "Test Movie Title",
-				OriginalTitle: "テストムービータイトル",
-				ReleaseDate:   &releaseDate,
-				ReleaseYear:   2020,
-				Runtime:       120,
-				Director:      "Test Director",
-				Maker:         "Test Studio",
-				Label:         "Test Label",
-				Series:        "Test Series",
-				Rating:        4.5,
-				Description:   "Test description",
-				CoverURL:      "https://example.com/cover.jpg",
-				TrailerURL:    "https://example.com/trailer.mp4",
-				Actresses:     []string{"Momo Sakura", "Hatano Yui"},
-				Genres:        []string{"Drama", "Romance"},
-				FirstName:     "Sakura",
-				LastName:      "Momo",
-				Translations:  map[string]models.MovieTranslation{},
+				ID:             "IPX-535",
+				ContentID:      "ipx00535",
+				Title:          "Test Movie Title",
+				OriginalTitle:  "テストムービータイトル",
+				ReleaseDate:    &releaseDate,
+				ReleaseYear:    2020,
+				Runtime:        120,
+				Director:       "Test Director",
+				Maker:          "Test Studio",
+				Label:          "Test Label",
+				Series:         "Test Series",
+				Rating:         4.5,
+				Description:    "Test description",
+				CoverURL:       "https://example.com/cover.jpg",
+				TrailerURL:     "https://example.com/trailer.mp4",
+				Actresses:      []string{"Momo Sakura", "Hatano Yui"},
+				ActressDetails: []ActressDetail{{FirstName: "Sakura", LastName: "Momo"}, {FirstName: "Yui", LastName: "Hatano"}},
+				Genres:         []string{"Drama", "Romance"},
+				FirstName:      "Sakura",
+				LastName:       "Momo",
+				Translations:   map[string]models.MovieTranslation{},
 			},
 		},
 		{
@@ -399,12 +403,13 @@ func TestNewContextFromScraperResult(t *testing.T) {
 				},
 			},
 			want: &Context{
-				ID:           "IPX-001",
-				Title:        "Single Actress",
-				Actresses:    []string{"Actress Test"},
-				FirstName:    "Test",
-				LastName:     "Actress",
-				Translations: map[string]models.MovieTranslation{},
+				ID:             "IPX-001",
+				Title:          "Single Actress",
+				Actresses:      []string{"Actress Test"},
+				ActressDetails: []ActressDetail{{FirstName: "Test", LastName: "Actress"}},
+				FirstName:      "Test",
+				LastName:       "Actress",
+				Translations:   map[string]models.MovieTranslation{},
 			},
 		},
 		{
@@ -418,12 +423,13 @@ func TestNewContextFromScraperResult(t *testing.T) {
 				},
 			},
 			want: &Context{
-				ID:           "IPX-001",
-				Title:        "Japanese Name",
-				Actresses:    []string{"波多野結衣"},
-				FirstName:    "",
-				LastName:     "",
-				Translations: map[string]models.MovieTranslation{},
+				ID:             "IPX-001",
+				Title:          "Japanese Name",
+				Actresses:      []string{"波多野結衣"},
+				ActressDetails: []ActressDetail{{JapaneseName: "波多野結衣"}},
+				FirstName:      "",
+				LastName:       "",
+				Translations:   map[string]models.MovieTranslation{},
 			},
 		},
 		{
@@ -632,9 +638,11 @@ func TestClone(t *testing.T) {
 			assert.Equal(t, tt.ctx.DefaultLanguage, clone.DefaultLanguage)
 			assert.Equal(t, tt.ctx.GroupActress, clone.GroupActress)
 			assert.Equal(t, tt.ctx.GroupActressName, clone.GroupActressName)
+			assert.Equal(t, tt.ctx.FirstNameOrder, clone.FirstNameOrder)
 
 			// Verify slices are equal
 			assert.Equal(t, tt.ctx.Actresses, clone.Actresses)
+			assert.Equal(t, tt.ctx.ActressDetails, clone.ActressDetails)
 			assert.Equal(t, tt.ctx.Genres, clone.Genres)
 
 			// Verify translations map is equal
@@ -1026,6 +1034,8 @@ func TestContextFieldPreservation(t *testing.T) {
 	// Verify transformed fields
 	require.Len(t, ctx.Actresses, 1)
 	assert.Equal(t, "Last First", ctx.Actresses[0])
+	require.Len(t, ctx.ActressDetails, 1)
+	assert.Equal(t, ActressDetail{FirstName: "First", LastName: "Last"}, ctx.ActressDetails[0])
 	assert.Equal(t, "First", ctx.FirstName)
 	assert.Equal(t, "Last", ctx.LastName)
 
@@ -1080,6 +1090,8 @@ func TestContextFieldPreservationFromScraperResult(t *testing.T) {
 	// Verify transformed fields
 	require.Len(t, ctx.Actresses, 1)
 	assert.Equal(t, "Last First", ctx.Actresses[0])
+	require.Len(t, ctx.ActressDetails, 1)
+	assert.Equal(t, ActressDetail{FirstName: "First", LastName: "Last"}, ctx.ActressDetails[0])
 	assert.Equal(t, "First", ctx.FirstName)
 	assert.Equal(t, "Last", ctx.LastName)
 

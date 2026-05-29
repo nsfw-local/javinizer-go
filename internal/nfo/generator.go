@@ -109,6 +109,7 @@ func (g *Generator) Generate(movie *models.Movie, outputPath string, partSuffix 
 	ctx := template.NewContextFromMovie(movie)
 	ctx.GroupActress = g.config.GroupActress
 	ctx.GroupActressName = g.config.GroupActressName
+	ctx.FirstNameOrder = g.config.ActorFirstNameOrder
 	filename, err := g.templateEngine.Execute(g.config.NFOFilenameTemplate, ctx)
 	if err != nil {
 		return fmt.Errorf("failed to generate NFO filename: %w", err)
@@ -649,10 +650,11 @@ func (g *Generator) extractStreamDetails(videoFilePath string) *StreamDetails {
 // ResolveNFOFilename computes the NFO filename for a movie using the same logic
 // as Generate, without writing the file. This ensures that history/revert code
 // tracks the exact path the generator will use.
-func ResolveNFOFilename(movie *models.Movie, nfoFilenameTemplate string, groupActress bool, groupActressName string, perFile bool, isMultiPart bool, partSuffix string) string {
+func ResolveNFOFilename(movie *models.Movie, nfoFilenameTemplate string, groupActress bool, groupActressName string, firstNameOrder bool, perFile bool, isMultiPart bool, partSuffix string) string {
 	tmplCtx := template.NewContextFromMovie(movie)
 	tmplCtx.GroupActress = groupActress
 	tmplCtx.GroupActressName = groupActressName
+	tmplCtx.FirstNameOrder = firstNameOrder
 	engine := template.NewEngine()
 	filename, err := engine.Execute(nfoFilenameTemplate, tmplCtx)
 	if err != nil {

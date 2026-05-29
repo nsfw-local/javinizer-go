@@ -164,6 +164,7 @@ type OutputConfig struct {
 	AllowRevert         bool                `yaml:"allow_revert" json:"allow_revert"`             // Enable revert operations (default: false — opt-in for safety)
 	GroupActress        bool                `yaml:"group_actress" json:"group_actress"`           // Replace multiple actresses with group name in templates (default: false)
 	GroupActressName    string              `yaml:"group_actress_name" json:"group_actress_name"` // Folder name when group_actress is enabled and multiple actresses (default: "@Group")
+	FirstNameOrder      bool                `yaml:"first_name_order" json:"first_name_order"`     // true = FirstName LastName, false = LastName FirstName (default: false)
 	PosterFormat        string              `yaml:"poster_format" json:"poster_format"`
 	FanartFormat        string              `yaml:"fanart_format" json:"fanart_format"`
 	TrailerFormat       string              `yaml:"trailer_format" json:"trailer_format"`

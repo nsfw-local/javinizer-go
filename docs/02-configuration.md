@@ -574,8 +574,32 @@ See [Template System](./04-template-system.md) for available tags and modifiers.
 
 Example with `delimiter: ", "`:
 ```
-Actresses: Momo Sakura, Yua Mikami, Rara Anzai
+Actresses: Sakura Momo, Mikami Yua, Anzai Rara
 ```
+
+### Actress Organization
+
+**group_actress**: When `true` and a movie has multiple actresses, the `<ACTRESSES>` template tag resolves to a group folder name instead of listing individual names. Only affects templates that contain `<ACTRESSES>`. Default: `false`.
+
+**group_actress_name**: Folder name used when `group_actress` is enabled and multiple actresses are found. Default: `@Group`.
+
+Example with `group_actress: true`:
+```
+Template: <ACTRESSES>/<ID> - <TITLE>
+Multiple actresses: @Group/IPX-535 - Beautiful Day/
+Single actress:     Sakura Momo/IPX-535 - Solo Title/
+```
+
+### Actress Name Ordering
+
+**first_name_order**: Controls actress name ordering in template tags. Default: `false`.
+
+- `false`: LastName FirstName (Japanese convention, e.g., `Sakura Momo`)
+- `true`: FirstName LastName (Western convention, e.g., `Momo Sakura`)
+
+Affects `<ACTRESSES>`, `<ACTRESS>`, and `<ACTRESSNAME>` tags. Does not affect `<FIRSTNAME>` and `<LASTNAME>` which always return raw name components.
+
+> **Note:** This is separate from `nfo.first_name_order` which controls name formatting inside NFO files and defaults to `true` (Kodi/Plex convention).
 
 ## Database Configuration
 
@@ -1209,6 +1233,8 @@ output:
   move_to_folder: true
   rename_file: true
   group_actress: false
+  # group_actress_name: "@Group"
+  # first_name_order: false
   poster_format: "<ID><IF:MULTIPART>-pt<PART></IF>-poster.jpg"
   fanart_format: "<ID><IF:MULTIPART>-pt<PART></IF>-fanart.jpg"
   trailer_format: "<ID>-trailer.mp4"

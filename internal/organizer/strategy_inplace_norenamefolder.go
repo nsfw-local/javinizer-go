@@ -36,6 +36,7 @@ func (s *InPlaceNoRenameFolderStrategy) Plan(match matcher.MatchResult, movie *m
 	ctx := template.NewContextFromMovie(movie)
 	ctx.GroupActress = s.config.GroupActress
 	ctx.GroupActressName = s.config.GroupActressName
+	ctx.FirstNameOrder = s.config.FirstNameOrder
 
 	applyTitleTruncation(s.templateEngine, ctx, s.config.MaxTitleLength)
 

@@ -798,6 +798,184 @@ func TestTemplateEngine_GroupActress(t *testing.T) {
 	}
 }
 
+func TestTemplateEngine_FirstNameOrder(t *testing.T) {
+	engine := NewEngine()
+
+	tests := []struct {
+		name           string
+		actressDetails []ActressDetail
+		firstNameOrder bool
+		template       string
+		want           string
+	}{
+		{
+			name: "LastName FirstName order (default) with multiple actresses",
+			actressDetails: []ActressDetail{
+				{FirstName: "Yui", LastName: "Hatano"},
+				{FirstName: "Ai", LastName: "Uehara"},
+			},
+			firstNameOrder: false,
+			template:       "<ACTRESSES>",
+			want:           "Hatano Yui, Uehara Ai",
+		},
+		{
+			name: "FirstName LastName order with multiple actresses",
+			actressDetails: []ActressDetail{
+				{FirstName: "Yui", LastName: "Hatano"},
+				{FirstName: "Ai", LastName: "Uehara"},
+			},
+			firstNameOrder: true,
+			template:       "<ACTRESSES>",
+			want:           "Yui Hatano, Ai Uehara",
+		},
+		{
+			name: "FirstName LastName order with custom delimiter",
+			actressDetails: []ActressDetail{
+				{FirstName: "Yui", LastName: "Hatano"},
+				{FirstName: "Ai", LastName: "Uehara"},
+			},
+			firstNameOrder: true,
+			template:       "<ACTRESSES: & >",
+			want:           "Yui Hatano & Ai Uehara",
+		},
+		{
+			name: "FirstName only without LastName",
+			actressDetails: []ActressDetail{
+				{FirstName: "Yui"},
+				{FirstName: "Ai"},
+			},
+			firstNameOrder: false,
+			template:       "<ACTRESSES>",
+			want:           "Yui, Ai",
+		},
+		{
+			name: "LastName only without FirstName",
+			actressDetails: []ActressDetail{
+				{LastName: "Hatano"},
+				{LastName: "Uehara"},
+			},
+			firstNameOrder: true,
+			template:       "<ACTRESSES>",
+			want:           "Hatano, Uehara",
+		},
+		{
+			name: "JapaneseName fallback when no First/LastName",
+			actressDetails: []ActressDetail{
+				{JapaneseName: "波多野結衣"},
+				{JapaneseName: "上原亜衣"},
+			},
+			firstNameOrder: false,
+			template:       "<ACTRESSES>",
+			want:           "波多野結衣, 上原亜衣",
+		},
+		{
+			name: "ACTRESSNAME respects FirstNameOrder",
+			actressDetails: []ActressDetail{
+				{FirstName: "Yui", LastName: "Hatano"},
+			},
+			firstNameOrder: true,
+			template:       "<ACTRESSNAME>",
+			want:           "Yui Hatano",
+		},
+		{
+			name: "ACTRESSNAME default LastName FirstName order",
+			actressDetails: []ActressDetail{
+				{FirstName: "Yui", LastName: "Hatano"},
+			},
+			firstNameOrder: false,
+			template:       "<ACTRESSNAME>",
+			want:           "Hatano Yui",
+		},
+		{
+			name: "ACTRESS tag with FirstNameOrder",
+			actressDetails: []ActressDetail{
+				{FirstName: "Yui", LastName: "Hatano"},
+			},
+			firstNameOrder: true,
+			template:       "<ACTRESS>",
+			want:           "Yui Hatano",
+		},
+		{
+			name: "ACTRESS tag default LastName FirstName order",
+			actressDetails: []ActressDetail{
+				{FirstName: "Yui", LastName: "Hatano"},
+			},
+			firstNameOrder: false,
+			template:       "<ACTRESS>",
+			want:           "Hatano Yui",
+		},
+		{
+			name: "ACTORS tag with FirstNameOrder",
+			actressDetails: []ActressDetail{
+				{FirstName: "Yui", LastName: "Hatano"},
+				{FirstName: "Ai", LastName: "Uehara"},
+			},
+			firstNameOrder: true,
+			template:       "<ACTORS>",
+			want:           "Yui Hatano, Ai Uehara",
+		},
+		{
+			name: "GroupActress still works with FirstNameOrder enabled",
+			actressDetails: []ActressDetail{
+				{FirstName: "Yui", LastName: "Hatano"},
+				{FirstName: "Ai", LastName: "Uehara"},
+			},
+			firstNameOrder: true,
+			template:       "<ID> - <ACTRESSES>",
+			want:           "IPX-535 - Yui Hatano, Ai Uehara",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			actresses := make([]string, len(tt.actressDetails))
+			for i, d := range tt.actressDetails {
+				if d.LastName != "" {
+					actresses[i] = d.LastName + " " + d.FirstName
+				} else {
+					actresses[i] = d.FirstName
+				}
+			}
+
+			ctx := &Context{
+				ID:             "IPX-535",
+				Actresses:      actresses,
+				ActressDetails: tt.actressDetails,
+				FirstNameOrder: tt.firstNameOrder,
+			}
+
+			got, err := engine.Execute(tt.template, ctx)
+			if err != nil {
+				t.Errorf("Execute() error = %v", err)
+				return
+			}
+			if got != tt.want {
+				t.Errorf("Execute() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestTemplateEngine_FirstNameOrderFallback(t *testing.T) {
+	engine := NewEngine()
+
+	ctx := &Context{
+		ID:             "IPX-535",
+		Actresses:      []string{"Hatano Yui", "Uehara Ai"},
+		ActressDetails: nil,
+		FirstNameOrder: true,
+	}
+
+	got, err := engine.Execute("<ACTRESSES>", ctx)
+	if err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+
+	if got != "Hatano Yui, Uehara Ai" {
+		t.Errorf("fallback without ActressDetails = %q, want %q", got, "Hatano Yui, Uehara Ai")
+	}
+}
+
 func TestTemplateEngine_ResolutionTag(t *testing.T) {
 	engine := NewEngine()
 

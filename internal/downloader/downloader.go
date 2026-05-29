@@ -297,6 +297,7 @@ func (d *Downloader) generateFilename(movie *models.Movie, templateStr string, i
 	ctx.Index = index
 	ctx.GroupActress = d.config.GroupActress
 	ctx.GroupActressName = d.config.GroupActressName
+	ctx.FirstNameOrder = d.actorFirstNameOrder
 
 	if multipart != nil {
 		ctx.IsMultiPart = multipart.IsMultiPart
@@ -322,6 +323,7 @@ func (d *Downloader) generateActressFilename(movie *models.Movie, actressName st
 	ctx.ActressName = actressName
 	ctx.GroupActress = d.config.GroupActress
 	ctx.GroupActressName = d.config.GroupActressName
+	ctx.FirstNameOrder = d.actorFirstNameOrder
 
 	engine := d.templateEngine
 	filename, err := engine.Execute(templateStr, ctx)
