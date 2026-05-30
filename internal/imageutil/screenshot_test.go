@@ -63,7 +63,7 @@ func TestNormalizeDMMScreenshotURL(t *testing.T) {
 		{
 			name:     "DMM prefix content ID without jp (1-digit prefix)",
 			input:    "https://awsimgsrc.dmm.com/dig/digital/video/1sdmm00132/1sdmm00132-1.jpg",
-			expected: "https://awsimgsrc.dmm.com/dig/digital/video/1sdmm132/1sdmm132jp-1.jpg",
+			expected: "https://awsimgsrc.dmm.com/dig/digital/video/1sdmm00132/1sdmm00132jp-1.jpg",
 		},
 		{
 			name:     "Cover image pl.jpg unchanged",
@@ -96,9 +96,19 @@ func TestNormalizeDMMScreenshotURL(t *testing.T) {
 			expected: "https://pics.dmm.co.jp/video/test/testjp-3.jpg",
 		},
 		{
-			name:     "Content ID canonicalization 118abp00880",
+			name:     "Content ID with zero-padded number preserved",
 			input:    "https://pics.dmm.co.jp/digital/video/118abp00880/118abp00880-1.jpg",
-			expected: "https://pics.dmm.co.jp/digital/video/118abp880/118abp880jp-1.jpg",
+			expected: "https://pics.dmm.co.jp/digital/video/118abp00880/118abp00880jp-1.jpg",
+		},
+		{
+			name:     "GETS content ID with middle zeros preserved (MCSR-307 regression)",
+			input:    "https://pics.dmm.co.jp/digital/video/118gets00081/118gets00081pl.jpg",
+			expected: "https://pics.dmm.co.jp/digital/video/118gets00081/118gets00081pl.jpg",
+		},
+		{
+			name:     "GETS content ID with middle zeros preserved + jp suffix insertion",
+			input:    "https://pics.dmm.co.jp/digital/video/118gets00081/118gets00081-1.jpg",
+			expected: "https://pics.dmm.co.jp/digital/video/118gets00081/118gets00081jp-1.jpg",
 		},
 		{
 			name:     "Non-DMM URL unchanged",

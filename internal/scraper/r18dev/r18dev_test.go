@@ -280,7 +280,7 @@ func TestScraper_Search_LegacyFormat(t *testing.T) {
 	assert.Equal(t, "Legacy Series", result.Series)
 
 	// Verify it uses nested images structure
-	assert.Contains(t, result.CoverURL, "118abw1pl2.jpg")
+	assert.Contains(t, result.CoverURL, "118abw00001pl2.jpg")
 
 	// Verify it uses nested sample structure
 	assert.Contains(t, result.TrailerURL, "118abw00001_mhb_w.mp4")
@@ -2112,7 +2112,7 @@ func TestNormalizeDMMScreenshotURL_R18DevIntegration(t *testing.T) {
 		{
 			name:     "DMM prefix content ID without jp (1-digit prefix)",
 			input:    "https://awsimgsrc.dmm.com/dig/digital/video/1sdmm00132/1sdmm00132-1.jpg",
-			expected: "https://awsimgsrc.dmm.com/dig/digital/video/1sdmm132/1sdmm132jp-1.jpg",
+			expected: "https://awsimgsrc.dmm.com/dig/digital/video/1sdmm00132/1sdmm00132jp-1.jpg",
 		},
 		{
 			name:     "Non-DMM URL unchanged",
@@ -2150,9 +2150,9 @@ func TestNormalizeDMMScreenshotURL_R18DevIntegration(t *testing.T) {
 			expected: "https://pics.dmm.co.jp/digital/video/ipx00535/ipx00535jp-1.jpg",
 		},
 		{
-			name:     "Content ID canonicalization 118abp00880",
+			name:     "Content ID with zero-padded number preserved",
 			input:    "https://pics.dmm.co.jp/digital/video/118abp00880/118abp00880-1.jpg",
-			expected: "https://pics.dmm.co.jp/digital/video/118abp880/118abp880jp-1.jpg",
+			expected: "https://pics.dmm.co.jp/digital/video/118abp00880/118abp00880jp-1.jpg",
 		},
 	}
 

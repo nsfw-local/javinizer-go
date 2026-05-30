@@ -909,12 +909,12 @@ func TestSearchProcessingTimeout(t *testing.T) {
 
 // TestPayloadToResultCoverURLFallback tests cover URL fallback when poster probe fails
 func TestPayloadToResult_CoverURLFallback(t *testing.T) {
-	coverURL := "https://pics.dmm.co.jp/digital/video/118abp880/118abp880pl.jpg"
+	coverURL := "https://pics.dmm.co.jp/digital/video/118abp00880/118abp00880pl.jpg"
 	payload := &moviePayload{
 		CoverImageURL:     coverURL,
-		ThumbnailImageURL: "https://pics.dmm.co.jp/digital/video/118abp880/118abp880ps.jpg",
+		ThumbnailImageURL: "https://pics.dmm.co.jp/digital/video/118abp00880/118abp00880ps.jpg",
 		NormalizedID:      "ABP-880",
-		Subtitle:          "118abp880",
+		Subtitle:          "118abp00880",
 		Title:             "Movie Title",
 	}
 

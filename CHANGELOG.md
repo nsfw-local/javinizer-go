@@ -17,7 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - Consolidate duplicated DMM screenshot URL normalization logic from 6 scrapers into shared `internal/imageutil/` package (NormalizeDMMScreenshotURL, UpgradeCoverResolution, GetOptimalPosterURL)
-- All 6 scrapers (DMM, R18Dev, JavBus, LibreDMM, JavLibrary, DMM actress) now use shared normalization pipeline for consistent CDN rewrite, host lowercase, content ID canonicalization, and cover resolution upgrade
+- All 6 scrapers (DMM, R18Dev, JavBus, LibreDMM, JavLibrary, DMM actress) now use shared normalization pipeline for consistent CDN rewrite, host lowercase, and cover resolution upgrade
 - Actress thumbnail normalization in DMM actress.go delegates to shared imageutil.NormalizeDMMScreenshotURL instead of inline CDN rewrite
 
 ## [v0.3.4-alpha] - 2026-05-02

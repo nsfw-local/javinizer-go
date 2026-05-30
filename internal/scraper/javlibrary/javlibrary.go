@@ -687,7 +687,7 @@ func (s *Scraper) extractScreenshotURLs(html string) []string {
 	}
 
 	// Also look for jp-1.jpg, jp-2.jpg, etc. patterns (JavLibrary/DMM screenshot pattern)
-	// Pattern: ID + jp + number + .jpg (e.g., abp880jp-1.jpg, 118abp880jp-1.jpg)
+	// Pattern: ID + jp + number + .jpg (e.g., abp880jp-1.jpg, 118abp00880jp-1.jpg)
 	re = regexp.MustCompile(`src="([^"]*jp-\d+\.jpg[^"]*)"`)
 	matches = re.FindAllStringSubmatch(html, -1)
 	for _, m := range matches {
