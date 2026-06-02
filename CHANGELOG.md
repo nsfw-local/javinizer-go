@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v0.3.7-alpha] - 2026-06-02
+
+### Added
+
+- Trailer preview, review tabs, and View Failed button on jobs page
+
+### Fixed
+
+- Redirect View Failed to Failed tab and sync tab URL bidirectionally
+- Extract javlibrary rating from `var $rating` JS var and add aggregator-side range check that surfaces corrupt scores as warnings
+
 ## [v0.3.6-alpha] - 2026-05-31
 
 ### Added
