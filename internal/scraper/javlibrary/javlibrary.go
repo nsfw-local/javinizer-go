@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/PuerkitoBio/goquery"
 	"github.com/go-resty/resty/v2"
 	"github.com/javinizer/javinizer-go/internal/config"
 	"github.com/javinizer/javinizer-go/internal/httpclient"
@@ -345,10 +346,13 @@ func (s *Scraper) parseDetailPage(html string, id string, sourceURL string, lang
 		ID:        id,
 	}
 
-	// Title: from <title> tag, strip " - JAVLibrary" suffix and ID prefix
+	doc, err := goquery.NewDocumentFromReader(strings.NewReader(html))
+	if err != nil {
+		return nil, fmt.Errorf("JavLibrary: failed to parse HTML: %w", err)
+	}
+
 	result.Title = s.extractTitle(html, id)
 
-	// Structured fields from video_info div
 	result.ReleaseDate = s.extractReleaseDate(html)
 	result.Runtime = s.extractRuntime(html)
 	result.Director = s.extractField(html, "video_director")
@@ -358,11 +362,9 @@ func (s *Scraper) parseDetailPage(html string, id string, sourceURL string, lang
 	result.Genres = s.extractGenres(html)
 	result.Actresses = s.extractActresses(html)
 
-	// Description from video_review div
 	result.Description = s.extractDescription(html)
 
-	// Rating from video_rating div
-	result.Rating = s.extractRating(html)
+	result.Rating = s.extractRating(html, doc)
 
 	// Media URLs
 	result.CoverURL = imageutil.NormalizeDMMScreenshotURL(s.extractCoverURL(html))
@@ -614,29 +616,27 @@ func (s *Scraper) extractSeries(html string) string {
 	return ""
 }
 
-// extractRating extracts the movie rating (score) from the video_rating div
-func (s *Scraper) extractRating(html string) *models.Rating {
-	// Rating is in: <div id="video_rating"><span class="num">4.5</span> / 5.0</div>
-	re := regexp.MustCompile(`id="video_rating"[^>]*>[\s\S]*?<span[^>]*class="num"[^>]*>([\d.]+)</span>`)
-	matches := re.FindStringSubmatch(html)
-	if len(matches) > 1 {
-		if score, err := strconv.ParseFloat(matches[1], 64); err == nil {
+// extractRating extracts the movie rating (score) from the JavLibrary page.
+func (s *Scraper) extractRating(html string, doc *goquery.Document) *models.Rating {
+	ratingRegex := regexp.MustCompile(`\$rating\s*=\s*"([\d.]+)"`)
+	if m := ratingRegex.FindStringSubmatch(html); len(m) >= 2 {
+		score, err := strconv.ParseFloat(m[1], 64)
+		if err == nil {
 			return &models.Rating{Score: score}
 		}
 	}
-	// Fallback: any score pattern like "4.5 / 5.0" or "4.5 out of 5.0"
-	re = regexp.MustCompile(`([\d.]+)\s*(?:/|out\s+of|of)\s*([\d.]+)`)
-	matches = re.FindStringSubmatch(html)
-	if len(matches) > 2 {
-		if score, err := strconv.ParseFloat(matches[1], 64); err == nil {
-			if maxScore, parseErr := strconv.ParseFloat(matches[2], 64); parseErr == nil && maxScore > 0 {
-				// Normalize to 5-star scale
-				score = score * 5 / maxScore
-			}
-			return &models.Rating{Score: score}
-		}
+
+	scoreText := strings.TrimSpace(doc.Find("#video_rating span.num").First().Text())
+	if scoreText == "" {
+		return nil
 	}
-	return nil
+
+	score, err := strconv.ParseFloat(scoreText, 64)
+	if err != nil {
+		return nil
+	}
+
+	return &models.Rating{Score: score}
 }
 
 // extractScreenshotURLs extracts screenshot/image gallery URLs from the page

@@ -5,9 +5,11 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/PuerkitoBio/goquery"
 	"github.com/javinizer/javinizer-go/internal/config"
 )
 
@@ -343,23 +345,91 @@ func TestExtractRating(t *testing.T) {
 	}
 	s := New(settings, &config.ProxyConfig{}, config.FlareSolverrConfig{})
 
-	// Test standard rating format
-	html := `<div id="video_rating"><span class="num">4.5</span> / 5.0</div>`
-	if got := s.extractRating(html); got == nil || got.Score != 4.5 {
-		t.Fatalf("extractRating = %v, want 4.5", got)
+	parse := func(t *testing.T, html string) *goquery.Document {
+		t.Helper()
+		doc, err := goquery.NewDocumentFromReader(strings.NewReader(html))
+		if err != nil {
+			t.Fatalf("goquery.NewDocumentFromReader: %v", err)
+		}
+		return doc
 	}
 
-	// Test fallback format (4.5 out of 5)
-	html = `<div>Rating: 4.0 out of 5</div>`
-	if got := s.extractRating(html); got == nil || got.Score != 4.0 {
-		t.Fatalf("extractRating fallback = %v, want 4.0", got)
-	}
+	t.Run("extracts from $rating JS variable (real page format)", func(t *testing.T) {
+		html := `<html><body>
+<script type="text/javascript">
+<!--
+var $videoid = "javli43uqe";
+var $rating = "7";
+//-->
+</script>
+</body></html>`
+		doc := parse(t, html)
+		got := s.extractRating(html, doc)
+		if got == nil || got.Score != 7.0 {
+			t.Fatalf("extractRating = %v, want score=7.0", got)
+		}
+	})
 
-	// No rating test
-	html = `<div>no rating</div>`
-	if got := s.extractRating(html); got != nil {
-		t.Fatalf("extractRating empty = %v, want nil", got)
-	}
+	t.Run("decimal rating in JS variable", func(t *testing.T) {
+		html := `<html><body>
+<script type="text/javascript">
+var $rating = "8.5";
+</script>
+</body></html>`
+		doc := parse(t, html)
+		got := s.extractRating(html, doc)
+		if got == nil || got.Score != 8.5 {
+			t.Fatalf("extractRating = %v, want score=8.5", got)
+		}
+	})
+
+	t.Run("missing $rating JS variable returns nil", func(t *testing.T) {
+		html := `<html><body><div>no rating here</div></body></html>`
+		doc := parse(t, html)
+		if got := s.extractRating(html, doc); got != nil {
+			t.Fatalf("extractRating = %v, want nil", got)
+		}
+	})
+
+	t.Run("non-numeric JS rating returns nil", func(t *testing.T) {
+		html := `<html><body>
+<script type="text/javascript">
+var $rating = "N/A";
+</script>
+</body></html>`
+		doc := parse(t, html)
+		if got := s.extractRating(html, doc); got != nil {
+			t.Fatalf("extractRating = %v, want nil", got)
+		}
+	})
+
+	t.Run("regression: JS $rating wins over surrounding X/Y patterns", func(t *testing.T) {
+		html := `<html><body>
+<div class="pagination"><a href="?page=1">1 / 1,247,049</a></div>
+<div class="stats">Reviews: 0 / 5,000,000</div>
+<div class="date">2026 / 02 / 16</div>
+<script type="text/javascript">
+var $rating = "4.25";
+</script>
+</body></html>`
+		doc := parse(t, html)
+		got := s.extractRating(html, doc)
+		if got == nil {
+			t.Fatalf("extractRating returned nil, want score=4.25")
+		}
+		if got.Score != 4.25 {
+			t.Fatalf("extractRating = %v, want score=4.25 (must not be polluted by surrounding 'X / Y' patterns)", got)
+		}
+	})
+
+	t.Run("fallback to #video_rating span.num when JS variable absent", func(t *testing.T) {
+		html := `<html><body><div id="video_rating"><span class="num">4.5</span> / 5.0</div></body></html>`
+		doc := parse(t, html)
+		got := s.extractRating(html, doc)
+		if got == nil || got.Score != 4.5 {
+			t.Fatalf("extractRating = %v, want score=4.5", got)
+		}
+	})
 }
 
 func TestExtractScreenshotURLs(t *testing.T) {

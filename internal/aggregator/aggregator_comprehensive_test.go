@@ -379,27 +379,128 @@ func TestGetRatingByPriority(t *testing.T) {
 		},
 	}
 
-	score, votes := agg.getRatingByPriority(results, []string{"r18dev", "dmm"})
+	score, votes, warning := agg.getRatingByPriority(results, []string{"r18dev", "dmm"})
 	assert.Equal(t, 4.5, score)
 	assert.Equal(t, 100, votes)
+	assert.Empty(t, warning)
 
 	// Test with both having values - should use priority
 	results["r18dev"].Rating = &models.Rating{
 		Score: 5.0,
 		Votes: 200,
 	}
-	score, votes = agg.getRatingByPriority(results, []string{"r18dev", "dmm"})
+	score, votes, warning = agg.getRatingByPriority(results, []string{"r18dev", "dmm"})
 	assert.Equal(t, 5.0, score)
 	assert.Equal(t, 200, votes)
+	assert.Empty(t, warning)
 
 	// Test with zero values ignored
 	results["r18dev"].Rating = &models.Rating{
 		Score: 0,
 		Votes: 0,
 	}
-	score, votes = agg.getRatingByPriority(results, []string{"r18dev", "dmm"})
+	score, votes, warning = agg.getRatingByPriority(results, []string{"r18dev", "dmm"})
 	assert.Equal(t, 4.5, score)
 	assert.Equal(t, 100, votes)
+	assert.Empty(t, warning)
+}
+
+func TestGetRatingByPriority_OutOfRangeRejected(t *testing.T) {
+	cfg := &config.Config{
+		Scrapers: config.ScrapersConfig{
+			Priority: []string{"javlibrary", "r18dev", "dmm"},
+		},
+	}
+	agg := New(cfg)
+
+	makeResults := func(javlibraryScore float64) map[string]*models.ScraperResult {
+		return map[string]*models.ScraperResult{
+			"javlibrary": {
+				Source: "javlibrary",
+				Rating: &models.Rating{Score: javlibraryScore, Votes: 10},
+			},
+			"r18dev": {
+				Source: "r18dev",
+				Rating: &models.Rating{Score: 4.5, Votes: 100},
+			},
+			"dmm": {
+				Source: "dmm",
+				Rating: &models.Rating{Score: 8.2, Votes: 50},
+			},
+		}
+	}
+
+	t.Run("tiny corrupt score is skipped with warning, falls through to next source", func(t *testing.T) {
+		results := makeResults(0.00001603943934375318)
+		score, votes, warning := agg.getRatingByPriority(results, []string{"javlibrary", "r18dev", "dmm"})
+		assert.Equal(t, 4.5, score, "must fall through javlibrary to r18dev")
+		assert.Equal(t, 100, votes)
+		assert.Contains(t, warning, "javlibrary")
+		assert.Contains(t, warning, "out of range")
+		assert.Contains(t, warning, "skipping")
+	})
+
+	t.Run("very small scientific notation score is rejected", func(t *testing.T) {
+		results := makeResults(2.611314569074446e-7)
+		score, _, warning := agg.getRatingByPriority(results, []string{"javlibrary", "r18dev"})
+		assert.Equal(t, 4.5, score, "must fall through javlibrary to r18dev")
+		assert.Contains(t, warning, "javlibrary")
+	})
+
+	t.Run("huge corrupt score is rejected", func(t *testing.T) {
+		results := makeResults(9999.5)
+		score, _, warning := agg.getRatingByPriority(results, []string{"javlibrary", "r18dev"})
+		assert.Equal(t, 4.5, score, "must fall through javlibrary to r18dev")
+		assert.Contains(t, warning, "javlibrary")
+	})
+
+	t.Run("negative score is rejected", func(t *testing.T) {
+		results := makeResults(-1.0)
+		score, _, warning := agg.getRatingByPriority(results, []string{"javlibrary", "r18dev"})
+		assert.Equal(t, 4.5, score)
+		assert.Contains(t, warning, "javlibrary")
+	})
+
+	t.Run("in-range 5-point score (4.5) is accepted", func(t *testing.T) {
+		results := makeResults(4.5)
+		score, _, warning := agg.getRatingByPriority(results, []string{"javlibrary", "r18dev", "dmm"})
+		assert.Equal(t, 4.5, score, "should pick javlibrary first")
+		assert.Empty(t, warning)
+	})
+
+	t.Run("in-range 10-point score (8.2) is accepted", func(t *testing.T) {
+		results := makeResults(8.2)
+		score, _, warning := agg.getRatingByPriority(results, []string{"javlibrary", "r18dev", "dmm"})
+		assert.Equal(t, 8.2, score)
+		assert.Empty(t, warning)
+	})
+
+	t.Run("lower boundary (0.1) is accepted", func(t *testing.T) {
+		results := makeResults(0.1)
+		score, _, warning := agg.getRatingByPriority(results, []string{"javlibrary", "r18dev"})
+		assert.Equal(t, 0.1, score)
+		assert.Empty(t, warning)
+	})
+
+	t.Run("upper boundary (10.0) is accepted", func(t *testing.T) {
+		results := makeResults(10.0)
+		score, _, warning := agg.getRatingByPriority(results, []string{"javlibrary", "r18dev"})
+		assert.Equal(t, 10.0, score)
+		assert.Empty(t, warning)
+	})
+
+	t.Run("all sources invalid returns zero with warning", func(t *testing.T) {
+		results := map[string]*models.ScraperResult{
+			"javlibrary": {Source: "javlibrary", Rating: &models.Rating{Score: 0.0001, Votes: 1}},
+			"r18dev":     {Source: "r18dev", Rating: &models.Rating{Score: 999.9, Votes: 1}},
+		}
+		score, votes, warning := agg.getRatingByPriority(results, []string{"javlibrary", "r18dev"})
+		assert.Equal(t, 0.0, score)
+		assert.Equal(t, 0, votes)
+		assert.NotEmpty(t, warning, "warning must be set when all sources produce corrupt ratings")
+		assert.Contains(t, warning, "javlibrary", "warning should identify the first corrupt source")
+		assert.Contains(t, warning, "out of range")
+	})
 }
 
 // TestGetActressesByPriority tests actress aggregation and merging

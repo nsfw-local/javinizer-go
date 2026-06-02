@@ -21,6 +21,7 @@ type Movie struct {
 	Series                   string     `json:"series"` // Series name
 	RatingScore              float64    `json:"rating_score" gorm:"column:rating_score"`
 	RatingVotes              int        `json:"rating_votes" gorm:"column:rating_votes"`
+	RatingWarning            string     `json:"rating_warning,omitempty" gorm:"-"`
 	PosterURL                string     `json:"poster_url"`         // Portrait/box art image
 	CoverURL                 string     `json:"cover_url"`          // Landscape/fanart image
 	CroppedPosterURL         string     `json:"cropped_poster_url"` // URL to the cropped poster (persisted)

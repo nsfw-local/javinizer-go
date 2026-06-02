@@ -6568,6 +6568,9 @@ const docTemplate = `{
                 "rating_votes": {
                     "type": "integer"
                 },
+                "rating_warning": {
+                    "type": "string"
+                },
                 "release_date": {
                     "type": "string"
                 },

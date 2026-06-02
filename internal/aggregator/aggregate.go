@@ -104,9 +104,10 @@ func (a *Aggregator) aggregateWithPriority(results []*models.ScraperResult, prio
 		movie.ReleaseYear = movie.ReleaseDate.Year()
 	}
 
-	ratingScore, ratingVotes := a.getRatingByPriority(resultsBySource, priorityFunc("Rating"))
+	ratingScore, ratingVotes, ratingWarning := a.getRatingByPriority(resultsBySource, priorityFunc("Rating"))
 	movie.RatingScore = ratingScore
 	movie.RatingVotes = ratingVotes
+	movie.RatingWarning = ratingWarning
 
 	movie.Actresses = a.getActressesByPriority(resultsBySource, priorityFunc("Actress"))
 
@@ -218,19 +219,42 @@ func (a *Aggregator) getTimeFieldByPriority(
 	return nil
 }
 
-// getRatingByPriority retrieves rating based on priority
+const (
+	ratingMinValid = 0.1
+	ratingMaxValid = 10.0
+)
+
 func (a *Aggregator) getRatingByPriority(
 	results map[string]*models.ScraperResult,
 	priority []string,
-) (float64, int) {
+) (float64, int, string) {
+	var warning string
 	for _, source := range priority {
-		if result, exists := results[source]; exists {
-			if result.Rating != nil && (result.Rating.Score > 0 || result.Rating.Votes > 0) {
-				return result.Rating.Score, result.Rating.Votes
-			}
+		result, exists := results[source]
+		if !exists || result.Rating == nil {
+			continue
 		}
+		if result.Rating.Score <= 0 && result.Rating.Votes <= 0 {
+			continue
+		}
+		if !isRatingScoreValid(result.Rating.Score) {
+			msg := fmt.Sprintf(
+				"scraper %q returned corrupt rating score %g (out of range [%.1f, %.1f]); skipping",
+				source, result.Rating.Score, ratingMinValid, ratingMaxValid,
+			)
+			logging.Warnf("Aggregator: %s", msg)
+			if warning == "" {
+				warning = msg
+			}
+			continue
+		}
+		return result.Rating.Score, result.Rating.Votes, warning
 	}
-	return 0, 0
+	return 0, 0, warning
+}
+
+func isRatingScoreValid(score float64) bool {
+	return score >= ratingMinValid && score <= ratingMaxValid
 }
 
 func normalizeNameKey(name string) string {
