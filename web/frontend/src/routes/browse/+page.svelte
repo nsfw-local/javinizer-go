@@ -6,6 +6,7 @@
 	import { fade, scale, slide } from 'svelte/transition';
 	import { portalToBody } from '$lib/actions/portal';
 	import FileBrowser from '$lib/components/FileBrowser.svelte';
+	import PathInput from '$lib/components/PathInput.svelte';
 	import ScraperSelector from '$lib/components/ScraperSelector.svelte';
 	import Button from '$lib/components/ui/Button.svelte';
 	import Card from '$lib/components/ui/Card.svelte';
@@ -57,9 +58,12 @@
 		}
 	});
 
+	let pathInitialized = $state(false);
+
 	$effect(() => {
 		const cwd = cwdQuery.data?.path;
-		if (!cwd) return;
+		if (!cwd || pathInitialized) return;
+		pathInitialized = true;
 		const savedInputPath = localStorage.getItem(STORAGE_KEY_INPUT);
 		if (!initialPath) {
 			initialPath = savedInputPath || cwd;
@@ -536,15 +540,14 @@
 						<h3 class="font-semibold">Output Destination</h3>
 					</div>
 					<div class="flex gap-2">
-						<input
-							type="text"
+						<PathInput
 							bind:value={destinationPath}
-							oninput={() => {
-								// Save to localStorage for persistence
-								localStorage.setItem(STORAGE_KEY_OUTPUT, destinationPath);
+							onchange={(v) => {
+								localStorage.setItem(STORAGE_KEY_OUTPUT, v);
 							}}
 							placeholder="Enter destination path (e.g., /path/to/output)"
-							class="flex-1 px-3 py-2 border rounded-md bg-background focus:ring-2 focus:ring-primary focus:border-primary transition-all font-mono text-sm"
+							whitelistPaths={config?.api?.security?.allowed_directories ?? []}
+							class="px-3 py-2"
 						/>
 						<Button onclick={openDestinationBrowser}>
 							{#snippet children()}
@@ -636,6 +639,7 @@
 			bind:recursiveScan={recursiveScan}
 			bind:selectedFolders={selectedFolders}
 			triggerScan={triggerScan}
+			whitelistPaths={config?.api?.security?.allowed_directories ?? []}
 		/>
 
 		<!-- Help Text -->
@@ -848,6 +852,7 @@
 					onPathChange={handleDestinationPathChange}
 					multiSelect={false}
 					folderOnly={true}
+					whitelistPaths={config?.api?.security?.allowed_directories ?? []}
 				/>
 			</div>
 

@@ -3,11 +3,10 @@
 	import { apiClient } from '$lib/api/client';
 	import { formatBytes } from '$lib/utils';
 	import { splitPath, buildPathUp, buildBreadcrumbPath, isRootPath } from '$lib/utils/path';
-	import type { FileInfo, BrowseResponse, PathAutocompleteSuggestion } from '$lib/api/types';
+	import type { FileInfo, BrowseResponse } from '$lib/api/types';
 	import {
 		Folder,
 		File,
-		ChevronRight,
 		House,
 		RefreshCw,
 		CheckSquare,
@@ -20,12 +19,11 @@
 		ArrowDown,
 		Calendar,
 		HardDrive,
-		ArrowUpDown,
-		ArrowRight,
-		LoaderCircle
+		ArrowUpDown
 	} from 'lucide-svelte';
 	import Button from './ui/Button.svelte';
 	import Card from './ui/Card.svelte';
+	import PathInput from './PathInput.svelte';
 
 	interface Props {
 		initialPath?: string;
@@ -38,6 +36,7 @@
 		recursiveScan?: boolean;
 		selectedFolders?: string[];
 		triggerScan?: number;
+		whitelistPaths?: string[];
 	}
 
 	let {
@@ -50,7 +49,8 @@
 		onScan,
 		recursiveScan = $bindable(false),
 		selectedFolders: selectedFolders = $bindable([]),
-		triggerScan = 0
+		triggerScan = 0,
+		whitelistPaths = []
 	}: Props = $props();
 
 	let currentPath = $state('');
@@ -65,15 +65,6 @@
 
 	// Editable path input state
 	let pathInputValue = $state('');
-	let isPathEditing = $state(false);
-	let pathSuggestions = $state<PathAutocompleteSuggestion[]>([]);
-	let showPathSuggestions = $state(false);
-	let activeSuggestionIndex = $state(-1);
-	let autocompleteLoading = $state(false);
-	let autocompleteDebounceId: ReturnType<typeof setTimeout> | null = null;
-	let autocompleteRequestToken = 0;
-
-	const pathAutocompleteLimit = 8;
 
 	// Sync path state when initialPath changes
 	$effect(() => {
@@ -188,81 +179,6 @@
 		}
 	});
 
-	function clearPathSuggestions() {
-		autocompleteRequestToken += 1;
-		pathSuggestions = [];
-		showPathSuggestions = false;
-		activeSuggestionIndex = -1;
-		autocompleteLoading = false;
-	}
-
-	// Navigate to path from input
-	function navigateToInputPath() {
-		if (pathInputValue.trim()) {
-			clearPathSuggestions();
-			browse(pathInputValue.trim());
-		}
-	}
-
-	function selectPathSuggestion(suggestion: PathAutocompleteSuggestion) {
-		pathInputValue = suggestion.path;
-		clearPathSuggestions();
-		browse(suggestion.path);
-	}
-
-	async function fetchPathSuggestions(inputPath: string) {
-		const requestToken = ++autocompleteRequestToken;
-		autocompleteLoading = true;
-
-		try {
-			const response = await apiClient.autocompletePath({
-				path: inputPath,
-				limit: pathAutocompleteLimit
-			});
-
-			if (requestToken !== autocompleteRequestToken || !isPathEditing) return;
-
-			pathSuggestions = response.suggestions;
-			showPathSuggestions = response.suggestions.length > 0;
-			activeSuggestionIndex = response.suggestions.length > 0 ? 0 : -1;
-		} catch {
-			if (requestToken !== autocompleteRequestToken) return;
-			pathSuggestions = [];
-			showPathSuggestions = false;
-			activeSuggestionIndex = -1;
-		} finally {
-			if (requestToken === autocompleteRequestToken) {
-				autocompleteLoading = false;
-			}
-		}
-	}
-
-	// Handle path input keydown
-	function handlePathKeydown(e: KeyboardEvent) {
-		if (e.key === 'ArrowDown' && pathSuggestions.length > 0) {
-			e.preventDefault();
-			showPathSuggestions = true;
-			activeSuggestionIndex =
-				activeSuggestionIndex >= pathSuggestions.length - 1 ? 0 : activeSuggestionIndex + 1;
-		} else if (e.key === 'ArrowUp' && pathSuggestions.length > 0) {
-			e.preventDefault();
-			showPathSuggestions = true;
-			activeSuggestionIndex =
-				activeSuggestionIndex <= 0 ? pathSuggestions.length - 1 : activeSuggestionIndex - 1;
-		} else if (e.key === 'Enter') {
-			if (showPathSuggestions && activeSuggestionIndex >= 0 && pathSuggestions[activeSuggestionIndex]) {
-				e.preventDefault();
-				selectPathSuggestion(pathSuggestions[activeSuggestionIndex]);
-				return;
-			}
-			navigateToInputPath();
-		} else if (e.key === 'Escape') {
-			pathInputValue = currentPath;
-			isPathEditing = false;
-			clearPathSuggestions();
-		}
-	}
-
 	// Watch for changes to initialPath and browse when it's set
 	$effect(() => {
 		if (initialPath) {
@@ -270,35 +186,9 @@
 		}
 	});
 
-	$effect(() => {
-		const inputPath = pathInputValue.trim();
-
-		if (autocompleteDebounceId) {
-			clearTimeout(autocompleteDebounceId);
-			autocompleteDebounceId = null;
-		}
-
-		if (!isPathEditing || !inputPath) {
-			clearPathSuggestions();
-			return;
-		}
-
-		autocompleteDebounceId = setTimeout(() => {
-			void fetchPathSuggestions(inputPath);
-		}, 160);
-
-		return () => {
-			if (autocompleteDebounceId) {
-				clearTimeout(autocompleteDebounceId);
-				autocompleteDebounceId = null;
-			}
-		};
-	});
-
 	async function browse(path: string) {
 		loading = true;
 		error = null;
-		clearPathSuggestions();
 		filterText = '';
 		selectedFolders = [];
 		anchorFolderPath = null;
@@ -307,7 +197,6 @@
 			currentPath = response.current_path;
 			parentPath = response.parent_path || '';
 			pathInputValue = response.current_path; // Sync path input
-			isPathEditing = false; // Reset editing state
 			onPathChange?.(currentPath);
 			// Items will be sorted by sortedAndFilteredItems derived
 			items = response.items;
@@ -512,56 +401,16 @@
 
 		<!-- Editable Path Input -->
 		<div class="flex-1 flex items-center gap-2">
-			<div class="relative flex-1">
-				<input
-					type="text"
-					bind:value={pathInputValue}
-					onkeydown={handlePathKeydown}
-					onfocus={() => isPathEditing = true}
-					onblur={() => {
-						isPathEditing = false;
-						setTimeout(() => {
-							showPathSuggestions = false;
-						}, 120);
-					}}
-					placeholder="Enter path (e.g., /path/to/videos)"
-					class="w-full px-3 py-1.5 pr-9 border rounded-md bg-background focus:ring-2 focus:ring-primary focus:border-primary transition-all font-mono text-sm"
-				/>
-				{#if autocompleteLoading}
-					<div class="absolute inset-y-0 right-3 flex items-center text-muted-foreground">
-						<LoaderCircle class="h-3.5 w-3.5 animate-spin" />
-					</div>
-				{/if}
-
-				{#if showPathSuggestions && pathSuggestions.length > 0}
-					<div class="absolute z-20 mt-2 w-full rounded-lg border bg-background shadow-lg overflow-hidden">
-						<div class="max-h-64 overflow-y-auto py-1">
-							{#each pathSuggestions as suggestion, index (suggestion.path)}
-								<button
-									type="button"
-									onmousedown={(event) => {
-										event.preventDefault();
-										selectPathSuggestion(suggestion);
-									}}
-									class="w-full flex items-center gap-2 px-3 py-2 text-left text-sm transition-colors
-										{index === activeSuggestionIndex ? 'bg-accent text-accent-foreground' : 'hover:bg-accent/60'}"
-								>
-									<Folder class="h-4 w-4 text-blue-500 shrink-0" />
-									<div class="min-w-0 flex-1">
-										<div class="truncate font-medium">{suggestion.name}</div>
-										<div class="truncate text-xs text-muted-foreground font-mono">{suggestion.path}</div>
-									</div>
-								</button>
-							{/each}
-						</div>
-					</div>
-				{/if}
-			</div>
-			<Button variant="outline" size="sm" onclick={navigateToInputPath} disabled={!pathInputValue.trim() || loading} title="Navigate to path">
-				{#snippet children()}
-					<ArrowRight class="h-4 w-4" />
-				{/snippet}
-			</Button>
+			<PathInput
+				bind:value={pathInputValue}
+				onchange={(v) => { pathInputValue = v; }}
+				escapeValue={currentPath}
+				onnavigate={(path) => { if (path) browse(path); }}
+				showNavigateButton={true}
+				navigateDisabled={!pathInputValue.trim() || loading}
+				{loading}
+				whitelistPaths={whitelistPaths}
+			/>
 		</div>
 	</div>
 
